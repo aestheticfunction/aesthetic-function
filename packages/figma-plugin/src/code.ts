@@ -240,6 +240,38 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
       figma.ui.postMessage({ type: 'PONG' });
       break;
 
+    case 'GET_SETTINGS': {
+      // Retrieve stored settings from figma.clientStorage
+      try {
+        const serverUrl = await figma.clientStorage.getAsync('serverUrl');
+        figma.ui.postMessage({
+          type: 'SETTINGS',
+          payload: { serverUrl: serverUrl || '' },
+        });
+      } catch (err) {
+        console.error('[Plugin] Failed to get settings:', err);
+        figma.ui.postMessage({
+          type: 'SETTINGS',
+          payload: { serverUrl: '' },
+        });
+      }
+      break;
+    }
+
+    case 'SET_SETTINGS': {
+      // Store settings to figma.clientStorage
+      const settings = msg.payload as { serverUrl?: string };
+      try {
+        if (settings && settings.serverUrl !== undefined) {
+          await figma.clientStorage.setAsync('serverUrl', settings.serverUrl);
+          console.log('[Plugin] Settings saved');
+        }
+      } catch (err) {
+        console.error('[Plugin] Failed to save settings:', err);
+      }
+      break;
+    }
+
     default:
       console.warn('[Figma Plugin] Unknown message type:', msg.type);
   }

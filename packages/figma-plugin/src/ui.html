@@ -135,12 +135,8 @@
     const connectBtn = document.getElementById('connectBtn');
     const logEl = document.getElementById('log');
 
-    // Persist server URL in localStorage
-    const STORAGE_KEY = 'aesthetic-function-server-url';
-    const savedUrl = localStorage.getItem(STORAGE_KEY);
-    if (savedUrl) {
-      serverUrlInput.value = savedUrl;
-    }
+    // Settings will be loaded from figma.clientStorage via code.ts
+    let settingsLoaded = false;
 
     let ws = null;
     let pollInterval = null;
@@ -189,10 +185,20 @@
     window.onmessage = (event) => {
       const msg = event.data.pluginMessage;
       if (msg) {
-        log('From plugin: ' + msg.type);
-        if (msg.type === 'OPERATION_RESULT') {
+        if (msg.type === 'SETTINGS') {
+          // Received stored settings from figma.clientStorage
+          var pl = msg.payload || {};
+          if (pl.serverUrl) {
+            serverUrlInput.value = pl.serverUrl;
+            log('Loaded saved server URL');
+          }
+          settingsLoaded = true;
+        } else if (msg.type === 'OPERATION_RESULT') {
+          log('From plugin: ' + msg.type);
           var pl = msg.payload || {};
           log('  → ' + (pl.success ? '✓ Success' : '✗ Failed: ' + (pl.error || 'unknown')));
+        } else if (msg.type !== 'PONG') {
+          log('From plugin: ' + msg.type);
         }
       }
     };
@@ -217,11 +223,23 @@
     }
 
     /**
+     * Save server URL to figma.clientStorage via code.ts
+     */
+    function saveSettings(serverUrl) {
+      parent.postMessage({
+        pluginMessage: {
+          type: 'SET_SETTINGS',
+          payload: { serverUrl: serverUrl }
+        }
+      }, '*');
+    }
+
+    /**
      * Connect via WebSocket with polling fallback
      */
     async function connect() {
       const serverUrl = serverUrlInput.value.trim();
-      localStorage.setItem(STORAGE_KEY, serverUrl);
+      saveSettings(serverUrl);
       
       // Clear any existing connections
       stopPolling();
@@ -322,6 +340,8 @@
       }
     });
 
+    // Request stored settings from code.ts (uses figma.clientStorage)
+    parent.postMessage({ pluginMessage: { type: 'GET_SETTINGS' } }, '*');
     // Initial ping to code.ts
     parent.postMessage({ pluginMessage: { type: 'PING' } }, '*');
     log('UI initialized');
