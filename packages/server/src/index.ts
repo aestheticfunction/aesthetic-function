@@ -20,6 +20,7 @@ import {
   type ApplyOperationsPayload,
   MessageType,
 } from '@aesthetic-function/shared';
+import { logBroadcast, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -92,8 +93,14 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     req.on('data', chunk => { body += chunk; });
     req.on('end', () => {
       try {
-        const data = JSON.parse(body) as { operations: FigmaOperation[]; requestId?: string };
+        const data = JSON.parse(body) as {
+          operations: FigmaOperation[];
+          requestId?: string;
+          source?: string;
+          filePath?: string;
+        };
         const requestId = data.requestId ?? `${Date.now()}`;
+        const timestamp = new Date().toISOString();
         
         console.log(`[Server] Received ${data.operations.length} operation(s), requestId: ${requestId}`);
         
@@ -116,6 +123,18 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         }
         
         console.log(`[Server] Broadcast to ${sent} WebSocket client(s)`);
+        
+        // Audit log (async, non-blocking)
+        logBroadcast({
+          requestId,
+          messageType: MessageType.APPLY_OPERATIONS,
+          source: data.source,
+          filePath: data.filePath,
+          // Cast to WatcherOperation[] since we know the actual shape
+          operations: data.operations as unknown as Parameters<typeof logBroadcast>[0]['operations'],
+          timestamp,
+          clientsNotified: sent,
+        });
         
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true, clientsNotified: sent, requestId }));
@@ -179,8 +198,22 @@ httpServer.listen(PORT, () => {
   console.log(`[Server] WebSocket endpoint: ws://localhost:${PORT}/ws`);
   console.log(`[Server] Polling endpoint: GET http://localhost:${PORT}/poll`);
   console.log(`[Server] Test endpoint: POST http://localhost:${PORT}/test`);
+  console.log(`[Server] Audit log: ${isAuditLogEnabled() ? 'ENABLED (sync-log.md)' : 'disabled'}`);
   console.log('');
   console.log('[Server] For Figma plugin access, expose via tunnel:');
   console.log(`  npx cloudflared tunnel --url http://localhost:${PORT}`);
   console.log('  or: ngrok http ${PORT}');
+});
+
+// Graceful shutdown
+process.on('SIGINT', async () => {
+  console.log('\n[Server] Shutting down...');
+  await flushAuditLog();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  console.log('\n[Server] Shutting down...');
+  await flushAuditLog();
+  process.exit(0);
 });

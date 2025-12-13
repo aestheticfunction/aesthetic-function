@@ -101,18 +101,29 @@ interface SendResult {
   requestId: string;
 }
 
+interface SendOptions {
+  requestId: string;
+  serverUrl: string;
+  source?: string;
+  filePath?: string;
+}
+
 /**
  * Send Figma operations to the server.
  */
 async function sendOperationsToServer(
   operations: unknown[],
-  requestId: string,
-  serverUrl: string
+  options: SendOptions
 ): Promise<SendResult> {
-  const response = await fetch(`${serverUrl}/test`, {
+  const response = await fetch(`${options.serverUrl}/test`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ operations, requestId }),
+    body: JSON.stringify({
+      operations,
+      requestId: options.requestId,
+      source: options.source,
+      filePath: options.filePath,
+    }),
   });
 
   if (!response.ok) {
@@ -175,8 +186,12 @@ async function processFileWithMarkers(
 
   const result = await sendOperationsToServer(
     transformResult.operations,
-    requestId,
-    serverUrl
+    {
+      requestId,
+      serverUrl,
+      source: 'marker',
+      filePath: relativePath,
+    }
   );
 
   console.log(
@@ -243,10 +258,19 @@ async function processFileWithLLM(
   // Send to server
   const requestId = `watch-llm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
+  // Determine the LLM source for audit trail
+  const llmSource = analyzeResult.source === 'llm'
+    ? (process.env.LLM_PROVIDER?.toLowerCase() === 'anthropic' ? 'anthropic' : 'openai')
+    : analyzeResult.source;
+
   const result = await sendOperationsToServer(
     transformResult.operations,
-    requestId,
-    serverUrl
+    {
+      requestId,
+      serverUrl,
+      source: llmSource,
+      filePath: relativePath,
+    }
   );
 
   console.log(

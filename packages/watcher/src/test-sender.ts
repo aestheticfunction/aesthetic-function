@@ -26,6 +26,8 @@ const SERVER_URL = process.env.SERVER_URL ?? 'http://localhost:3001';
 interface TestPayload {
   operations: FigmaOperation[];
   requestId: string;
+  source: string;
+  filePath: string;
 }
 
 /**
@@ -38,8 +40,17 @@ function generateRequestId(): string {
 /**
  * Send Figma operations to the server
  */
-async function sendOperations(operations: FigmaOperation[], requestId: string): Promise<void> {
-  const payload: TestPayload = { operations, requestId };
+async function sendOperations(
+  operations: FigmaOperation[],
+  requestId: string,
+  scenarioName: string
+): Promise<void> {
+  const payload: TestPayload = {
+    operations,
+    requestId,
+    source: 'test-sender',
+    filePath: `test-sender:${scenarioName}`,
+  };
 
   console.log(`[Test Sender] Sending to ${SERVER_URL}/test`);
   console.log(`[Test Sender] Request ID: ${requestId}`);
@@ -100,7 +111,7 @@ async function runIntentScenario(intents: Intent[], scenarioName: string): Promi
   }
   console.log('');
 
-  await sendOperations(result.operations, requestId);
+  await sendOperations(result.operations, requestId, scenarioName);
 }
 
 // =============================================================================
