@@ -74,9 +74,9 @@ function findNodeByName(name: string): SceneNode | null {
 
 /**
  * Get the target node for an operation:
- * 1. If nodeId provided, find by ID
- * 2. If nodeQuery provided, find by name
- * 3. Fall back to first selected node
+ * 1. If nodeId provided, find by ID (return null if not found)
+ * 2. If nodeQuery provided, find by name (return null if not found - NO fallback)
+ * 3. Only fall back to selection when neither nodeId nor nodeQuery is provided
  */
 function getTargetNode(op: { nodeId?: string | null; nodeQuery?: string }): SceneNode | null {
   // Try by ID first
@@ -85,15 +85,21 @@ function getTargetNode(op: { nodeId?: string | null; nodeQuery?: string }): Scen
     if (node && node.type !== 'DOCUMENT' && node.type !== 'PAGE') {
       return node as SceneNode;
     }
+    // nodeId provided but not found - do not fall back
+    console.warn(`[Plugin] Node not found by ID: ${op.nodeId}`);
+    return null;
   }
 
   // Try by name query
   if (op.nodeQuery) {
     const node = findNodeByName(op.nodeQuery);
     if (node) return node;
+    // nodeQuery provided but not found - do not fall back to selection
+    console.warn(`[Plugin] Node not found by name: "${op.nodeQuery}" - skipping operation`);
+    return null;
   }
 
-  // Fall back to selection
+  // Only fall back to selection when no nodeId/nodeQuery specified
   const selection = figma.currentPage.selection;
   if (selection.length > 0) {
     return selection[0];
