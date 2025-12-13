@@ -1,24 +1,30 @@
 # Aesthetic Function
 
-A bidirectional synchronization system between a local React codebase and a live Figma document. The current implementation (Phase 2B) enables **Code → Design** sync: saving a React file with `@figma` markers automatically updates the corresponding Figma nodes in real-time.
+A Code → Design synchronization system that watches local React source files and applies changes to a live Figma document in real-time. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
 
 ---
 
-## What Works Today (Phase 2B)
+## What Works Today (Phase 3)
 
 | Feature | Status |
 |---------|--------|
 | File save detection via chokidar | ✅ |
-| `@figma` marker parsing (regex-based) | ✅ |
+| `@figma` marker parsing (regex-based, default) | ✅ |
 | IntentModel → FigmaOperation transformer | ✅ |
 | Design token resolution | ✅ |
 | WebSocket + HTTP polling server relay | ✅ |
 | Figma plugin with SET_TEXT / SET_FILL operations | ✅ |
 | Live Figma updates on file save | ✅ |
+| Optional LLM-based intent analyzer (feature flag) | ✅ |
+| Automatic fallback to markers on LLM failure | ✅ |
 
 ---
 
 ## Architecture
+
+```
+File Change → Watcher → IntentModel → FigmaOperations → Server → Figma Plugin
+```
 
 ```
 ┌─────────────────┐     HTTP POST     ┌─────────────────┐    WebSocket/Poll   ┌─────────────────┐
@@ -40,7 +46,7 @@ A bidirectional synchronization system between a local React codebase and a live
 
 | Package | Runtime | Responsibility |
 |---------|---------|----------------|
-| `@aesthetic-function/watcher` | Local Node.js | Watches files, parses `@figma` markers, transforms to operations, sends to server |
+| `@aesthetic-function/watcher` | Local Node.js | Watches files, extracts intent (markers or LLM), transforms to operations, sends to server |
 | `@aesthetic-function/server` | Local Node.js | HTTP/WebSocket relay bridge between watcher and Figma plugin |
 | `@aesthetic-function/figma-plugin` | Figma Sandbox | Receives operations, executes scene graph mutations (SET_TEXT, SET_FILL) |
 | `@aesthetic-function/shared` | Shared | Protocol definitions, message types, version constants |
@@ -57,13 +63,13 @@ A bidirectional synchronization system between a local React codebase and a live
    }
    ```
 
-2. **Save the file** — chokidar detects the change (300ms debounce)
+2. **Watcher detects change** — chokidar monitors the file system (300ms debounce)
 
-3. **Watcher parses markers** — extracts `node`, `text`, and `fill` attributes
+3. **Intent is extracted**:
+   - **Marker mode (default)**: Regex parses `@figma` comments
+   - **LLM mode (opt-in)**: Sends code to LLM for semantic analysis
 
-4. **IntentModel created** — structured representation of design intent
-
-5. **FigmaOperations generated** — transforms intent + design tokens into operations:
+4. **IntentModel transformed** — design tokens resolved, FigmaOperations generated:
    ```json
    [
      { "op": "SET_TEXT", "nodeQuery": "LoginButton", "value": "Sign In" },
@@ -71,9 +77,9 @@ A bidirectional synchronization system between a local React codebase and a live
    ]
    ```
 
-6. **Server relays operations** — broadcasts to connected Figma plugin clients
+5. **Server relays operations** — broadcasts to connected Figma plugin clients
 
-7. **Figma plugin executes** — finds nodes by name, applies SET_TEXT/SET_FILL
+6. **Figma plugin executes** — finds nodes by name, applies SET_TEXT/SET_FILL
 
 ---
 
@@ -101,7 +107,7 @@ Server runs at `http://localhost:3001` with:
 - HTTP polling: `GET /poll`
 - Test endpoint: `POST /test`
 
-### Start the Watcher
+### Start the Watcher (Marker Mode)
 
 ```bash
 pnpm dev:watcher
@@ -124,6 +130,13 @@ Examples:
 // @figma node=CardBackground fill=Neutral/Gray50
 ```
 
+### Expected Result
+
+When you save a file with `@figma` markers:
+1. Watcher logs: `Found X intent(s) from markers`
+2. Server logs: `Received X operation(s)`
+3. Figma plugin updates the matching nodes
+
 ### Connect Figma Plugin
 
 1. In Figma, run the plugin
@@ -138,6 +151,42 @@ pnpm test:red           # Red box test
 pnpm test:blue          # Blue token test
 pnpm test:text          # Text update test
 ```
+
+---
+
+## Optional LLM Mode
+
+The watcher supports an optional LLM-based intent analyzer that can extract design intent from React code without explicit `@figma` markers.
+
+### Enable LLM Mode
+
+```bash
+USE_LLM_ANALYZER=true OPENAI_API_KEY=sk-... pnpm dev:watcher
+```
+
+### Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `USE_LLM_ANALYZER` | Set to `true` to enable LLM mode |
+| `LLM_PROVIDER` | `openai` (default) or `anthropic` |
+| `OPENAI_API_KEY` | OpenAI API key (required for openai provider) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (required for anthropic provider) |
+| `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
+| `ANTHROPIC_MODEL` | Model name (default: `claude-3-5-sonnet-20241022`) |
+| `LLM_ANALYZE_ALL` | Set to `true` to analyze files without `@figma` markers |
+
+### Behavior
+
+- **Default**: LLM mode only processes files that contain `@figma` markers
+- **LLM_ANALYZE_ALL=true**: Processes all `.tsx`/`.ts` files regardless of markers
+- **Fallback**: If LLM fails (network error, invalid JSON, timeout), automatically falls back to marker-based parsing
+
+### Fallback Rules
+
+1. If `USE_LLM_ANALYZER=true` but no API key is configured → marker parsing
+2. If LLM call throws an error → marker parsing (if markers exist)
+3. If file has no `@figma` markers and `LLM_ANALYZE_ALL!=true` → skip file
 
 ---
 
@@ -160,20 +209,18 @@ Raw hex values (e.g., `#FF0000`) pass through unchanged.
 
 ## What Is NOT Implemented Yet
 
-The following features are intentionally deferred to future phases:
-
 | Feature | Status |
 |---------|--------|
 | AST parsing (Babel/TypeScript) | ❌ Not implemented |
-| LLM-based intent reasoning | ❌ Not implemented |
 | Design → Code sync (Figma → React) | ❌ Not implemented |
 | Background reconciliation | ❌ Not implemented |
 | Conflict resolution | ❌ Not implemented |
 | Component-level mapping | ❌ Not implemented |
 | Variant/state handling | ❌ Not implemented |
 | Layout/spacing operations | ❌ Not implemented |
+| Autonomous multi-agent loops | ❌ Not implemented |
 
-The current implementation uses simple regex parsing of `@figma` comment markers. There is no semantic understanding of React component structure.
+The current implementation uses regex parsing of `@figma` comment markers or optional LLM analysis. There is no AST-level semantic understanding of React component structure.
 
 ---
 
@@ -185,6 +232,7 @@ aesthetic-function/
 │   ├── shared/           # Protocol definitions
 │   ├── watcher/          # File watcher + transformer
 │   │   ├── src/
+│   │   │   ├── analyze/  # LLM-based intent analyzer
 │   │   │   ├── parse/    # @figma marker parser
 │   │   │   ├── tokens/   # Design token resolution
 │   │   │   └── transform/# IntentModel → FigmaOps
@@ -201,11 +249,12 @@ aesthetic-function/
 | Command | Description |
 |---------|-------------|
 | `pnpm dev:server` | Start the relay server |
-| `pnpm dev:watcher` | Start the file watcher |
+| `pnpm dev:watcher` | Start the file watcher (marker mode) |
 | `pnpm dev` | Start all packages in parallel |
 | `pnpm typecheck` | Run TypeScript checks |
 | `pnpm build` | Build all packages |
 | `pnpm tunnel` | Expose server via cloudflared |
+| `pnpm test:analyze` | Run LLM analyzer tests |
 
 ---
 
