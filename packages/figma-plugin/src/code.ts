@@ -113,8 +113,28 @@ function getTargetNode(op: { nodeId?: string | null; nodeQuery?: string }): Scen
 // =============================================================================
 
 /**
+ * Find a TEXT node within a container:
+ * 1. Prefer a child named "text" (common convention)
+ * 2. Otherwise use the first TEXT descendant
+ */
+function findTextInContainer(container: SceneNode): TextNode | null {
+  if (!('findOne' in container)) return null;
+
+  // Prefer a TEXT node named "text"
+  const namedText = (container as ChildrenMixin).findOne(
+    (n) => n.type === 'TEXT' && n.name.toLowerCase() === 'text'
+  );
+  if (namedText) return namedText as TextNode;
+
+  // Fall back to first TEXT descendant
+  const anyText = (container as ChildrenMixin).findOne((n) => n.type === 'TEXT');
+  return anyText as TextNode | null;
+}
+
+/**
  * Execute SET_TEXT operation
- * Changes the text content of a text node
+ * Changes the text content of a text node.
+ * If target is a container, finds a nested TEXT node.
  */
 async function executeSetText(op: SetTextOperation): Promise<{ success: boolean; error?: string }> {
   const node = getTargetNode(op);
@@ -123,16 +143,29 @@ async function executeSetText(op: SetTextOperation): Promise<{ success: boolean;
     return { success: false, error: 'No target node found. Select a node or provide nodeId/nodeQuery.' };
   }
 
-  if (node.type !== 'TEXT') {
-    return { success: false, error: `Node "${node.name}" is ${node.type}, not TEXT` };
+  // Determine the actual TEXT node to modify
+  let textNode: TextNode | null = null;
+
+  if (node.type === 'TEXT') {
+    textNode = node as TextNode;
+  } else {
+    // Target is a container - find nested TEXT
+    textNode = findTextInContainer(node);
+    if (!textNode) {
+      return {
+        success: false,
+        error: `Node "${node.name}" (${node.type}) has no TEXT descendant`,
+      };
+    }
+    console.log(`[Plugin] Resolved nested TEXT node "${textNode.name}" inside "${node.name}"`);
   }
 
   try {
     // Load font before modifying text
     // WHY: Figma requires fonts to be loaded before text mutations
-    await figma.loadFontAsync(node.fontName as FontName);
-    node.characters = op.text;
-    console.log(`[Plugin] SET_TEXT: "${op.text}" on node "${node.name}"`);
+    await figma.loadFontAsync(textNode.fontName as FontName);
+    textNode.characters = op.text;
+    console.log(`[Plugin] SET_TEXT: "${op.text}" on node "${textNode.name}"`);
     return { success: true };
   } catch (err) {
     return { success: false, error: `Failed to set text: ${err}` };

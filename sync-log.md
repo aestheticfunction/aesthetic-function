@@ -409,3 +409,163 @@ ops=7
 - node="TestBox" action=SET_FILL value="#FF0000"
 - node="TestBox" action=SET_TEXT value="TestBox"
 - node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:13:25.832Z] [watch-marker-1765667605828-p094] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:15:01.035Z] [watch-marker-1765667701032-yz00] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In222"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:15:05.833Z] [watch-marker-1765667705829-nolf] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:15:34.339Z] [watch-marker-1765667734335-f1av] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#ff0000"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:15:38.046Z] [watch-marker-1765667738042-2hus] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:16:38.832Z] [watch-marker-1765667798827-o7l4] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo!"
+## [2025-12-13T23:16:44.757Z] [watch-marker-1765667804752-p3by] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo!"
+## [2025-12-13T23:16:57.818Z] [watch-marker-1765667817814-lyxz] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo!"
+## [2025-12-13T23:17:07.525Z] [watch-marker-1765667827519-6fdz] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo!"
+## [2025-12-13T23:17:11.271Z] [watch-marker-1765667831268-5k1s] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:18:59.745Z] [watch-marker-1765667939742-pq41] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In!"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:20:13.817Z] [watch-marker-1765668013754-xfzs] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign I"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:20:16.713Z] [watch-marker-1765668016709-wlan] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign I"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:20:25.028Z] [watch-marker-1765668025024-jws4] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In!"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:27:13.638Z] [watch-marker-1765668433633-2481] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#ff0000"
+- node="LoginButton" action=SET_TEXT value="Sign In!"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-13T23:27:21.230Z] [watch-marker-1765668441226-lpim] type=APPLY_OPERATIONS source=marker
+file=../../demo-app/src/App.tsx
+ops=7
+- node="<FigmaNodeName>" action=SET_FILL value="<TokenOrHex>"
+- node="<FigmaNodeName>" action=SET_TEXT value="<Text>"
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+- node="TestBox" action=SET_FILL value="#FF0000"
+- node="TestBox" action=SET_TEXT value="TestBox"
+- node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
