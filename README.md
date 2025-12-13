@@ -4,7 +4,7 @@ A Code → Design synchronization system that watches local React source files a
 
 ---
 
-## What Works Today (Phase 3)
+## What Works Today (Phase 4A)
 
 | Feature | Status |
 |---------|--------|
@@ -17,6 +17,7 @@ A Code → Design synchronization system that watches local React source files a
 | Live Figma updates on file save | ✅ |
 | Optional LLM-based intent analyzer (feature flag) | ✅ |
 | Automatic fallback to markers on LLM failure | ✅ |
+| Async audit trail logging (sync-log.md) | ✅ |
 
 ---
 
@@ -175,6 +176,7 @@ USE_LLM_ANALYZER=true OPENAI_API_KEY=sk-... pnpm dev:watcher
 | `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
 | `ANTHROPIC_MODEL` | Model name (default: `claude-3-5-sonnet-20241022`) |
 | `LLM_ANALYZE_ALL` | Set to `true` to analyze files without `@figma` markers |
+| `ENABLE_AUDIT_LOG` | Set to `true` to log all broadcasts to `sync-log.md` |
 
 ### Behavior
 
@@ -204,6 +206,34 @@ The watcher resolves semantic tokens to hex values:
 | `Neutral/Gray900` | `#111827` |
 
 Raw hex values (e.g., `#FF0000`) pass through unchanged.
+
+---
+
+## Audit Trail
+
+The server can log all broadcast operations to `sync-log.md` at the repository root for debugging and traceability.
+
+### Enable Audit Logging
+
+```bash
+ENABLE_AUDIT_LOG=true pnpm dev:server
+```
+
+### Log Format
+
+```markdown
+## [2025-01-15T10:30:00.000Z] [req-abc123] type=APPLY_OPERATIONS source=watcher
+file=demo-app/src/Card.tsx
+ops=2
+- node="LoginButton" action=SET_FILL value="#3B82F6"
+- node="LoginButton" action=SET_TEXT value="Sign In"
+```
+
+### Behavior
+
+- **Default**: Audit logging is disabled
+- **Async**: Logging is non-blocking with an in-memory queue (100ms flush interval)
+- **Graceful shutdown**: Queue is flushed on SIGINT/SIGTERM
 
 ---
 
@@ -260,6 +290,6 @@ aesthetic-function/
 
 ## Protocol Version
 
-Current: `0.1.0`
+Current: `0.3.0`
 
 All messages include a `protocolVersion` field for compatibility checking.
