@@ -1,0 +1,21 @@
+{
+  "name": "@aesthetic-function/figma-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Figma plugin that receives operations and mutates the Scene Graph",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --format=esm --target=es2020 && cp src/ui.html dist/ui.html",
+    "dev": "pnpm build --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aesthetic-function/shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.85.0",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3"
+  }
+}

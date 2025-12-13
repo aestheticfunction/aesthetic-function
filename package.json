@@ -1,0 +1,25 @@
+{
+  "name": "aesthetic-function",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bidirectional synchronization between React codebase and Figma",
+  "packageManager": "pnpm@9.14.2",
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "dev:watcher": "pnpm --filter @aesthetic-function/watcher watch",
+    "dev:server": "pnpm --filter @aesthetic-function/server dev",
+    "dev:plugin": "pnpm --filter @aesthetic-function/figma-plugin dev",
+    "test:send": "pnpm --filter @aesthetic-function/watcher test:send",
+    "test:red": "pnpm --filter @aesthetic-function/watcher test:red",
+    "test:blue": "pnpm --filter @aesthetic-function/watcher test:blue",
+    "test:text": "pnpm --filter @aesthetic-function/watcher test:text",
+    "tunnel": "npx cloudflared tunnel --url http://localhost:3001",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean && rm -rf node_modules"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

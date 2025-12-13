@@ -1,0 +1,6 @@
+{
+  "name": "demo-app",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Demo React app with @figma markers for testing the watcher"
+}

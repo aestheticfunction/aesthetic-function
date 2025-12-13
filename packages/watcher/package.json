@@ -1,0 +1,33 @@
+{
+  "name": "@aesthetic-function/watcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local Node.js watcher that monitors React source files",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "watch": "tsx src/index.ts",
+    "start": "node dist/index.js",
+    "test:send": "tsx src/test-sender.ts",
+    "test:red": "tsx src/test-sender.ts redBox",
+    "test:blue": "tsx src/test-sender.ts blueToken",
+    "test:green": "tsx src/test-sender.ts greenSuccess",
+    "test:text": "tsx src/test-sender.ts textUpdate",
+    "test:combined": "tsx src/test-sender.ts combined",
+    "test:transform": "tsx src/transform/__tests__/intentToFigmaOps.test.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aesthetic-function/shared": "workspace:*",
+    "chokidar": "^3.5.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

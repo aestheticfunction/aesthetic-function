@@ -1,0 +1,13 @@
+{
+  "name": "Aesthetic Function",
+  "id": "aesthetic-function-plugin",
+  "api": "1.0.0",
+  "main": "dist/code.js",
+  "ui": "dist/ui.html",
+  "editorType": ["figma"],
+  "documentAccess": "dynamic-page",
+  "networkAccess": {
+    "allowedDomains": ["*"],
+    "reasoning": "Required to connect to the relay server for bidirectional sync"
+  }
+}
