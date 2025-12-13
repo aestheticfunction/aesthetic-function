@@ -189,9 +189,10 @@
     window.onmessage = (event) => {
       const msg = event.data.pluginMessage;
       if (msg) {
-        log(`From plugin: ${msg.type}`);
+        log('From plugin: ' + msg.type);
         if (msg.type === 'OPERATION_RESULT') {
-          log(`  → ${msg.payload?.success ? '✓ Success' : '✗ Failed: ' + msg.payload?.error}`);
+          var pl = msg.payload || {};
+          log('  → ' + (pl.success ? '✓ Success' : '✗ Failed: ' + (pl.error || 'unknown')));
         }
       }
     };
@@ -201,8 +202,9 @@
      */
     function handleServerMessage(data) {
       // Handle APPLY_OPERATIONS message from server
-      if (data.type === 'APPLY_OPERATIONS' && data.payload?.operations) {
-        forwardOperations(data.payload.operations, data.payload.originRequestId || data.requestId);
+      var payload = data.payload || {};
+      if (data.type === 'APPLY_OPERATIONS' && payload.operations) {
+        forwardOperations(payload.operations, payload.originRequestId || data.requestId);
       }
       // Handle legacy/direct operations array (from polling)
       else if (Array.isArray(data.operations) && data.operations.length > 0) {
@@ -210,7 +212,7 @@
       }
       // Connected message
       else if (data.type === 'CONNECTED') {
-        log(`Server version: ${data.payload?.version}`);
+        log('Server version: ' + (payload.version || 'unknown'));
       }
     }
 

@@ -214,13 +214,14 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
   switch (msg.type) {
     case 'APPLY_OPERATIONS': {
       const payload = msg.payload as ApplyOperationsPayload;
-      if (!payload?.operations?.length) {
+      const ops = payload && payload.operations;
+      if (!ops || !ops.length) {
         console.warn('[Plugin] APPLY_OPERATIONS with no operations');
         break;
       }
 
-      console.log(`[Plugin] Executing ${payload.operations.length} operation(s)...`);
-      const result = await executeOperations(payload.operations, payload.requestId);
+      console.log(`[Plugin] Executing ${ops.length} operation(s)...`);
+      const result = await executeOperations(ops, payload.requestId);
 
       // Send result back to ui.html
       figma.ui.postMessage({

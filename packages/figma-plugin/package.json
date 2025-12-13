@@ -5,7 +5,7 @@
   "description": "Figma plugin that receives operations and mutates the Scene Graph",
   "type": "module",
   "scripts": {
-    "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --format=esm --target=es2020 && cp src/ui.html dist/ui.html",
+    "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --format=esm --target=es2017 && cp src/ui.html dist/ui.html",
     "dev": "pnpm build --watch",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
