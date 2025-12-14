@@ -36,6 +36,10 @@ import {
   isLLMAnalyzerEnabled,
   isLLMAnalyzerAvailable,
 } from './analyze/analyzeCodeWithLLM.js';
+import {
+  loadDesignOverrides,
+  applyOverridesToIntentModel,
+} from './reconcile/index.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -168,9 +172,26 @@ async function processFileWithMarkers(
 
   console.log(`[Watcher] Found ${parseResult.intents.length} intent(s) from markers`);
 
-  // Transform intents to Figma operations
+  // Create initial IntentModel
   const tokenContext = getDefaultTokenContext();
-  const model = createIntentModel(parseResult.intents, relativePath);
+  let model = createIntentModel(parseResult.intents, relativePath);
+
+  // PHASE 5A.1: Apply design overrides (soft reconciliation)
+  const overrides = await loadDesignOverrides();
+  if (overrides) {
+    const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+    model = reconciledModel;
+
+    // Log reconciliation summary
+    if (reconcileResult.matched > 0 || reconcileResult.ignored > 0) {
+      const matchedInfo = reconcileResult.overriddenNodes.length > 0
+        ? ` (${reconcileResult.overriddenNodes.join(', ')})`
+        : '';
+      console.log(`[Watcher] Applied overrides: ${reconcileResult.matched} matched${matchedInfo}, ${reconcileResult.ignored} ignored`);
+    }
+  }
+
+  // Transform intents to Figma operations
   const transformResult = intentToFigmaOps(model, tokenContext);
 
   console.log(`[Watcher] Generated ${transformResult.operations.length} operation(s)`);
@@ -244,8 +265,24 @@ async function processFileWithLLM(
 
   console.log(`[Watcher] Found ${analyzeResult.model.intents.length} intent(s) from LLM`);
 
+  // PHASE 5A.1: Apply design overrides (soft reconciliation)
+  let model = analyzeResult.model;
+  const overrides = await loadDesignOverrides();
+  if (overrides) {
+    const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+    model = reconciledModel;
+
+    // Log reconciliation summary
+    if (reconcileResult.matched > 0 || reconcileResult.ignored > 0) {
+      const matchedInfo = reconcileResult.overriddenNodes.length > 0
+        ? ` (${reconcileResult.overriddenNodes.join(', ')})`
+        : '';
+      console.log(`[Watcher] Applied overrides: ${reconcileResult.matched} matched${matchedInfo}, ${reconcileResult.ignored} ignored`);
+    }
+  }
+
   // Transform intents to Figma operations (same as marker mode)
-  const transformResult = intentToFigmaOps(analyzeResult.model, tokenContext);
+  const transformResult = intentToFigmaOps(model, tokenContext);
 
   console.log(`[Watcher] Generated ${transformResult.operations.length} operation(s)`);
 
