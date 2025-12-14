@@ -20,7 +20,7 @@ import {
   type ApplyOperationsPayload,
   MessageType,
 } from '@aesthetic-function/shared';
-import { logBroadcast, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
+import { logBroadcast, logDesignChange, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -30,6 +30,9 @@ const PORT = Number(process.env.PORT ?? 3001);
 
 /** Connected Figma plugin clients */
 const pluginClients = new Set<WebSocket>();
+
+/** Connected watcher clients (for Design → Code relay) */
+const watcherClients = new Set<WebSocket>();
 
 /** Latest operations for polling fallback */
 let latestOperations: { requestId: string; operations: FigmaOperation[] } | null = null;
@@ -147,6 +150,70 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     return;
   }
 
+  // Receive DESIGN_CHANGE from Figma plugin (Design → Code)
+  if (req.method === 'POST' && url.pathname === '/design-change') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+      try {
+        const data = JSON.parse(body) as {
+          type: string;
+          requestId?: string;
+          timestamp?: string;
+          payload: {
+            nodeId: string;
+            nodeName: string;
+            changes: Array<{ changeType: string; value: string }>;
+            source: string;
+          };
+        };
+        
+        const requestId = data.requestId ?? `design-${Date.now()}`;
+        const timestamp = data.timestamp ?? new Date().toISOString();
+        
+        console.log(`[Server] DESIGN_CHANGE from plugin: "${data.payload.nodeName}" (${data.payload.changes.length} changes)`);
+        
+        // Relay to all connected watcher clients
+        const messageStr = JSON.stringify({
+          type: 'DESIGN_CHANGE',
+          requestId,
+          timestamp,
+          payload: data.payload,
+        });
+        
+        let sent = 0;
+        for (const client of watcherClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr);
+            sent++;
+          }
+        }
+        
+        console.log(`[Server] Relayed to ${sent} watcher client(s)`);
+        
+        // Audit log for design→code events
+        if (isAuditLogEnabled()) {
+          logDesignChange({
+            requestId,
+            nodeName: data.payload.nodeName,
+            nodeId: data.payload.nodeId,
+            changes: data.payload.changes,
+            timestamp,
+            watchersNotified: sent,
+          });
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, watchersNotified: sent, requestId }));
+      } catch (err) {
+        console.error('[Server] Error parsing design-change:', err);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      }
+    });
+    return;
+  }
+
   // 404 for unknown routes
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
@@ -167,8 +234,43 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       const msg = JSON.parse(data.toString());
       console.log(`[Server] Received from plugin:`, msg.type);
       
-      // Handle plugin messages (e.g., OPERATION_RESULT, PLUGIN_READY)
-      // For now, just log them
+      // Handle DESIGN_CHANGE from plugin via WebSocket
+      if (msg.type === 'DESIGN_CHANGE' && msg.payload) {
+        const requestId = msg.requestId ?? `design-${Date.now()}`;
+        const timestamp = msg.timestamp ?? new Date().toISOString();
+        
+        console.log(`[Server] DESIGN_CHANGE via WS: "${msg.payload.nodeName}" (${msg.payload.changes.length} changes)`);
+        
+        // Relay to all connected watcher clients
+        const messageStr = JSON.stringify({
+          type: 'DESIGN_CHANGE',
+          requestId,
+          timestamp,
+          payload: msg.payload,
+        });
+        
+        let sent = 0;
+        for (const client of watcherClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr);
+            sent++;
+          }
+        }
+        
+        console.log(`[Server] Relayed to ${sent} watcher client(s)`);
+        
+        // Audit log
+        if (isAuditLogEnabled()) {
+          logDesignChange({
+            requestId,
+            nodeName: msg.payload.nodeName,
+            nodeId: msg.payload.nodeId,
+            changes: msg.payload.changes,
+            timestamp,
+            watchersNotified: sent,
+          });
+        }
+      }
     } catch (err) {
       console.error('[Server] Invalid message from plugin:', err);
     }
@@ -188,6 +290,27 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   ws.send(JSON.stringify(createMessage('CONNECTED', { version: PROTOCOL_VERSION })));
 });
 
+// WebSocket endpoint for watcher clients (Design → Code relay)
+const wssWatcher = new WebSocketServer({ server: httpServer, path: '/ws-watcher' });
+
+wssWatcher.on('connection', (ws: WebSocket, req: IncomingMessage) => {
+  console.log(`[Server] Watcher client connected from ${req.socket.remoteAddress}`);
+  watcherClients.add(ws);
+
+  ws.on('close', () => {
+    console.log('[Server] Watcher client disconnected');
+    watcherClients.delete(ws);
+  });
+
+  ws.on('error', (err) => {
+    console.error('[Server] Watcher WebSocket error:', err);
+    watcherClients.delete(ws);
+  });
+
+  // Send welcome message
+  ws.send(JSON.stringify({ type: 'CONNECTED', version: PROTOCOL_VERSION }));
+});
+
 // =============================================================================
 // START SERVER
 // =============================================================================
@@ -195,9 +318,11 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 httpServer.listen(PORT, () => {
   console.log(`[Server] Protocol version: ${PROTOCOL_VERSION}`);
   console.log(`[Server] HTTP server listening on http://localhost:${PORT}`);
-  console.log(`[Server] WebSocket endpoint: ws://localhost:${PORT}/ws`);
+  console.log(`[Server] WebSocket (plugin): ws://localhost:${PORT}/ws`);
+  console.log(`[Server] WebSocket (watcher): ws://localhost:${PORT}/ws-watcher`);
   console.log(`[Server] Polling endpoint: GET http://localhost:${PORT}/poll`);
   console.log(`[Server] Test endpoint: POST http://localhost:${PORT}/test`);
+  console.log(`[Server] Design change: POST http://localhost:${PORT}/design-change`);
   console.log(`[Server] Audit log: ${isAuditLogEnabled() ? 'ENABLED (sync-log.md)' : 'disabled'}`);
   console.log('');
   console.log('[Server] For Figma plugin access, expose via tunnel:');

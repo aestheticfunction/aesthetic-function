@@ -66,6 +66,16 @@ function hexToRgb(hex: string): RGB {
 }
 
 /**
+ * Convert Figma RGB (0-1 range) to hex string
+ */
+function rgbToHex(rgb: RGB): string {
+  const r = Math.round(rgb.r * 255);
+  const g = Math.round(rgb.g * 255);
+  const b = Math.round(rgb.b * 255);
+  return '#' + [r, g, b].map((x) => x.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+/**
  * Find a node by name in the current page
  */
 function findNodeByName(name: string): SceneNode | null {
@@ -308,6 +318,72 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
       } catch (err) {
         console.error('[Plugin] Failed to save settings:', err);
       }
+      break;
+    }
+
+    case 'CAPTURE_SELECTION': {
+      // Capture text and fill from current selection for Design → Code sync
+      const selection = figma.currentPage.selection;
+      if (selection.length === 0) {
+        console.warn('[Plugin] No selection to capture');
+        figma.ui.postMessage({
+          type: 'CAPTURE_ERROR',
+          payload: { error: 'No selection. Select a node first.' },
+        });
+        break;
+      }
+
+      const node = selection[0];
+      const changes: Array<{ changeType: 'text' | 'fill'; value: string }> = [];
+
+      // Capture text content
+      let textValue: string | null = null;
+      if (node.type === 'TEXT') {
+        textValue = (node as TextNode).characters;
+      } else if ('findOne' in node) {
+        // Container - find nested TEXT
+        const textNode = (node as ChildrenMixin).findOne((n) => n.type === 'TEXT');
+        if (textNode) {
+          textValue = (textNode as TextNode).characters;
+        }
+      }
+      if (textValue !== null) {
+        changes.push({ changeType: 'text', value: textValue });
+      }
+
+      // Capture fill color (first solid fill)
+      if ('fills' in node) {
+        const fills = (node as GeometryMixin).fills;
+        if (Array.isArray(fills) && fills.length > 0) {
+          const firstFill = fills[0];
+          if (firstFill.type === 'SOLID') {
+            const hex = rgbToHex(firstFill.color);
+            changes.push({ changeType: 'fill', value: hex });
+          }
+        }
+      }
+
+      if (changes.length === 0) {
+        console.warn('[Plugin] No capturable properties on selection');
+        figma.ui.postMessage({
+          type: 'CAPTURE_ERROR',
+          payload: { error: 'Selected node has no text or fill to capture.' },
+        });
+        break;
+      }
+
+      console.log(`[Plugin] Captured ${changes.length} change(s) from "${node.name}"`);
+
+      // Send to ui.html for forwarding to server
+      figma.ui.postMessage({
+        type: 'SELECTION_CAPTURED',
+        payload: {
+          nodeId: node.id,
+          nodeName: node.name,
+          changes,
+          source: 'figma-plugin',
+        },
+      });
       break;
     }
 

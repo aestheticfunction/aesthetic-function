@@ -77,6 +77,20 @@
       background: #3a3a3a;
       cursor: not-allowed;
     }
+    .button-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .button-group button {
+      flex: 1;
+    }
+    .btn-secondary {
+      background: #7c3aed;
+    }
+    .btn-secondary:hover {
+      background: #6d28d9;
+    }
     .log {
       margin-top: 16px;
       padding: 8px;
@@ -109,6 +123,10 @@
 
   <button id="connectBtn">Connect</button>
 
+  <div class="button-group">
+    <button id="captureBtn" class="btn-secondary" disabled>Send Selection</button>
+  </div>
+
   <div class="log" id="log"></div>
 
   <script>
@@ -133,10 +151,12 @@
     const statusText = document.getElementById('statusText');
     const serverUrlInput = document.getElementById('serverUrl');
     const connectBtn = document.getElementById('connectBtn');
+    const captureBtn = document.getElementById('captureBtn');
     const logEl = document.getElementById('log');
 
     // Settings will be loaded from figma.clientStorage via code.ts
     let settingsLoaded = false;
+    let currentServerUrl = '';
 
     let ws = null;
     let pollInterval = null;
@@ -158,10 +178,12 @@
         statusIndicator.classList.add('connected');
         statusText.textContent = mode ? `Connected (${mode})` : 'Connected';
         connectBtn.textContent = 'Disconnect';
+        captureBtn.disabled = false;
       } else {
         statusIndicator.classList.remove('connected');
         statusText.textContent = 'Disconnected';
         connectBtn.textContent = 'Connect';
+        captureBtn.disabled = true;
       }
     }
 
@@ -193,6 +215,11 @@
             log('Loaded saved server URL');
           }
           settingsLoaded = true;
+        } else if (msg.type === 'SELECTION_CAPTURED') {
+          // Received captured selection from code.ts - send to server
+          var pl = msg.payload || {};
+          log('Captured: ' + pl.nodeName + ' (' + (pl.changes || []).length + ' changes)');
+          sendDesignChange(pl);
         } else if (msg.type === 'OPERATION_RESULT') {
           log('From plugin: ' + msg.type);
           var pl = msg.payload || {};
@@ -202,6 +229,45 @@
         }
       }
     };
+
+    /**
+     * Send DESIGN_CHANGE to server
+     */
+    async function sendDesignChange(payload) {
+      if (!currentServerUrl) {
+        log('Error: Not connected');
+        return;
+      }
+      
+      try {
+        var requestId = 'design-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        var message = {
+          type: 'DESIGN_CHANGE',
+          requestId: requestId,
+          timestamp: new Date().toISOString(),
+          payload: payload
+        };
+        
+        // Send via WebSocket if available, else HTTP POST
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify(message));
+          log('Sent DESIGN_CHANGE via WebSocket');
+        } else {
+          var res = await fetch(currentServerUrl + '/design-change', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(message)
+          });
+          if (res.ok) {
+            log('Sent DESIGN_CHANGE via HTTP');
+          } else {
+            log('Error sending: HTTP ' + res.status);
+          }
+        }
+      } catch (e) {
+        log('Error sending DESIGN_CHANGE: ' + e.message);
+      }
+    }
 
     /**
      * Handle incoming server message (WebSocket or poll response)
@@ -239,6 +305,7 @@
      */
     async function connect() {
       const serverUrl = serverUrlInput.value.trim();
+      currentServerUrl = serverUrl;
       saveSettings(serverUrl);
       
       // Clear any existing connections
@@ -338,6 +405,12 @@
       } else {
         connect();
       }
+    });
+
+    captureBtn.addEventListener('click', () => {
+      // Request code.ts to capture the current selection
+      parent.postMessage({ pluginMessage: { type: 'CAPTURE_SELECTION' } }, '*');
+      log('Capturing selection...');
     });
 
     // Request stored settings from code.ts (uses figma.clientStorage)

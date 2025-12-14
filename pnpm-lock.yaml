@@ -60,10 +60,16 @@ importers:
       chokidar:
         specifier: ^3.5.3
         version: 3.6.0
+      ws:
+        specifier: ^8.14.0
+        version: 8.18.3
     devDependencies:
       '@types/node':
         specifier: ^20.10.0
         version: 20.19.26
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
       tsx:
         specifier: ^4.7.0
         version: 4.21.0

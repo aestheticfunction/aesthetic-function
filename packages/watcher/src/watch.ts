@@ -18,8 +18,10 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
-import { readFile } from 'node:fs/promises';
-import { resolve, relative } from 'node:path';
+import { readFile, writeFile, access } from 'node:fs/promises';
+import { resolve, relative, join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import WebSocket from 'ws';
 import {
   parseIntentFromReact,
   hasFigmaMarkers,
@@ -419,4 +421,126 @@ export function startWatcher(
 export async function stopWatcher(watcher: FSWatcher): Promise<void> {
   await watcher.close();
   console.log('[Watcher] Stopped');
+}
+
+// =============================================================================
+// DESIGN → CODE LISTENER
+// =============================================================================
+
+/**
+ * Path to the design overrides file at repo root.
+ */
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DESIGN_OVERRIDES_PATH = join(__dirname, '..', '..', '..', 'design-overrides.json');
+
+/**
+ * Design override entry format.
+ */
+interface DesignOverride {
+  text?: string;
+  fill?: string;
+  lastUpdated: string;
+  nodeId: string;
+}
+
+/**
+ * Read existing design overrides or return empty object.
+ */
+async function readDesignOverrides(): Promise<Record<string, DesignOverride>> {
+  try {
+    await access(DESIGN_OVERRIDES_PATH);
+    const content = await readFile(DESIGN_OVERRIDES_PATH, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Write design overrides to file.
+ */
+async function writeDesignOverrides(overrides: Record<string, DesignOverride>): Promise<void> {
+  const content = JSON.stringify(overrides, null, 2);
+  await writeFile(DESIGN_OVERRIDES_PATH, content, 'utf-8');
+}
+
+/**
+ * Handle a DESIGN_CHANGE message from the server.
+ */
+async function handleDesignChange(payload: {
+  nodeId: string;
+  nodeName: string;
+  changes: Array<{ changeType: 'text' | 'fill'; value: string }>;
+}): Promise<void> {
+  console.log(`[Watcher] DESIGN_CHANGE: "${payload.nodeName}" (${payload.changes.length} changes)`);
+
+  // Read existing overrides
+  const overrides = await readDesignOverrides();
+
+  // Create or update the entry for this node
+  const entry: DesignOverride = overrides[payload.nodeName] || {
+    nodeId: payload.nodeId,
+    lastUpdated: new Date().toISOString(),
+  };
+
+  // Apply changes
+  for (const change of payload.changes) {
+    if (change.changeType === 'text') {
+      entry.text = change.value;
+      console.log(`[Watcher]   text = "${change.value}"`);
+    } else if (change.changeType === 'fill') {
+      entry.fill = change.value;
+      console.log(`[Watcher]   fill = "${change.value}"`);
+    }
+  }
+
+  entry.nodeId = payload.nodeId;
+  entry.lastUpdated = new Date().toISOString();
+  overrides[payload.nodeName] = entry;
+
+  // Write back
+  await writeDesignOverrides(overrides);
+  console.log(`[Watcher] ✓ Updated design-overrides.json`);
+}
+
+/**
+ * Connect to the server WebSocket to receive DESIGN_CHANGE events.
+ */
+export function startDesignChangeListener(serverUrl?: string): WebSocket {
+  const url = serverUrl ?? getServerUrl();
+  const wsUrl = url.replace(/^http/, 'ws') + '/ws-watcher';
+
+  console.log(`[Watcher] Connecting to ${wsUrl} for Design → Code events...`);
+
+  const ws = new WebSocket(wsUrl);
+
+  ws.on('open', () => {
+    console.log('[Watcher] Connected to server for Design → Code relay');
+  });
+
+  ws.on('message', async (data: Buffer) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      
+      if (msg.type === 'DESIGN_CHANGE' && msg.payload) {
+        await handleDesignChange(msg.payload);
+      } else if (msg.type === 'CONNECTED') {
+        console.log(`[Watcher] Server version: ${msg.version}`);
+      }
+    } catch (err) {
+      console.error('[Watcher] Error processing message:', err);
+    }
+  });
+
+  ws.on('close', () => {
+    console.log('[Watcher] Design → Code connection closed, reconnecting in 5s...');
+    setTimeout(() => startDesignChangeListener(serverUrl), 5000);
+  });
+
+  ws.on('error', (err: Error) => {
+    console.error('[Watcher] Design → Code connection error:', err.message);
+  });
+
+  return ws;
 }

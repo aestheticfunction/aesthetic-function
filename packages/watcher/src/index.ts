@@ -13,7 +13,7 @@
  */
 
 import { PROTOCOL_VERSION } from '@aesthetic-function/shared';
-import { startWatcher } from './watch.js';
+import { startWatcher, startDesignChangeListener } from './watch.js';
 
 console.log(`[Watcher] Starting with protocol version: ${PROTOCOL_VERSION}`);
 
@@ -31,18 +31,23 @@ const serverUrl = process.env.SERVER_URL || 'http://localhost:3001';
 console.log(`[Watcher] Server URL: ${serverUrl}`);
 console.log(`[Watcher] Watching paths: ${watchPaths.join(', ')}`);
 
-// Start the watcher
+// Start the watcher (Code → Design)
 const watcher = startWatcher(watchPaths, serverUrl);
+
+// Start the Design → Code listener
+const designWs = startDesignChangeListener(serverUrl);
 
 // Handle shutdown gracefully
 process.on('SIGINT', async () => {
   console.log('\n[Watcher] Shutting down...');
+  designWs.close();
   await watcher.close();
   process.exit(0);
 });
 
 process.on('SIGTERM', async () => {
   console.log('\n[Watcher] Received SIGTERM, shutting down...');
+  designWs.close();
   await watcher.close();
   process.exit(0);
 });

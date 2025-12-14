@@ -132,6 +132,38 @@ export function logBroadcast(entry: AuditLogEntry): void {
 }
 
 /**
+ * Metadata for a Design → Code change event.
+ */
+export interface DesignChangeLogEntry {
+  /** Unique request identifier */
+  requestId: string;
+  /** Node name in Figma */
+  nodeName: string;
+  /** Node ID in Figma */
+  nodeId: string;
+  /** Changes captured */
+  changes: Array<{ changeType: string; value: string }>;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Number of watchers notified */
+  watchersNotified: number;
+}
+
+/**
+ * Log a Design → Code change event to the audit trail.
+ *
+ * @param entry - The design change entry metadata
+ */
+export function logDesignChange(entry: DesignChangeLogEntry): void {
+  if (!isAuditLogEnabled()) {
+    return;
+  }
+
+  const logEntry = formatDesignChangeEntry(entry);
+  queueLogEntry(logEntry);
+}
+
+/**
  * Flush any pending log entries immediately.
  * Useful for graceful shutdown.
  */
@@ -171,6 +203,25 @@ function formatLogEntry(entry: AuditLogEntry): string {
   }
 
   // Add trailing newline for separation
+  lines.push('');
+
+  return lines.join('\n');
+}
+
+/**
+ * Format a Design → Code change entry as markdown.
+ */
+function formatDesignChangeEntry(entry: DesignChangeLogEntry): string {
+  const lines: string[] = [
+    `## [${entry.timestamp}] [${entry.requestId}] type=DESIGN_CHANGE source=figma-plugin`,
+    `node="${entry.nodeName}" (${entry.nodeId})`,
+    `changes=${entry.changes.length} watchers=${entry.watchersNotified}`,
+  ];
+
+  for (const change of entry.changes) {
+    lines.push(`- ${change.changeType}="${change.value}"`);
+  }
+
   lines.push('');
 
   return lines.join('\n');

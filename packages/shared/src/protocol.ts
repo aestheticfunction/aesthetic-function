@@ -305,6 +305,9 @@ export const MessageType = {
   OPERATION_RESULT: 'OPERATION_RESULT',
   PLUGIN_READY: 'PLUGIN_READY',
 
+  // Figma Plugin → Server → Watcher (Design → Code)
+  DESIGN_CHANGE: 'DESIGN_CHANGE',
+
   // Bidirectional
   PING: 'PING',
   PONG: 'PONG',
@@ -406,6 +409,43 @@ export type PluginReadyMessage = BaseMessage<
 >;
 
 // =============================================================================
+// FIGMA PLUGIN → SERVER → WATCHER MESSAGES (Design → Code)
+// =============================================================================
+
+/**
+ * A single design change captured from Figma.
+ * Represents a property change on a node.
+ */
+export interface DesignChangeItem {
+  /** Type of change: text content or fill color */
+  changeType: 'text' | 'fill';
+  /** The value that was captured */
+  value: string;
+}
+
+/**
+ * Payload for DESIGN_CHANGE message.
+ * Sent from Figma plugin when user captures selection changes.
+ */
+export interface DesignChangePayload {
+  /** Figma node ID */
+  nodeId: string;
+  /** Figma node name (for matching to code) */
+  nodeName: string;
+  /** List of changes captured */
+  changes: DesignChangeItem[];
+  /** Source of the change */
+  source: 'figma-plugin';
+  /** Optional: associated file path if known */
+  filePath?: string;
+}
+
+export type DesignChangeMessage = BaseMessage<
+  typeof MessageType.DESIGN_CHANGE,
+  DesignChangePayload
+>;
+
+// =============================================================================
 // BIDIRECTIONAL MESSAGES
 // =============================================================================
 
@@ -459,6 +499,7 @@ export type ProtocolMessage =
   | ApplyOperationsMessage
   | OperationResultMessage
   | PluginReadyMessage
+  | DesignChangeMessage
   | PingMessage
   | PongMessage
   | ErrorMessage
