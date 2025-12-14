@@ -12,6 +12,7 @@
  */
 
 import { createServer, IncomingMessage, ServerResponse } from 'node:http';
+import { Duplex } from 'node:stream';
 import { WebSocketServer, WebSocket } from 'ws';
 import {
   PROTOCOL_VERSION,
@@ -220,13 +221,14 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 });
 
 // =============================================================================
-// WEBSOCKET SERVER
+// WEBSOCKET SERVERS
 // =============================================================================
 
-const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+// Plugin WebSocket server (for Figma plugin)
+const wss = new WebSocketServer({ noServer: true });
 
 wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
-  console.log(`[Server] WebSocket client connected from ${req.socket.remoteAddress}`);
+  console.log(`[Server] Plugin client connected from ${req.socket.remoteAddress}`);
   pluginClients.add(ws);
 
   ws.on('message', (data: Buffer) => {
@@ -290,8 +292,8 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   ws.send(JSON.stringify(createMessage('CONNECTED', { version: PROTOCOL_VERSION })));
 });
 
-// WebSocket endpoint for watcher clients (Design → Code relay)
-const wssWatcher = new WebSocketServer({ server: httpServer, path: '/ws-watcher' });
+// Watcher WebSocket server (for Design → Code relay)
+const wssWatcher = new WebSocketServer({ noServer: true });
 
 wssWatcher.on('connection', (ws: WebSocket, req: IncomingMessage) => {
   console.log(`[Server] Watcher client connected from ${req.socket.remoteAddress}`);
@@ -309,6 +311,23 @@ wssWatcher.on('connection', (ws: WebSocket, req: IncomingMessage) => {
 
   // Send welcome message
   ws.send(JSON.stringify({ type: 'CONNECTED', version: PROTOCOL_VERSION }));
+});
+
+// Handle WebSocket upgrade requests manually
+httpServer.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
+  const pathname = new URL(request.url ?? '/', `http://localhost:${PORT}`).pathname;
+
+  if (pathname === '/ws') {
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else if (pathname === '/ws-watcher') {
+    wssWatcher.handleUpgrade(request, socket, head, (ws) => {
+      wssWatcher.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
 });
 
 // =============================================================================
