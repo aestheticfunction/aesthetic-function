@@ -1,13 +1,16 @@
 # Aesthetic Function
 
-A Code → Design synchronization system that watches local React source files and applies changes to a live Figma document in real-time. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
+A bidirectional Code ↔ Design synchronization system for React and Figma. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
+
+This is an **MVP / patent prototype**. It prioritizes determinism, testability, and safety over feature completeness.
 
 ---
 
-## What Works Today (Phase 4A)
+## What Works Today (Phase 5A.2)
 
 | Feature | Status |
 |---------|--------|
+| **Code → Design (Core Pipeline)** | |
 | File save detection via chokidar | ✅ |
 | `@figma` marker parsing (regex-based, default) | ✅ |
 | IntentModel → FigmaOperation transformer | ✅ |
@@ -15,72 +18,173 @@ A Code → Design synchronization system that watches local React source files a
 | WebSocket + HTTP polling server relay | ✅ |
 | Figma plugin with SET_TEXT / SET_FILL operations | ✅ |
 | Live Figma updates on file save | ✅ |
-| Optional LLM-based intent analyzer (feature flag) | ✅ |
+| **LLM Mode (Optional)** | |
+| LLM-based intent analyzer (feature flag) | ✅ |
 | Automatic fallback to markers on LLM failure | ✅ |
+| **Design → Code Capture** | |
+| DESIGN_CHANGE message from Figma plugin | ✅ |
+| `design-overrides.json` persistence | ✅ |
+| Override reconciliation layer | ✅ |
+| Override precedence controls | ✅ |
+| **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
 ---
 
 ## Architecture
 
-```
-File Change → Watcher → IntentModel → FigmaOperations → Server → Figma Plugin
-```
+The system follows a **three-legged stool** design with strict runtime boundaries:
 
 ```
-┌─────────────────┐     HTTP POST     ┌─────────────────┐    WebSocket/Poll   ┌─────────────────┐
-│                 │  ─────────────▶   │                 │  ─────────────────▶ │                 │
-│     Watcher     │                   │     Server      │                     │  Figma Plugin   │
-│   (Local Node)  │                   │  (Relay Bridge) │                     │   (Sandbox)     │
-│                 │                   │                 │                     │                 │
-└─────────────────┘                   └─────────────────┘                     └─────────────────┘
-        │                                                                              │
-        │ watches                                                                      │ mutates
-        ▼                                                                              ▼
-┌─────────────────┐                                                           ┌─────────────────┐
-│  React Source   │                                                           │  Figma Document │
-│   (demo-app/)   │                                                           │                 │
-└─────────────────┘                                                           └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           BIDIRECTIONAL SYNC FLOW                                │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+  CODE → DESIGN:
+  ┌─────────────────┐     HTTP POST     ┌─────────────────┐    WebSocket/Poll   ┌─────────────────┐
+  │                 │  ─────────────▶   │                 │  ─────────────────▶ │                 │
+  │     Watcher     │                   │     Server      │                     │  Figma Plugin   │
+  │   (Local Node)  │                   │  (Relay Bridge) │                     │   (Sandbox)     │
+  │                 │  ◀─────────────   │                 │  ◀───────────────── │                 │
+  └─────────────────┘   DESIGN_CHANGE   └─────────────────┘     Selection Msg   └─────────────────┘
+          │                   │                                                          │
+          │ watches           │ writes                                                   │ mutates
+          ▼                   ▼                                                          ▼
+  ┌─────────────────┐ ┌──────────────────┐                                     ┌─────────────────┐
+  │  React Source   │ │ design-overrides │                                     │  Figma Document │
+  │   (demo-app/)   │ │      .json       │                                     │                 │
+  └─────────────────┘ └──────────────────┘                                     └─────────────────┘
 ```
+
+### Data Flow
+
+1. **Code → Design**: `File Change → Watcher → IntentModel → FigmaOperations → Server → Plugin → Figma`
+2. **Design → Code**: `Figma Selection → Plugin → Server → DESIGN_CHANGE → design-overrides.json`
+3. **Reconciliation**: On next file save, overrides are merged with code-derived intents before sending to Figma
 
 ### Packages
 
 | Package | Runtime | Responsibility |
 |---------|---------|----------------|
-| `@aesthetic-function/watcher` | Local Node.js | Watches files, extracts intent (markers or LLM), transforms to operations, sends to server |
-| `@aesthetic-function/server` | Local Node.js | HTTP/WebSocket relay bridge between watcher and Figma plugin |
-| `@aesthetic-function/figma-plugin` | Figma Sandbox | Receives operations, executes scene graph mutations (SET_TEXT, SET_FILL) |
+| `@aesthetic-function/watcher` | Local Node.js | Watches files, extracts intent (markers or LLM), reconciles with overrides, transforms to operations, sends to server |
+| `@aesthetic-function/server` | Local Node.js | HTTP/WebSocket relay bridge, persists design changes to `design-overrides.json`, audit logging |
+| `@aesthetic-function/figma-plugin` | Figma Sandbox | Receives operations, executes scene graph mutations, sends selection changes back |
 | `@aesthetic-function/shared` | Shared | Protocol definitions, message types, version constants |
+
+### Runtime Boundaries (Critical)
+
+- **Watcher** CAN access disk and LLMs
+- **Server** CAN access disk and network
+- **Figma `code.ts`** CANNOT access disk or network
+- **Figma `ui.html`** CAN access network but MUST NOT assume localhost is reachable
 
 ---
 
-## How It Works (End-to-End)
+## Implemented Phases
 
-1. **Edit a React file** with `@figma` markers:
-   ```tsx
-   // @figma node=LoginButton text="Sign In" fill=Primary/Blue500
-   export function LoginButton() {
-     return <button>Sign In</button>;
-   }
-   ```
+| Phase | Description | Status |
+|-------|-------------|--------|
+| **Phase 1** | Protocol + plumbing (WebSocket, HTTP polling, message types) | ✅ |
+| **Phase 2** | Marker-based + LLM intent parsing | ✅ |
+| **Phase 3** | LLM analyzer with safety + fallback | ✅ |
+| **Phase 4** | Audit trail (sync-log.md) | ✅ |
+| **Phase 5A** | Bidirectional sync (Design → Code capture via DESIGN_CHANGE) | ✅ |
+| **Phase 5A.1** | Override reconciliation layer | ✅ |
+| **Phase 5A.2** | Override precedence controls (feature flags) | ✅ |
 
-2. **Watcher detects change** — chokidar monitors the file system (300ms debounce)
+### Not Implemented Yet
 
-3. **Intent is extracted**:
-   - **Marker mode (default)**: Regex parses `@figma` comments
-   - **LLM mode (opt-in)**: Sends code to LLM for semantic analysis
+| Feature | Status |
+|---------|--------|
+| AST-based JSX mutation | ❌ |
+| Design → JSX rewriting | ❌ |
+| Conflict resolution UI | ❌ |
+| Variant/state mapping | ❌ |
+| Layout/spacing operations | ❌ |
+| Background reconciliation | ❌ |
 
-4. **IntentModel transformed** — design tokens resolved, FigmaOperations generated:
-   ```json
-   [
-     { "op": "SET_TEXT", "nodeQuery": "LoginButton", "value": "Sign In" },
-     { "op": "SET_FILL", "nodeQuery": "LoginButton", "value": "#3B82F6" }
-   ]
-   ```
+The current implementation uses regex parsing of `@figma` comment markers or optional LLM analysis. There is no AST-level semantic understanding of React component structure.
 
-5. **Server relays operations** — broadcasts to connected Figma plugin clients
+---
 
-6. **Figma plugin executes** — finds nodes by name, applies SET_TEXT/SET_FILL
+## Override System
+
+### What is `design-overrides.json`?
+
+When a designer makes changes in Figma and sends them back via the plugin's "Send Selection" feature, those changes are captured in `design-overrides.json` at the repository root.
+
+```json
+{
+  "LoginButton": {
+    "nodeId": "4:7",
+    "lastUpdated": "2025-01-15T10:30:00.000Z",
+    "text": "Sign In",
+    "fill": "#3B82F6"
+  }
+}
+```
+
+### When is it written?
+
+The server writes to this file when it receives a `DESIGN_CHANGE` message from the Figma plugin. Each entry captures:
+- `nodeId`: The Figma node ID
+- `lastUpdated`: ISO timestamp of when the change was captured
+- `text`: Text content (if applicable)
+- `fill`: Fill color (if applicable)
+
+### How does reconciliation work?
+
+On each file save, the watcher:
+1. Extracts intents from code (markers or LLM)
+2. Loads `design-overrides.json` (if it exists)
+3. For each intent, checks if an override exists for that node name
+4. Applies the override values (text, fill) on top of code-derived values
+5. Sends the merged result to Figma
+
+### Override Precedence
+
+By default, **overrides always win** over code values. This ensures designer intent is preserved.
+
+You can control this behavior with environment variables (see below).
+
+> ⚠️ **Warning**: If code edits appear "stuck" (changes not reflected in Figma), check whether an override exists for that node. Delete or edit `design-overrides.json` to reset.
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `USE_LLM_ANALYZER` | `false` | Enable LLM-based intent parsing |
+| `LLM_ANALYZE_ALL` | `false` | Analyze files without `@figma` markers |
+| `LLM_PROVIDER` | `openai` | LLM provider (`openai` or `anthropic`) |
+| `OPENAI_API_KEY` | — | OpenAI API key (required for openai provider) |
+| `ANTHROPIC_API_KEY` | — | Anthropic API key (required for anthropic provider) |
+| `OPENAI_MODEL` | `gpt-4o` | OpenAI model name |
+| `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Anthropic model name |
+| `USE_OVERRIDES` | `true` | Enable design override reconciliation |
+| `OVERRIDES_PRECEDENCE` | `always` | `always` or `if_newer_than_code` |
+| `ENABLE_AUDIT_LOG` | `false` | Enable sync-log.md audit trail |
+
+### Examples
+
+```bash
+# Disable overrides entirely (code always wins)
+USE_OVERRIDES=false pnpm dev:watcher
+
+# Only apply overrides newer than the source file
+OVERRIDES_PRECEDENCE=if_newer_than_code pnpm dev:watcher
+
+# Enable LLM mode with audit logging
+USE_LLM_ANALYZER=true ENABLE_AUDIT_LOG=true OPENAI_API_KEY=sk-... pnpm dev:watcher
+```
+
+### Precedence Modes
+
+| Mode | Behavior |
+|------|----------|
+| `always` | Overrides always win over code values (default) |
+| `if_newer_than_code` | Only apply overrides where `lastUpdated` > file mtime |
 
 ---
 
@@ -108,7 +212,7 @@ Server runs at `http://localhost:3001` with:
 - HTTP polling: `GET /poll`
 - Test endpoint: `POST /test`
 
-### Start the Watcher (Marker Mode)
+### Start the Watcher
 
 ```bash
 pnpm dev:watcher
@@ -131,64 +235,70 @@ Examples:
 // @figma node=CardBackground fill=Neutral/Gray50
 ```
 
-### Expected Result
-
-When you save a file with `@figma` markers:
-1. Watcher logs: `Found X intent(s) from markers`
-2. Server logs: `Received X operation(s)`
-3. Figma plugin updates the matching nodes
-
-### Connect Figma Plugin
-
-1. In Figma, run the plugin
-2. Enter the server URL (use a tunnel like cloudflared for remote access)
-3. Click Connect
-
-### Test Without Figma
-
-```bash
-pnpm test:send          # Send test operations
-pnpm test:red           # Red box test
-pnpm test:blue          # Blue token test
-pnpm test:text          # Text update test
-```
-
 ---
 
-## Optional LLM Mode
+## Human Test Walkthrough
 
-The watcher supports an optional LLM-based intent analyzer that can extract design intent from React code without explicit `@figma` markers.
-
-### Enable LLM Mode
+### 1. Start the Server
 
 ```bash
-USE_LLM_ANALYZER=true OPENAI_API_KEY=sk-... pnpm dev:watcher
+pnpm dev:server
 ```
 
-### Environment Variables
+### 2. Start the Watcher
 
-| Variable | Description |
-|----------|-------------|
-| `USE_LLM_ANALYZER` | Set to `true` to enable LLM mode |
-| `LLM_PROVIDER` | `openai` (default) or `anthropic` |
-| `OPENAI_API_KEY` | OpenAI API key (required for openai provider) |
-| `ANTHROPIC_API_KEY` | Anthropic API key (required for anthropic provider) |
-| `OPENAI_MODEL` | Model name (default: `gpt-4o`) |
-| `ANTHROPIC_MODEL` | Model name (default: `claude-3-5-sonnet-20241022`) |
-| `LLM_ANALYZE_ALL` | Set to `true` to analyze files without `@figma` markers |
-| `ENABLE_AUDIT_LOG` | Set to `true` to log all broadcasts to `sync-log.md` |
+```bash
+pnpm dev:watcher
+```
 
-### Behavior
+### 3. Expose Server via Tunnel (for Figma access)
 
-- **Default**: LLM mode only processes files that contain `@figma` markers
-- **LLM_ANALYZE_ALL=true**: Processes all `.tsx`/`.ts` files regardless of markers
-- **Fallback**: If LLM fails (network error, invalid JSON, timeout), automatically falls back to marker-based parsing
+```bash
+pnpm tunnel
+```
 
-### Fallback Rules
+Copy the tunnel URL (e.g., `https://xxx.trycloudflare.com`).
 
-1. If `USE_LLM_ANALYZER=true` but no API key is configured → marker parsing
-2. If LLM call throws an error → marker parsing (if markers exist)
-3. If file has no `@figma` markers and `LLM_ANALYZE_ALL!=true` → skip file
+### 4. Connect Figma Plugin
+
+1. In Figma, run the Aesthetic Function plugin
+2. Enter the tunnel URL
+3. Click "Connect"
+4. Status should show "Connected"
+
+### 5. Code → Figma Sync
+
+1. Edit a file in `demo-app/src/` with `@figma` markers
+2. Save the file
+3. Watch the Figma document update in real-time
+
+### 6. Figma → Code Capture
+
+1. In Figma, select a node (text or frame)
+2. In the plugin, click "Send Selection"
+3. The server logs `DESIGN_CHANGE` and writes to `design-overrides.json`
+
+### 7. Reconciliation Behavior
+
+On the next file save:
+- The watcher loads overrides from `design-overrides.json`
+- Override values are merged with code-derived intents
+- The merged result is sent to Figma
+- Watcher logs show: `Overrides: precedence=always applied=N ignored=M`
+
+### 8. Resetting Overrides
+
+To clear all overrides and let code take precedence:
+
+```bash
+rm design-overrides.json
+```
+
+Or disable overrides temporarily:
+
+```bash
+USE_OVERRIDES=false pnpm dev:watcher
+```
 
 ---
 
@@ -211,7 +321,7 @@ Raw hex values (e.g., `#FF0000`) pass through unchanged.
 
 ## Audit Trail
 
-The server can log all broadcast operations to `sync-log.md` at the repository root for debugging and traceability.
+The server can log all broadcast operations to `sync-log.md` for debugging and traceability.
 
 ### Enable Audit Logging
 
@@ -237,20 +347,16 @@ ops=2
 
 ---
 
-## What Is NOT Implemented Yet
+## Git Hygiene
 
-| Feature | Status |
-|---------|--------|
-| AST parsing (Babel/TypeScript) | ❌ Not implemented |
-| Design → Code sync (Figma → React) | ❌ Not implemented |
-| Background reconciliation | ❌ Not implemented |
-| Conflict resolution | ❌ Not implemented |
-| Component-level mapping | ❌ Not implemented |
-| Variant/state handling | ❌ Not implemented |
-| Layout/spacing operations | ❌ Not implemented |
-| Autonomous multi-agent loops | ❌ Not implemented |
+The following files are **intentionally gitignored** as runtime artifacts:
 
-The current implementation uses regex parsing of `@figma` comment markers or optional LLM analysis. There is no AST-level semantic understanding of React component structure.
+| File | Purpose |
+|------|---------|
+| `design-overrides.json` | Captured design changes (local state) |
+| `sync-log.md` | Audit trail (debug artifact) |
+
+These files are machine-local and should not be committed. Each developer/environment maintains their own override state.
 
 ---
 
@@ -261,14 +367,17 @@ aesthetic-function/
 ├── packages/
 │   ├── shared/           # Protocol definitions
 │   ├── watcher/          # File watcher + transformer
-│   │   ├── src/
-│   │   │   ├── analyze/  # LLM-based intent analyzer
-│   │   │   ├── parse/    # @figma marker parser
-│   │   │   ├── tokens/   # Design token resolution
-│   │   │   └── transform/# IntentModel → FigmaOps
+│   │   └── src/
+│   │       ├── analyze/  # LLM-based intent analyzer
+│   │       ├── parse/    # @figma marker parser
+│   │       ├── reconcile/# Override reconciliation
+│   │       ├── tokens/   # Design token resolution
+│   │       └── transform/# IntentModel → FigmaOps
 │   ├── server/           # WebSocket + HTTP relay
 │   └── figma-plugin/     # Figma sandbox plugin
 ├── demo-app/             # Sample React app with markers
+├── design-overrides.json # (gitignored) Captured design changes
+├── sync-log.md           # (gitignored) Audit trail
 └── README.md
 ```
 
@@ -279,17 +388,18 @@ aesthetic-function/
 | Command | Description |
 |---------|-------------|
 | `pnpm dev:server` | Start the relay server |
-| `pnpm dev:watcher` | Start the file watcher (marker mode) |
+| `pnpm dev:watcher` | Start the file watcher |
 | `pnpm dev` | Start all packages in parallel |
-| `pnpm typecheck` | Run TypeScript checks |
 | `pnpm build` | Build all packages |
+| `pnpm test` | Run all tests |
+| `pnpm typecheck` | Run TypeScript checks |
 | `pnpm tunnel` | Expose server via cloudflared |
-| `pnpm test:analyze` | Run LLM analyzer tests |
+| `pnpm test:send` | Send test operations |
 
 ---
 
 ## Protocol Version
 
-Current: `0.3.0`
+Current: `0.1.0`
 
 All messages include a `protocolVersion` field for compatibility checking.
