@@ -5,6 +5,7 @@
  *
  * WHY: Phase 6A introduces read-only AST extraction to produce
  * structured reports that can be diffed against markers and design overrides.
+ * Phase 6B expands extraction to include additional semantic signals.
  * These types define the output shapes for the AST analyzer.
  *
  * SCOPE: Literals only - no inference from variables, no className parsing.
@@ -22,6 +23,118 @@ export interface SourceLocation {
   endLine: number;
   startColumn?: number;
   endColumn?: number;
+}
+
+// =============================================================================
+// CONFIDENCE LEVELS
+// =============================================================================
+
+/**
+ * Confidence level for extracted semantic values.
+ *
+ * WHY: Distinguishes between values we're certain about (literals)
+ * and values that may need verification.
+ */
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+// =============================================================================
+// SEMANTIC INTENT TYPES (Phase 6B)
+// =============================================================================
+
+/**
+ * Base structure for all semantic extractions.
+ * Compatible with IntentModel but read-only.
+ */
+export interface SemanticValue<T> {
+  /** The extracted value */
+  value: T;
+  /** Source location in the code */
+  loc: SourceLocation;
+  /** Confidence score - 'high' for literals, lower for inferred values */
+  confidence: ConfidenceLevel;
+}
+
+/**
+ * Text content semantics.
+ */
+export interface TextSemantics {
+  /** JSX text children */
+  content?: SemanticValue<string>[];
+  /** placeholder attribute */
+  placeholder?: SemanticValue<string>;
+  /** title attribute */
+  title?: SemanticValue<string>;
+  /** aria-label attribute */
+  ariaLabel?: SemanticValue<string>;
+  /** alt attribute */
+  alt?: SemanticValue<string>;
+}
+
+/**
+ * Boolean state semantics.
+ */
+export interface BooleanSemantics {
+  /** disabled prop */
+  disabled?: SemanticValue<boolean>;
+  /** checked prop */
+  checked?: SemanticValue<boolean>;
+  /** selected prop */
+  selected?: SemanticValue<boolean>;
+}
+
+/**
+ * Numeric layout semantics (from props and inline styles).
+ */
+export interface LayoutSemantics {
+  /** width (prop or style) */
+  width?: SemanticValue<number>;
+  /** height (prop or style) */
+  height?: SemanticValue<number>;
+  /** padding (style) */
+  padding?: SemanticValue<number>;
+  /** margin (style) */
+  margin?: SemanticValue<number>;
+  /** gap (style) */
+  gap?: SemanticValue<number>;
+}
+
+/**
+ * Flexbox semantics from inline styles.
+ */
+export interface FlexSemantics {
+  /** display (e.g., 'flex', 'block') */
+  display?: SemanticValue<string>;
+  /** flexDirection */
+  flexDirection?: SemanticValue<string>;
+  /** justifyContent */
+  justifyContent?: SemanticValue<string>;
+  /** alignItems */
+  alignItems?: SemanticValue<string>;
+}
+
+/**
+ * Visual semantics (colors, etc.).
+ */
+export interface VisualSemantics {
+  /** backgroundColor (hex colors only) */
+  fills?: SemanticValue<string>[];
+}
+
+/**
+ * Combined semantic intent for a component.
+ * Read-only, compatible with IntentModel shape.
+ */
+export interface ComponentSemanticIntent {
+  /** Text content and accessibility labels */
+  text: TextSemantics;
+  /** Boolean state props */
+  booleans: BooleanSemantics;
+  /** Numeric layout values */
+  layout: LayoutSemantics;
+  /** Flexbox layout */
+  flex: FlexSemantics;
+  /** Visual properties */
+  visual: VisualSemantics;
 }
 
 // =============================================================================
@@ -100,6 +213,8 @@ export interface AstComponentReport {
   jsxPropLiterals: JsxPropLiteral[];
   /** All inline style literals inside this component */
   inlineStyleLiterals: InlineStyleLiteral[];
+  /** Semantic intent extracted from this component (Phase 6B) */
+  semantics: ComponentSemanticIntent;
 }
 
 /**
@@ -124,6 +239,8 @@ export interface AnchorExtracted {
   text?: string[];
   /** Fill colors (backgroundColor literals that look like hex) */
   fills?: string[];
+  /** Full semantic intent for the component (Phase 6B) */
+  semantics?: ComponentSemanticIntent;
 }
 
 /**

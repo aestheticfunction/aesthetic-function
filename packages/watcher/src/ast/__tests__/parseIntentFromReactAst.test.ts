@@ -502,3 +502,366 @@ export function Button() {
     expect(welcomeText?.extracted.text).toContain('Welcome to the Demo');
   });
 });
+
+// =============================================================================
+// PHASE 6B: SEMANTIC INTENT TESTS
+// =============================================================================
+
+describe('parseIntentFromReactAst - Semantic Intent (Phase 6B)', () => {
+  describe('Text Semantics', () => {
+    it('should extract placeholder attribute', () => {
+      const code = `
+        export function SearchInput() {
+          return <input placeholder="Search..." />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      const semantics = report.components[0].semantics;
+      expect(semantics.text.placeholder).toBeDefined();
+      expect(semantics.text.placeholder?.value).toBe('Search...');
+      expect(semantics.text.placeholder?.confidence).toBe('high');
+    });
+
+    it('should extract title attribute', () => {
+      const code = `
+        export function InfoButton() {
+          return <button title="Click for more info">?</button>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.text.title?.value).toBe('Click for more info');
+    });
+
+    it('should extract aria-label attribute', () => {
+      const code = `
+        export function CloseButton() {
+          return <button aria-label="Close dialog">×</button>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.text.ariaLabel?.value).toBe('Close dialog');
+    });
+
+    it('should extract alt attribute', () => {
+      const code = `
+        export function Avatar() {
+          return <img alt="User profile picture" src="user.jpg" />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.text.alt?.value).toBe('User profile picture');
+    });
+
+    it('should extract text content', () => {
+      const code = `
+        export function Heading() {
+          return <h1>Welcome to the App</h1>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      const content = report.components[0].semantics.text.content;
+      expect(content).toBeDefined();
+      expect(content?.length).toBe(1);
+      expect(content?.[0].value).toBe('Welcome to the App');
+    });
+  });
+
+  describe('Boolean Semantics', () => {
+    it('should extract disabled prop as true', () => {
+      const code = `
+        export function DisabledButton() {
+          return <button disabled={true}>Submit</button>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.booleans.disabled?.value).toBe(true);
+      expect(report.components[0].semantics.booleans.disabled?.confidence).toBe('high');
+    });
+
+    it('should extract disabled prop as false', () => {
+      const code = `
+        export function EnabledButton() {
+          return <button disabled={false}>Submit</button>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.booleans.disabled?.value).toBe(false);
+    });
+
+    it('should extract checked prop', () => {
+      const code = `
+        export function Checkbox() {
+          return <input type="checkbox" checked={true} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.booleans.checked?.value).toBe(true);
+    });
+
+    it('should extract selected prop', () => {
+      const code = `
+        export function Option() {
+          return <option selected={true}>Default</option>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.booleans.selected?.value).toBe(true);
+    });
+
+    it('should skip boolean props with variable values', () => {
+      const code = `
+        export function DynamicButton({ isDisabled }) {
+          return <button disabled={isDisabled}>Submit</button>;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      // Should not extract disabled since it's a variable
+      expect(report.components[0].semantics.booleans.disabled).toBeUndefined();
+    });
+  });
+
+  describe('Layout Semantics', () => {
+    it('should extract width and height from props', () => {
+      const code = `
+        export function SizedBox() {
+          return <div width={100} height={50} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.width?.value).toBe(100);
+      expect(report.components[0].semantics.layout.height?.value).toBe(50);
+    });
+
+    it('should extract width and height from style', () => {
+      const code = `
+        export function StyledBox() {
+          return <div style={{ width: 200, height: 100 }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.width?.value).toBe(200);
+      expect(report.components[0].semantics.layout.height?.value).toBe(100);
+    });
+
+    it('should extract padding from style', () => {
+      const code = `
+        export function PaddedBox() {
+          return <div style={{ padding: 16 }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.padding?.value).toBe(16);
+    });
+
+    it('should extract margin from style', () => {
+      const code = `
+        export function MarginBox() {
+          return <div style={{ margin: 8 }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.margin?.value).toBe(8);
+    });
+
+    it('should extract gap from style', () => {
+      const code = `
+        export function GapContainer() {
+          return <div style={{ gap: 12 }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.gap?.value).toBe(12);
+    });
+
+    it('should skip layout props with variable values', () => {
+      const code = `
+        export function DynamicBox({ size }) {
+          return <div style={{ width: size, height: size }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.layout.width).toBeUndefined();
+      expect(report.components[0].semantics.layout.height).toBeUndefined();
+    });
+  });
+
+  describe('Flex Semantics', () => {
+    it('should extract display flex', () => {
+      const code = `
+        export function FlexContainer() {
+          return <div style={{ display: 'flex' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.flex.display?.value).toBe('flex');
+    });
+
+    it('should extract flexDirection', () => {
+      const code = `
+        export function ColumnLayout() {
+          return <div style={{ display: 'flex', flexDirection: 'column' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.flex.flexDirection?.value).toBe('column');
+    });
+
+    it('should extract justifyContent', () => {
+      const code = `
+        export function CenteredRow() {
+          return <div style={{ display: 'flex', justifyContent: 'center' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.flex.justifyContent?.value).toBe('center');
+    });
+
+    it('should extract alignItems', () => {
+      const code = `
+        export function AlignedRow() {
+          return <div style={{ display: 'flex', alignItems: 'center' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.flex.alignItems?.value).toBe('center');
+    });
+
+    it('should extract all flex properties together', () => {
+      const code = `
+        export function FullFlexContainer() {
+          return (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'row',
+              justifyContent: 'space-between',
+              alignItems: 'flex-start'
+            }} />
+          );
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      const flex = report.components[0].semantics.flex;
+      expect(flex.display?.value).toBe('flex');
+      expect(flex.flexDirection?.value).toBe('row');
+      expect(flex.justifyContent?.value).toBe('space-between');
+      expect(flex.alignItems?.value).toBe('flex-start');
+    });
+  });
+
+  describe('Visual Semantics', () => {
+    it('should extract hex backgroundColor as fill', () => {
+      const code = `
+        export function ColorBox() {
+          return <div style={{ backgroundColor: '#FF0000' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.visual.fills).toBeDefined();
+      expect(report.components[0].semantics.visual.fills?.length).toBe(1);
+      expect(report.components[0].semantics.visual.fills?.[0].value).toBe('#FF0000');
+    });
+
+    it('should extract multiple fills from different elements', () => {
+      const code = `
+        export function MultiColorBox() {
+          return (
+            <div style={{ backgroundColor: '#FF0000' }}>
+              <span style={{ backgroundColor: '#00FF00' }} />
+            </div>
+          );
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      expect(report.components[0].semantics.visual.fills?.length).toBe(2);
+    });
+
+    it('should not extract non-hex backgroundColor', () => {
+      const code = `
+        export function NamedColorBox() {
+          return <div style={{ backgroundColor: 'red' }} />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      // 'red' is not a hex color, should not be in fills
+      expect(report.components[0].semantics.visual.fills).toBeUndefined();
+    });
+  });
+
+  describe('Mixed Literal/Expression Handling', () => {
+    it('should extract only literal values, skip expressions', () => {
+      const code = `
+        export function MixedComponent({ dynamicWidth }) {
+          const dynamicColor = '#dynamic';
+          return (
+            <button
+              disabled={true}
+              aria-label={getLabel()}
+              style={{
+                width: dynamicWidth,
+                height: 50,
+                backgroundColor: dynamicColor,
+                padding: 16
+              }}
+            >
+              Click
+            </button>
+          );
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      const sem = report.components[0].semantics;
+
+      // Literal values should be extracted
+      expect(sem.booleans.disabled?.value).toBe(true);
+      expect(sem.layout.height?.value).toBe(50);
+      expect(sem.layout.padding?.value).toBe(16);
+      expect(sem.text.content?.[0].value).toBe('Click');
+
+      // Non-literal values should NOT be extracted
+      expect(sem.text.ariaLabel).toBeUndefined(); // getLabel() is a call
+      expect(sem.layout.width).toBeUndefined(); // dynamicWidth is a variable
+      // dynamicColor is a variable, so no fill
+    });
+
+    it('should handle components with no semantic content', () => {
+      const code = `
+        export function EmptyComponent() {
+          return <div />;
+        }
+      `;
+      const report = parseIntentFromReactAst(code, 'test.tsx');
+
+      const sem = report.components[0].semantics;
+      expect(sem.text.content).toBeUndefined();
+      expect(sem.booleans.disabled).toBeUndefined();
+      expect(sem.layout.width).toBeUndefined();
+      expect(sem.flex.display).toBeUndefined();
+      expect(sem.visual.fills).toBeUndefined();
+    });
+  });
+});

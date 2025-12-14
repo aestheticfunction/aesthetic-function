@@ -232,6 +232,56 @@ function printAnchoredSummary(anchored: AnchoredAstReport): void {
     if (anchor.extracted.fills && anchor.extracted.fills.length > 0) {
       console.log(`    fills: [${anchor.extracted.fills.join(', ')}]`);
     }
+
+    // Print semantic intent (Phase 6B)
+    const sem = anchor.extracted.semantics;
+    if (sem) {
+      // Text semantics
+      if (sem.text.placeholder) {
+        console.log(`    placeholder: "${sem.text.placeholder.value}"`);
+      }
+      if (sem.text.title) {
+        console.log(`    title: "${sem.text.title.value}"`);
+      }
+      if (sem.text.ariaLabel) {
+        console.log(`    aria-label: "${sem.text.ariaLabel.value}"`);
+      }
+      if (sem.text.alt) {
+        console.log(`    alt: "${sem.text.alt.value}"`);
+      }
+
+      // Boolean semantics
+      if (sem.booleans.disabled !== undefined) {
+        console.log(`    disabled: ${sem.booleans.disabled.value}`);
+      }
+      if (sem.booleans.checked !== undefined) {
+        console.log(`    checked: ${sem.booleans.checked.value}`);
+      }
+      if (sem.booleans.selected !== undefined) {
+        console.log(`    selected: ${sem.booleans.selected.value}`);
+      }
+
+      // Layout semantics
+      const layoutParts: string[] = [];
+      if (sem.layout.width) layoutParts.push(`width=${sem.layout.width.value}`);
+      if (sem.layout.height) layoutParts.push(`height=${sem.layout.height.value}`);
+      if (sem.layout.padding) layoutParts.push(`padding=${sem.layout.padding.value}`);
+      if (sem.layout.margin) layoutParts.push(`margin=${sem.layout.margin.value}`);
+      if (sem.layout.gap) layoutParts.push(`gap=${sem.layout.gap.value}`);
+      if (layoutParts.length > 0) {
+        console.log(`    layout: { ${layoutParts.join(', ')} }`);
+      }
+
+      // Flex semantics
+      const flexParts: string[] = [];
+      if (sem.flex.display) flexParts.push(`display=${sem.flex.display.value}`);
+      if (sem.flex.flexDirection) flexParts.push(`flexDirection=${sem.flex.flexDirection.value}`);
+      if (sem.flex.justifyContent) flexParts.push(`justifyContent=${sem.flex.justifyContent.value}`);
+      if (sem.flex.alignItems) flexParts.push(`alignItems=${sem.flex.alignItems.value}`);
+      if (flexParts.length > 0) {
+        console.log(`    flex: { ${flexParts.join(', ')} }`);
+      }
+    }
     
     for (const note of anchor.notes) {
       console.log(`    ⚠ ${note}`);

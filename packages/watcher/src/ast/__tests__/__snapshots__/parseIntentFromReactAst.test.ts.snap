@@ -13,6 +13,39 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
         "fills": [
           "#3B82F6",
         ],
+        "semantics": {
+          "booleans": {},
+          "flex": {},
+          "layout": {},
+          "text": {
+            "content": [
+              {
+                "confidence": "high",
+                "loc": {
+                  "endColumn": 4,
+                  "endLine": 41,
+                  "startColumn": 5,
+                  "startLine": 39,
+                },
+                "value": "Sign In",
+              },
+            ],
+          },
+          "visual": {
+            "fills": [
+              {
+                "confidence": "high",
+                "loc": {
+                  "endColumn": 34,
+                  "endLine": 30,
+                  "startColumn": 8,
+                  "startLine": 30,
+                },
+                "value": "#3B82F6",
+              },
+            ],
+          },
+        },
         "text": [
           "Sign In",
         ],
@@ -31,6 +64,47 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
         "fills": [
           "#FF0000",
         ],
+        "semantics": {
+          "booleans": {},
+          "flex": {},
+          "layout": {
+            "height": {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 19,
+                "endLine": 55,
+                "startColumn": 8,
+                "startLine": 55,
+              },
+              "value": 100,
+            },
+            "width": {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 18,
+                "endLine": 54,
+                "startColumn": 8,
+                "startLine": 54,
+              },
+              "value": 100,
+            },
+          },
+          "text": {},
+          "visual": {
+            "fills": [
+              {
+                "confidence": "high",
+                "loc": {
+                  "endColumn": 34,
+                  "endLine": 56,
+                  "startColumn": 8,
+                  "startLine": 56,
+                },
+                "value": "#FF0000",
+              },
+            ],
+          },
+        },
       },
       "markerLine": 49,
       "nodeName": "TestBox",
@@ -43,6 +117,26 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
       },
       "componentName": "WelcomeHeading",
       "extracted": {
+        "semantics": {
+          "booleans": {},
+          "flex": {},
+          "layout": {},
+          "text": {
+            "content": [
+              {
+                "confidence": "high",
+                "loc": {
+                  "endColumn": 32,
+                  "endLine": 69,
+                  "startColumn": 13,
+                  "startLine": 69,
+                },
+                "value": "Welcome to the Demo",
+              },
+            ],
+          },
+          "visual": {},
+        },
         "text": [
           "Welcome to the Demo",
         ],
@@ -168,6 +262,39 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
         "endLine": 43,
         "startLine": 26,
       },
+      "semantics": {
+        "booleans": {},
+        "flex": {},
+        "layout": {},
+        "text": {
+          "content": [
+            {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 4,
+                "endLine": 41,
+                "startColumn": 5,
+                "startLine": 39,
+              },
+              "value": "Sign In",
+            },
+          ],
+        },
+        "visual": {
+          "fills": [
+            {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 34,
+                "endLine": 30,
+                "startColumn": 8,
+                "startLine": 30,
+              },
+              "value": "#3B82F6",
+            },
+          ],
+        },
+      },
     },
     {
       "componentName": "TestBox",
@@ -224,6 +351,47 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
         "endLine": 61,
         "startLine": 50,
       },
+      "semantics": {
+        "booleans": {},
+        "flex": {},
+        "layout": {
+          "height": {
+            "confidence": "high",
+            "loc": {
+              "endColumn": 19,
+              "endLine": 55,
+              "startColumn": 8,
+              "startLine": 55,
+            },
+            "value": 100,
+          },
+          "width": {
+            "confidence": "high",
+            "loc": {
+              "endColumn": 18,
+              "endLine": 54,
+              "startColumn": 8,
+              "startLine": 54,
+            },
+            "value": 100,
+          },
+        },
+        "text": {},
+        "visual": {
+          "fills": [
+            {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 34,
+                "endLine": 56,
+                "startColumn": 8,
+                "startLine": 56,
+              },
+              "value": "#FF0000",
+            },
+          ],
+        },
+      },
     },
     {
       "componentName": "WelcomeHeading",
@@ -244,6 +412,26 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       "loc": {
         "endLine": 70,
         "startLine": 68,
+      },
+      "semantics": {
+        "booleans": {},
+        "flex": {},
+        "layout": {},
+        "text": {
+          "content": [
+            {
+              "confidence": "high",
+              "loc": {
+                "endColumn": 32,
+                "endLine": 69,
+                "startColumn": 13,
+                "startLine": 69,
+              },
+              "value": "Welcome to the Demo",
+            },
+          ],
+        },
+        "visual": {},
       },
     },
     {
@@ -311,6 +499,45 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       "loc": {
         "endLine": 86,
         "startLine": 76,
+      },
+      "semantics": {
+        "booleans": {},
+        "flex": {
+          "display": {
+            "confidence": "high",
+            "loc": {
+              "endColumn": 35,
+              "endLine": 80,
+              "startColumn": 20,
+              "startLine": 80,
+            },
+            "value": "flex",
+          },
+        },
+        "layout": {
+          "gap": {
+            "confidence": "high",
+            "loc": {
+              "endColumn": 44,
+              "endLine": 80,
+              "startColumn": 37,
+              "startLine": 80,
+            },
+            "value": 20,
+          },
+          "padding": {
+            "confidence": "high",
+            "loc": {
+              "endColumn": 29,
+              "endLine": 78,
+              "startColumn": 18,
+              "startLine": 78,
+            },
+            "value": 40,
+          },
+        },
+        "text": {},
+        "visual": {},
       },
     },
   ],

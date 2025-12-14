@@ -55,6 +55,13 @@ import type {
   Anchor,
   AnchoredAstReport,
   AnchorExtracted,
+  ComponentSemanticIntent,
+  SemanticValue,
+  TextSemantics,
+  BooleanSemantics,
+  LayoutSemantics,
+  FlexSemantics,
+  VisualSemantics,
 } from './types.js';
 import { extractMarkers, type MarkerData } from '../parse/parseIntentFromReact.js';
 
@@ -261,6 +268,158 @@ interface LiteralCollector {
   styleLiterals: InlineStyleLiteral[];
 }
 
+// =============================================================================
+// SEMANTIC PROP/STYLE CATEGORIES (Phase 6B)
+// =============================================================================
+
+/** Text-related prop names to extract */
+const TEXT_PROPS = ['placeholder', 'title', 'aria-label', 'alt'] as const;
+
+/** Boolean prop names to extract */
+const BOOLEAN_PROPS = ['disabled', 'checked', 'selected'] as const;
+
+/** Numeric layout prop names to extract (from both props and styles) */
+const LAYOUT_PROPS = ['width', 'height'] as const;
+const LAYOUT_STYLE_PROPS = ['width', 'height', 'padding', 'margin', 'gap'] as const;
+
+/** Flexbox style props to extract */
+const FLEX_STYLE_PROPS = ['display', 'flexDirection', 'justifyContent', 'alignItems'] as const;
+
+/**
+ * Build semantic intent from collected literals.
+ */
+function buildSemanticIntent(
+  textLiterals: JsxTextLiteral[],
+  propLiterals: JsxPropLiteral[],
+  styleLiterals: InlineStyleLiteral[]
+): ComponentSemanticIntent {
+  // Initialize empty semantics
+  const text: TextSemantics = {};
+  const booleans: BooleanSemantics = {};
+  const layout: LayoutSemantics = {};
+  const flex: FlexSemantics = {};
+  const visual: VisualSemantics = {};
+
+  // Text content from JSX children
+  const contentValues: SemanticValue<string>[] = textLiterals
+    .filter((lit) => lit.text.trim().length > 0)
+    .map((lit) => ({
+      value: lit.text.trim(),
+      loc: lit.loc,
+      confidence: 'high' as const,
+    }));
+  if (contentValues.length > 0) {
+    text.content = contentValues;
+  }
+
+  // Process props
+  for (const prop of propLiterals) {
+    const propName = prop.prop;
+    const loc = prop.loc;
+
+    // Text props
+    if (TEXT_PROPS.includes(propName as (typeof TEXT_PROPS)[number])) {
+      if (typeof prop.value === 'string') {
+        const semanticValue: SemanticValue<string> = {
+          value: prop.value,
+          loc,
+          confidence: 'high',
+        };
+        if (propName === 'placeholder') text.placeholder = semanticValue;
+        else if (propName === 'title') text.title = semanticValue;
+        else if (propName === 'aria-label') text.ariaLabel = semanticValue;
+        else if (propName === 'alt') text.alt = semanticValue;
+      }
+    }
+
+    // Boolean props
+    if (BOOLEAN_PROPS.includes(propName as (typeof BOOLEAN_PROPS)[number])) {
+      if (typeof prop.value === 'boolean') {
+        const semanticValue: SemanticValue<boolean> = {
+          value: prop.value,
+          loc,
+          confidence: 'high',
+        };
+        if (propName === 'disabled') booleans.disabled = semanticValue;
+        else if (propName === 'checked') booleans.checked = semanticValue;
+        else if (propName === 'selected') booleans.selected = semanticValue;
+      }
+    }
+
+    // Numeric layout props (width, height from element props)
+    if (LAYOUT_PROPS.includes(propName as (typeof LAYOUT_PROPS)[number])) {
+      if (typeof prop.value === 'number') {
+        const semanticValue: SemanticValue<number> = {
+          value: prop.value,
+          loc,
+          confidence: 'high',
+        };
+        if (propName === 'width') layout.width = semanticValue;
+        else if (propName === 'height') layout.height = semanticValue;
+      }
+    }
+  }
+
+  // Process inline styles
+  for (const style of styleLiterals) {
+    const styleProp = style.styleProp;
+    const loc = style.loc;
+
+    // Layout style props
+    if (LAYOUT_STYLE_PROPS.includes(styleProp as (typeof LAYOUT_STYLE_PROPS)[number])) {
+      if (typeof style.value === 'number') {
+        const semanticValue: SemanticValue<number> = {
+          value: style.value,
+          loc,
+          confidence: 'high',
+        };
+        // Only set if not already set by a prop
+        if (styleProp === 'width' && !layout.width) layout.width = semanticValue;
+        else if (styleProp === 'height' && !layout.height) layout.height = semanticValue;
+        else if (styleProp === 'padding') layout.padding = semanticValue;
+        else if (styleProp === 'margin') layout.margin = semanticValue;
+        else if (styleProp === 'gap') layout.gap = semanticValue;
+      }
+    }
+
+    // Flex style props
+    if (FLEX_STYLE_PROPS.includes(styleProp as (typeof FLEX_STYLE_PROPS)[number])) {
+      if (typeof style.value === 'string') {
+        const semanticValue: SemanticValue<string> = {
+          value: style.value,
+          loc,
+          confidence: 'high',
+        };
+        if (styleProp === 'display') flex.display = semanticValue;
+        else if (styleProp === 'flexDirection') flex.flexDirection = semanticValue;
+        else if (styleProp === 'justifyContent') flex.justifyContent = semanticValue;
+        else if (styleProp === 'alignItems') flex.alignItems = semanticValue;
+      }
+    }
+
+    // Visual props (fills)
+    if (styleProp === 'backgroundColor' && typeof style.value === 'string') {
+      if (HEX_COLOR_REGEX.test(style.value)) {
+        const fillValue: SemanticValue<string> = {
+          value: style.value,
+          loc,
+          confidence: 'high',
+        };
+        if (!visual.fills) visual.fills = [];
+        visual.fills.push(fillValue);
+      }
+    }
+  }
+
+  return {
+    text,
+    booleans,
+    layout,
+    flex,
+    visual,
+  };
+}
+
 /**
  * Extract all JSX literals from a component's AST node.
  */
@@ -381,6 +540,13 @@ export function parseIntentFromReactAst(code: string, filePath: string): AstInte
   const components: AstComponentReport[] = componentBounds.map((comp) => {
     const literals = extractJsxLiterals(comp.node);
 
+    // Build semantic intent from literals (Phase 6B)
+    const semantics = buildSemanticIntent(
+      literals.textLiterals,
+      literals.propLiterals,
+      literals.styleLiterals
+    );
+
     return {
       componentName: comp.name,
       isExported: comp.isExported,
@@ -391,6 +557,7 @@ export function parseIntentFromReactAst(code: string, filePath: string): AstInte
       jsxTextLiterals: literals.textLiterals,
       jsxPropLiterals: literals.propLiterals,
       inlineStyleLiterals: literals.styleLiterals,
+      semantics,
     };
   });
 
@@ -505,6 +672,8 @@ export function anchorMarkersToAst(
     if (fills.length > 0) {
       extracted.fills = fills;
     }
+    // Include full semantics (Phase 6B)
+    extracted.semantics = matchedComponent.semantics;
     anchor.extracted = extracted;
 
     return anchor;
