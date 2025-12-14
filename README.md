@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 5B)
+## What Works Today (Phase 6A)
 
 | Feature | Status |
 |---------|--------|
@@ -30,6 +30,11 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Patch artifact generation (reviewable diffs) | ✅ |
 | Marker line updates (direct source edits) | ✅ |
 | Dry-run mode (default, no writes) | ✅ |
+| **AST Analysis (Read-Only)** | |
+| Babel-based JSX literal extraction | ✅ |
+| Component detection (function + arrow) | ✅ |
+| Marker-to-component anchoring | ✅ |
+| Diff report: JSX vs Markers vs Overrides | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -96,19 +101,98 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 5A.1** | Override reconciliation layer | ✅ |
 | **Phase 5A.2** | Override precedence controls (feature flags) | ✅ |
 | **Phase 5B** | Design → Code materialization (patch + marker writes) | ✅ |
+| **Phase 6A** | Read-only AST parsing with Babel | ✅ |
 
 ### Not Implemented Yet
 
 | Feature | Status |
 |---------|--------|
-| AST-based JSX mutation | ❌ |
+| AST-based JSX mutation (write mode) | ❌ |
 | Design → JSX rewriting | ❌ |
 | Conflict resolution UI | ❌ |
 | Variant/state mapping | ❌ |
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation uses regex parsing of `@figma` comment markers or optional LLM analysis. There is no AST-level semantic understanding of React component structure.
+The current implementation includes read-only AST parsing via Babel (Phase 6A), but does not perform AST-level mutations. Source file modifications are done via regex-based marker line edits.
+
+---
+
+## AST Analysis (Phase 6A)
+
+Phase 6A adds read-only AST-based analysis using Babel to extract literal semantics from JSX. This enables deeper code understanding and produces structured reports for diffing against markers and design overrides.
+
+### What It Extracts
+
+| Category | Examples |
+|----------|----------|
+| **JSX Text Literals** | `<h1>Welcome</h1>` → "Welcome" |
+| **JSX Prop Literals** | `<button disabled={true}>` → disabled: true |
+| **Inline Style Literals** | `style={{ backgroundColor: "#FF0000" }}` → backgroundColor: "#FF0000" |
+
+**Scope**: Literals only. No inference from variables, no className parsing, no evaluation.
+
+### Marker Anchoring
+
+The AST analyzer maps `@figma` markers to components:
+
+1. Finds all `// @figma node=...` markers with their line numbers
+2. For each marker, finds the nearest following exported component
+3. Extracts text and fill literals from that component
+4. Produces an anchored report linking markers to actual JSX content
+
+### CLI Report
+
+Run a diff report on any TSX file:
+
+```bash
+pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
+```
+
+Output includes:
+- **Marker Summary**: Nodes and their text/fill values from markers
+- **AST Anchored Summary**: Marker → Component → Extracted literals
+- **Diff: JSX vs Marker**: Mismatches between JSX code and marker declarations
+- **Diff: JSX vs Overrides**: Mismatches between JSX code and design-overrides.json
+
+Example output:
+```
+AST REPORT
+File: demo-app/src/App.tsx
+
+============================================================
+MARKER SUMMARY
+============================================================
+  [L25] LoginButton
+    text: "Login"
+    fill: #883BF5
+
+============================================================
+AST ANCHORED SUMMARY
+============================================================
+  [L25] LoginButton
+    → LoginButton (L26-43)
+    text: ["Sign In"]
+    fills: [#3B82F6]
+
+============================================================
+DIFF: JSX vs MARKER
+============================================================
+  ✗ LoginButton.text
+    JSX: Sign In
+    Marker: Login
+  ✗ LoginButton.fill
+    JSX: #3B82F6
+    Marker: #883BF5
+
+Summary: 3 markers, 4 components, 4 mismatches
+```
+
+### Use Cases
+
+- **Auditing**: See drift between markers and actual code
+- **Validation**: Ensure markers match component content
+- **Pre-commit checks**: Detect undeclared changes before sync
 
 ---
 
@@ -439,6 +523,7 @@ aesthetic-function/
 │   ├── watcher/          # File watcher + transformer
 │   │   └── src/
 │   │       ├── analyze/  # LLM-based intent analyzer
+│   │       ├── ast/      # Babel-based AST parser (Phase 6A)
 │   │       ├── parse/    # @figma marker parser
 │   │       ├── reconcile/# Override reconciliation
 │   │       ├── materialize/ # Design → Code materialization
@@ -467,6 +552,7 @@ aesthetic-function/
 | `pnpm typecheck` | Run TypeScript checks |
 | `pnpm tunnel` | Expose server via cloudflared |
 | `pnpm test:send` | Send test operations |
+| `pnpm --filter @aesthetic-function/watcher ast:report <file>` | Run AST diff report |
 
 ---
 

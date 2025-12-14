@@ -21,6 +21,7 @@
     "test:combined": "tsx src/test-sender.ts combined",
     "test:transform": "tsx src/transform/__tests__/intentToFigmaOps.test.ts",
     "test:analyze": "vitest run src/analyze",
+    "ast:report": "tsx src/ast/cliReport.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -30,6 +31,10 @@
     "ws": "^8.14.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.28.5",
+    "@babel/traverse": "^7.28.5",
+    "@babel/types": "^7.28.5",
+    "@types/babel__traverse": "^7.28.0",
     "@types/node": "^20.10.0",
     "@types/ws": "^8.5.10",
     "tsx": "^4.7.0",

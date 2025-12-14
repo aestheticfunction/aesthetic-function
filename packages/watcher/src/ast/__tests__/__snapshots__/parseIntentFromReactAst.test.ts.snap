@@ -1,0 +1,319 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored report for demo-app/src/App.tsx 1`] = `
+{
+  "anchors": [
+    {
+      "componentLoc": {
+        "endLine": 43,
+        "startLine": 26,
+      },
+      "componentName": "LoginButton",
+      "extracted": {
+        "fills": [
+          "#3B82F6",
+        ],
+        "text": [
+          "Sign In",
+        ],
+      },
+      "markerLine": 25,
+      "nodeName": "LoginButton",
+      "notes": [],
+    },
+    {
+      "componentLoc": {
+        "endLine": 61,
+        "startLine": 50,
+      },
+      "componentName": "TestBox",
+      "extracted": {
+        "fills": [
+          "#FF0000",
+        ],
+      },
+      "markerLine": 49,
+      "nodeName": "TestBox",
+      "notes": [],
+    },
+    {
+      "componentLoc": {
+        "endLine": 70,
+        "startLine": 68,
+      },
+      "componentName": "WelcomeHeading",
+      "extracted": {
+        "text": [
+          "Welcome to the Demo",
+        ],
+      },
+      "markerLine": 67,
+      "nodeName": "WelcomeText",
+      "notes": [],
+    },
+  ],
+  "filePath": "demo-app/src/App.tsx",
+}
+`;
+
+exports[`parseIntentFromReactAst - Snapshot > should produce stable output for demo-app/src/App.tsx 1`] = `
+{
+  "components": [
+    {
+      "componentName": "LoginButton",
+      "inlineStyleLiterals": [
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 34,
+            "endLine": 30,
+            "startColumn": 8,
+            "startLine": 30,
+          },
+          "styleProp": "backgroundColor",
+          "value": "#3B82F6",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 22,
+            "endLine": 31,
+            "startColumn": 8,
+            "startLine": 31,
+          },
+          "styleProp": "color",
+          "value": "white",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 28,
+            "endLine": 32,
+            "startColumn": 8,
+            "startLine": 32,
+          },
+          "styleProp": "padding",
+          "value": "12px 24px",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 27,
+            "endLine": 33,
+            "startColumn": 8,
+            "startLine": 33,
+          },
+          "styleProp": "borderRadius",
+          "value": "8px",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 22,
+            "endLine": 34,
+            "startColumn": 8,
+            "startLine": 34,
+          },
+          "styleProp": "border",
+          "value": "none",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 24,
+            "endLine": 35,
+            "startColumn": 8,
+            "startLine": 35,
+          },
+          "styleProp": "fontSize",
+          "value": "16px",
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 23,
+            "endLine": 36,
+            "startColumn": 8,
+            "startLine": 36,
+          },
+          "styleProp": "fontWeight",
+          "value": 600,
+        },
+        {
+          "element": "button",
+          "loc": {
+            "endColumn": 25,
+            "endLine": 37,
+            "startColumn": 8,
+            "startLine": 37,
+          },
+          "styleProp": "cursor",
+          "value": "pointer",
+        },
+      ],
+      "isExported": true,
+      "jsxPropLiterals": [],
+      "jsxTextLiterals": [
+        {
+          "loc": {
+            "endColumn": 4,
+            "endLine": 41,
+            "startColumn": 5,
+            "startLine": 39,
+          },
+          "text": "Sign In",
+        },
+      ],
+      "loc": {
+        "endLine": 43,
+        "startLine": 26,
+      },
+    },
+    {
+      "componentName": "TestBox",
+      "inlineStyleLiterals": [
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 18,
+            "endLine": 54,
+            "startColumn": 8,
+            "startLine": 54,
+          },
+          "styleProp": "width",
+          "value": 100,
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 19,
+            "endLine": 55,
+            "startColumn": 8,
+            "startLine": 55,
+          },
+          "styleProp": "height",
+          "value": 100,
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 34,
+            "endLine": 56,
+            "startColumn": 8,
+            "startLine": 56,
+          },
+          "styleProp": "backgroundColor",
+          "value": "#FF0000",
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 23,
+            "endLine": 57,
+            "startColumn": 8,
+            "startLine": 57,
+          },
+          "styleProp": "borderRadius",
+          "value": 8,
+        },
+      ],
+      "isExported": true,
+      "jsxPropLiterals": [],
+      "jsxTextLiterals": [],
+      "loc": {
+        "endLine": 61,
+        "startLine": 50,
+      },
+    },
+    {
+      "componentName": "WelcomeHeading",
+      "inlineStyleLiterals": [],
+      "isExported": true,
+      "jsxPropLiterals": [],
+      "jsxTextLiterals": [
+        {
+          "loc": {
+            "endColumn": 32,
+            "endLine": 69,
+            "startColumn": 13,
+            "startLine": 69,
+          },
+          "text": "Welcome to the Demo",
+        },
+      ],
+      "loc": {
+        "endLine": 70,
+        "startLine": 68,
+      },
+    },
+    {
+      "componentName": "App",
+      "inlineStyleLiterals": [
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 29,
+            "endLine": 78,
+            "startColumn": 18,
+            "startLine": 78,
+          },
+          "styleProp": "padding",
+          "value": 40,
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 66,
+            "endLine": 78,
+            "startColumn": 31,
+            "startLine": 78,
+          },
+          "styleProp": "fontFamily",
+          "value": "system-ui, sans-serif",
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 35,
+            "endLine": 80,
+            "startColumn": 20,
+            "startLine": 80,
+          },
+          "styleProp": "display",
+          "value": "flex",
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 44,
+            "endLine": 80,
+            "startColumn": 37,
+            "startLine": 80,
+          },
+          "styleProp": "gap",
+          "value": 20,
+        },
+        {
+          "element": "div",
+          "loc": {
+            "endColumn": 59,
+            "endLine": 80,
+            "startColumn": 46,
+            "startLine": 80,
+          },
+          "styleProp": "marginTop",
+          "value": 20,
+        },
+      ],
+      "isExported": true,
+      "jsxPropLiterals": [],
+      "jsxTextLiterals": [],
+      "loc": {
+        "endLine": 86,
+        "startLine": 76,
+      },
+    },
+  ],
+  "filePath": "demo-app/src/App.tsx",
+}
+`;
