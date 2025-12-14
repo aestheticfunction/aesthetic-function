@@ -34,8 +34,8 @@ export interface BaseIntent {
  */
 export interface ButtonIntent extends BaseIntent {
   type: 'BUTTON';
-  /** Button label text */
-  text: string;
+  /** Button label text (optional - only set if explicitly specified in marker) */
+  text?: string;
   /**
    * Fill color - can be:
    * - Token name (e.g., "Primary/Blue500")

@@ -89,8 +89,8 @@ export interface TransformResult {
 /**
  * Transform a ButtonIntent to Figma operations.
  *
- * WHY: A button typically needs both fill color and text content updates.
- * We generate multiple operations for a single intent.
+ * WHY: A button typically needs fill color and optionally text content updates.
+ * We only emit SET_TEXT if text was explicitly specified.
  *
  * @param intent - Button intent to transform
  * @param tokenContext - Design token context for color resolution
@@ -119,14 +119,16 @@ function transformButtonIntent(
     color: resolvedFill,
   });
 
-  // SET_TEXT operation for the button label
-  // WHY: Button text is usually in a child text node with same name or "Label"
-  ops.push({
-    op: 'SET_TEXT',
-    nodeQuery: intent.nodeName, // Plugin will need to handle finding text child
-    nodeId: intent.nodeId ?? null,
-    text: intent.text,
-  });
+  // Only emit SET_TEXT if text was explicitly provided
+  // WHY: Fill-only markers (e.g., TestBox) shouldn't try to set text
+  if (intent.text !== undefined) {
+    ops.push({
+      op: 'SET_TEXT',
+      nodeQuery: intent.nodeName,
+      nodeId: intent.nodeId ?? null,
+      text: intent.text,
+    });
+  }
 
   return { ops, resolvedTokens };
 }

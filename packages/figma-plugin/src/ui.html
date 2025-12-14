@@ -221,9 +221,24 @@
           log('Captured: ' + pl.nodeName + ' (' + (pl.changes || []).length + ' changes)');
           sendDesignChange(pl);
         } else if (msg.type === 'OPERATION_RESULT') {
-          log('From plugin: ' + msg.type);
           var pl = msg.payload || {};
-          log('  → ' + (pl.success ? '✓ Success' : '✗ Failed: ' + (pl.error || 'unknown')));
+          var successCount = pl.successCount || 0;
+          var failCount = pl.failCount || 0;
+          
+          if (pl.success) {
+            log('✓ All ' + successCount + ' operation(s) succeeded');
+          } else {
+            log('⚠ ' + successCount + ' succeeded, ' + failCount + ' failed');
+            // Log details of failed operations
+            var results = pl.results || [];
+            for (var i = 0; i < results.length; i++) {
+              var r = results[i];
+              if (!r.ok) {
+                var target = r.nodeQuery ? r.nodeQuery : 'unknown';
+                log('  ✗ ' + r.action + ' on "' + target + '": ' + (r.error || 'unknown error'));
+              }
+            }
+          }
         } else if (msg.type !== 'PONG') {
           log('From plugin: ' + msg.type);
         }

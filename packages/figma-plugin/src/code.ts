@@ -145,6 +145,8 @@ function findTextInContainer(container: SceneNode): TextNode | null {
  * Execute SET_TEXT operation
  * Changes the text content of a text node.
  * If target is a container, finds a nested TEXT node.
+ *
+ * WHY: Properly handles mixed fonts by loading all fonts before setting text.
  */
 async function executeSetText(op: SetTextOperation): Promise<{ success: boolean; error?: string }> {
   const node = getTargetNode(op);
@@ -164,22 +166,66 @@ async function executeSetText(op: SetTextOperation): Promise<{ success: boolean;
     if (!textNode) {
       return {
         success: false,
-        error: `Node "${node.name}" (${node.type}) has no TEXT descendant`,
+        error: `No TEXT node found under "${node.name}"`,
       };
     }
     console.log(`[Plugin] Resolved nested TEXT node "${textNode.name}" inside "${node.name}"`);
   }
 
   try {
-    // Load font before modifying text
+    // Load all fonts before modifying text
     // WHY: Figma requires fonts to be loaded before text mutations
-    await figma.loadFontAsync(textNode.fontName as FontName);
+    // Handle mixed fonts: fontName can be a FontName or figma.mixed symbol
+    await loadAllFontsForTextNode(textNode);
+    
     textNode.characters = op.text;
     console.log(`[Plugin] SET_TEXT: "${op.text}" on node "${textNode.name}"`);
     return { success: true };
   } catch (err) {
-    return { success: false, error: `Failed to set text: ${err}` };
+    const errMsg = err instanceof Error ? err.message : String(err);
+    return { success: false, error: `Failed to set text: ${errMsg}` };
   }
+}
+
+/**
+ * Load all fonts used in a text node.
+ * Handles both single font and mixed fonts cases.
+ */
+async function loadAllFontsForTextNode(textNode: TextNode): Promise<void> {
+  const fontName = textNode.fontName;
+  
+  // Check if it's a single font (not mixed)
+  if (typeof fontName === 'object' && 'family' in fontName) {
+    await figma.loadFontAsync(fontName as FontName);
+    return;
+  }
+  
+  // Mixed fonts: get all unique fonts in the text
+  // WHY: When text has multiple fonts (e.g., bold + regular), we need to load all
+  const len = textNode.characters.length;
+  if (len === 0) {
+    // Empty text - load any font we can find
+    await figma.loadFontAsync({ family: 'Inter', style: 'Regular' });
+    return;
+  }
+  
+  // Get all fonts used in the range
+  const allFonts = textNode.getRangeAllFontNames(0, len);
+  const uniqueFonts = new Map<string, FontName>();
+  
+  for (const font of allFonts) {
+    const key = `${font.family}::${font.style}`;
+    if (!uniqueFonts.has(key)) {
+      uniqueFonts.set(key, font);
+    }
+  }
+  
+  // Load all unique fonts
+  const loadPromises: Promise<void>[] = [];
+  for (const font of uniqueFonts.values()) {
+    loadPromises.push(figma.loadFontAsync(font));
+  }
+  await Promise.all(loadPromises);
 }
 
 /**
@@ -210,6 +256,22 @@ function executeSetFill(op: SetFillOperation): { success: boolean; error?: strin
 }
 
 /**
+ * Per-operation result with details for debugging
+ */
+interface OpResult {
+  /** Index in the operations array */
+  index: number;
+  /** Operation type (SET_TEXT, SET_FILL) */
+  action: string;
+  /** Target node query/name */
+  nodeQuery: string | null;
+  /** Whether operation succeeded */
+  ok: boolean;
+  /** Error message if failed */
+  error?: string;
+}
+
+/**
  * Execute a single operation
  */
 async function executeOperation(op: TestOperation): Promise<{ success: boolean; error?: string }> {
@@ -224,25 +286,45 @@ async function executeOperation(op: TestOperation): Promise<{ success: boolean; 
 }
 
 /**
- * Execute all operations in a batch
+ * Execute all operations in a batch.
+ * Best-effort: continues executing remaining ops even if one fails.
  */
 async function executeOperations(
   operations: TestOperation[],
   _requestId?: string
-): Promise<{ success: boolean; results: Array<{ success: boolean; error?: string }> }> {
-  const results: Array<{ success: boolean; error?: string }> = [];
-  let allSuccess = true;
+): Promise<{ success: boolean; results: OpResult[]; successCount: number; failCount: number }> {
+  const results: OpResult[] = [];
+  let successCount = 0;
+  let failCount = 0;
 
-  for (const op of operations) {
+  for (let i = 0; i < operations.length; i++) {
+    const op = operations[i];
     const result = await executeOperation(op);
-    results.push(result);
+    
+    const opResult: OpResult = {
+      index: i,
+      action: op.op,
+      nodeQuery: op.nodeQuery || null,
+      ok: result.success,
+    };
+    
     if (!result.success) {
-      allSuccess = false;
-      console.error(`[Plugin] Operation failed:`, result.error);
+      opResult.error = result.error || 'Unknown error';
+      failCount++;
+      console.error(`[Plugin] Op ${i} (${op.op}) failed:`, result.error);
+    } else {
+      successCount++;
     }
+    
+    results.push(opResult);
   }
 
-  return { success: allSuccess, results };
+  return { 
+    success: failCount === 0, 
+    results, 
+    successCount, 
+    failCount 
+  };
 }
 
 // =============================================================================
@@ -272,12 +354,14 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
       console.log(`[Plugin] Executing ${ops.length} operation(s)...`);
       const result = await executeOperations(ops, payload.requestId);
 
-      // Send result back to ui.html
+      // Send detailed result back to ui.html
       figma.ui.postMessage({
         type: 'OPERATION_RESULT',
         payload: {
           requestId: payload.requestId,
           success: result.success,
+          successCount: result.successCount,
+          failCount: result.failCount,
           results: result.results,
         },
       });

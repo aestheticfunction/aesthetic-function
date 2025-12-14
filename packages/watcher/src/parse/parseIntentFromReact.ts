@@ -179,9 +179,9 @@ function extractMarkers(content: string): MarkerData[] {
  * Convert a marker to an Intent.
  *
  * Decision logic:
- * - If marker has both text and fill → ButtonIntent
+ * - If marker has both text and fill → ButtonIntent (with text)
+ * - If marker has only fill → ButtonIntent (without text - fill-only)
  * - If marker has only text → TextIntent
- * - If marker has only fill → ButtonIntent (for frame/box fills)
  *
  * @param marker - Parsed marker data
  * @returns Intent or null if invalid
@@ -191,12 +191,16 @@ function markerToIntent(marker: MarkerData): Intent | null {
 
   // If we have fill, treat as Button (can also update frames)
   if (fill) {
-    return {
+    const intent: ButtonIntent = {
       type: 'BUTTON',
       nodeName: node,
-      text: text ?? node, // Default text to node name if not specified
       fillTokenOrHex: fill,
-    } satisfies ButtonIntent;
+    };
+    // Only set text if explicitly provided in the marker
+    if (text) {
+      intent.text = text;
+    }
+    return intent;
   }
 
   // If we only have text, treat as TextIntent
