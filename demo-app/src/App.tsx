@@ -22,7 +22,7 @@ import React from 'react';
 // LOGIN BUTTON
 // =============================================================================
 
-// @figma node=LoginButton text="Sign In" fill=#3B82F6
+// @figma node=LoginButton text="Login" fill=#3B82F5
 export function LoginButton() {
   return (
     <button

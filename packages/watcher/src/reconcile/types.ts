@@ -46,8 +46,12 @@ export interface ReconcileResult {
   matched: number;
   /** Number of overrides that had no matching intent */
   ignored: number;
+  /** Number of overrides skipped due to precedence (stale vs code) */
+  stale: number;
   /** Names of nodes that were overridden */
   overriddenNodes: string[];
   /** Names of override keys that had no matching intent */
   ignoredKeys: string[];
+  /** Names of override keys that were stale (older than code) */
+  staleKeys: string[];
 }

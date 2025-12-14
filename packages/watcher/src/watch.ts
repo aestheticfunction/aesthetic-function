@@ -18,7 +18,7 @@
  */
 
 import { watch, type FSWatcher } from 'chokidar';
-import { readFile, writeFile, access } from 'node:fs/promises';
+import { readFile, writeFile, access, stat } from 'node:fs/promises';
 import { resolve, relative, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
@@ -39,6 +39,8 @@ import {
 import {
   loadDesignOverrides,
   applyOverridesToIntentModel,
+  getUseOverrides,
+  getOverridesPrecedence,
 } from './reconcile/index.js';
 
 // =============================================================================
@@ -150,7 +152,8 @@ async function sendOperationsToServer(
 async function processFileWithMarkers(
   content: string,
   relativePath: string,
-  serverUrl: string
+  serverUrl: string,
+  fileMtime?: Date
 ): Promise<void> {
   // Quick check for markers
   if (!hasFigmaMarkers(content)) {
@@ -176,18 +179,32 @@ async function processFileWithMarkers(
   const tokenContext = getDefaultTokenContext();
   let model = createIntentModel(parseResult.intents, relativePath);
 
-  // PHASE 5A.1: Apply design overrides (soft reconciliation)
-  const overrides = await loadDesignOverrides();
-  if (overrides) {
-    const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
-    model = reconciledModel;
+  // PHASE 5A.1/5A.2: Apply design overrides (soft reconciliation with precedence)
+  const useOverrides = getUseOverrides();
+  const precedence = getOverridesPrecedence();
 
-    // Log reconciliation summary
-    if (reconcileResult.matched > 0 || reconcileResult.ignored > 0) {
-      const matchedInfo = reconcileResult.overriddenNodes.length > 0
-        ? ` (${reconcileResult.overriddenNodes.join(', ')})`
-        : '';
-      console.log(`[Watcher] Applied overrides: ${reconcileResult.matched} matched${matchedInfo}, ${reconcileResult.ignored} ignored`);
+  if (!useOverrides) {
+    console.log(`[Watcher] Overrides: USE_OVERRIDES=false (skipping)`);
+  } else {
+    const overrides = await loadDesignOverrides();
+    if (overrides && Object.keys(overrides).length > 0) {
+      const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(
+        model,
+        overrides,
+        { fileMtime, precedence }
+      );
+      model = reconciledModel;
+
+      // Log reconciliation summary
+      if (precedence === 'if_newer_than_code') {
+        const staleInfo = reconcileResult.stale > 0 ? ` (${reconcileResult.staleKeys.join(', ')} stale vs code)` : '';
+        console.log(`[Watcher] Overrides: precedence=if_newer_than_code applied=${reconcileResult.matched} ignored=${reconcileResult.ignored} stale=${reconcileResult.stale}${staleInfo}`);
+      } else {
+        const matchedInfo = reconcileResult.overriddenNodes.length > 0
+          ? ` (${reconcileResult.overriddenNodes.join(', ')})`
+          : '';
+        console.log(`[Watcher] Overrides: precedence=always applied=${reconcileResult.matched}${matchedInfo} ignored=${reconcileResult.ignored}`);
+      }
     }
   }
 
@@ -229,7 +246,8 @@ async function processFileWithMarkers(
 async function processFileWithLLM(
   content: string,
   relativePath: string,
-  serverUrl: string
+  serverUrl: string,
+  fileMtime?: Date
 ): Promise<void> {
   console.log(`[Watcher] Using LLM analyzer...`);
 
@@ -265,19 +283,33 @@ async function processFileWithLLM(
 
   console.log(`[Watcher] Found ${analyzeResult.model.intents.length} intent(s) from LLM`);
 
-  // PHASE 5A.1: Apply design overrides (soft reconciliation)
+  // PHASE 5A.1/5A.2: Apply design overrides (soft reconciliation with precedence)
   let model = analyzeResult.model;
-  const overrides = await loadDesignOverrides();
-  if (overrides) {
-    const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
-    model = reconciledModel;
+  const useOverrides = getUseOverrides();
+  const precedence = getOverridesPrecedence();
 
-    // Log reconciliation summary
-    if (reconcileResult.matched > 0 || reconcileResult.ignored > 0) {
-      const matchedInfo = reconcileResult.overriddenNodes.length > 0
-        ? ` (${reconcileResult.overriddenNodes.join(', ')})`
-        : '';
-      console.log(`[Watcher] Applied overrides: ${reconcileResult.matched} matched${matchedInfo}, ${reconcileResult.ignored} ignored`);
+  if (!useOverrides) {
+    console.log(`[Watcher] Overrides: USE_OVERRIDES=false (skipping)`);
+  } else {
+    const overrides = await loadDesignOverrides();
+    if (overrides && Object.keys(overrides).length > 0) {
+      const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(
+        model,
+        overrides,
+        { fileMtime, precedence }
+      );
+      model = reconciledModel;
+
+      // Log reconciliation summary
+      if (precedence === 'if_newer_than_code') {
+        const staleInfo = reconcileResult.stale > 0 ? ` (${reconcileResult.staleKeys.join(', ')} stale vs code)` : '';
+        console.log(`[Watcher] Overrides: precedence=if_newer_than_code applied=${reconcileResult.matched} ignored=${reconcileResult.ignored} stale=${reconcileResult.stale}${staleInfo}`);
+      } else {
+        const matchedInfo = reconcileResult.overriddenNodes.length > 0
+          ? ` (${reconcileResult.overriddenNodes.join(', ')})`
+          : '';
+        console.log(`[Watcher] Overrides: precedence=always applied=${reconcileResult.matched}${matchedInfo} ignored=${reconcileResult.ignored}`);
+      }
     }
   }
 
@@ -328,15 +360,19 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
   console.log(`[Watcher] Processing: ${relativePath}`);
 
   try {
-    // Read file content
-    const content = await readFile(absolutePath, 'utf-8');
+    // Read file content and get mtime for precedence checks
+    const [content, fileStat] = await Promise.all([
+      readFile(absolutePath, 'utf-8'),
+      stat(absolutePath),
+    ]);
+    const fileMtime = fileStat.mtime;
 
     // Check feature flag
     if (isLLMAnalyzerEnabled()) {
       if (!isLLMAnalyzerAvailable()) {
         console.warn(`[Watcher] USE_LLM_ANALYZER=true but no API key configured`);
         console.warn(`[Watcher] Falling back to marker-based parsing`);
-        await processFileWithMarkers(content, relativePath, serverUrl);
+        await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
       } else {
         // Guard: skip LLM if no markers and LLM_ANALYZE_ALL is not enabled
         const hasMarkers = hasFigmaMarkers(content);
@@ -347,19 +383,19 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
 
         // Try LLM, fall back to markers on any error
         try {
-          await processFileWithLLM(content, relativePath, serverUrl);
+          await processFileWithLLM(content, relativePath, serverUrl, fileMtime);
         } catch (llmError) {
           const errorMsg = llmError instanceof Error ? llmError.message : String(llmError);
           console.warn(`[Watcher] LLM failed, falling back to marker-based parsing: ${errorMsg}`);
           if (hasMarkers) {
-            await processFileWithMarkers(content, relativePath, serverUrl);
+            await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
           } else {
             console.log(`[Watcher] No @figma markers to fall back to, skipping`);
           }
         }
       }
     } else {
-      await processFileWithMarkers(content, relativePath, serverUrl);
+      await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
     }
   } catch (error) {
     console.error(`[Watcher] ✗ Error processing file:`, error);

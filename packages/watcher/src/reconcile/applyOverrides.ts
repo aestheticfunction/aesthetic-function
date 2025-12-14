@@ -12,11 +12,27 @@
  * - Override fill field for BUTTON, TEXT, FRAME intents
  * - Unsupported fields are ignored
  * - Missing intents for an override key are logged and ignored
- * - Overrides win over code-derived values
+ * - Precedence controls when overrides are applied
  */
 
 import type { IntentModel, Intent, ButtonIntent, TextIntent, FrameIntent } from '../transform/types.js';
 import type { DesignOverrides, ReconcileResult } from './types.js';
+import type { OverridePrecedence } from './config.js';
+import { isOverrideNewerThanFile } from './config.js';
+
+// =============================================================================
+// OPTIONS
+// =============================================================================
+
+/**
+ * Options for applying overrides.
+ */
+export interface ApplyOverridesOptions {
+  /** File modification time (for if_newer_than_code precedence) */
+  fileMtime?: Date;
+  /** Precedence mode (default: 'always') */
+  precedence?: OverridePrecedence;
+}
 
 // =============================================================================
 // APPLY OVERRIDES
@@ -30,17 +46,23 @@ import type { DesignOverrides, ReconcileResult } from './types.js';
  *
  * @param model - Original IntentModel from code parsing
  * @param overrides - Design overrides from Figma (can be null)
+ * @param options - Precedence and timing options
  * @returns Object containing the reconciled model and result metadata
  */
 export function applyOverridesToIntentModel(
   model: IntentModel,
-  overrides: DesignOverrides | null
+  overrides: DesignOverrides | null,
+  options: ApplyOverridesOptions = {}
 ): { model: IntentModel; result: ReconcileResult } {
+  const { precedence = 'always', fileMtime } = options;
+  
   const result: ReconcileResult = {
     matched: 0,
     ignored: 0,
+    stale: 0,
     overriddenNodes: [],
     ignoredKeys: [],
+    staleKeys: [],
   };
 
   // If no overrides, return original model unchanged
@@ -59,6 +81,17 @@ export function applyOverridesToIntentModel(
     }
 
     matchedKeys.add(intent.nodeName);
+
+    // Check precedence for if_newer_than_code mode
+    if (precedence === 'if_newer_than_code' && fileMtime) {
+      if (!isOverrideNewerThanFile(override.lastUpdated, fileMtime)) {
+        // Override is stale (older than or equal to file mtime)
+        result.stale++;
+        result.staleKeys.push(intent.nodeName);
+        return intent; // Don't apply this override
+      }
+    }
+
     const overridden = applyOverrideToIntent(intent, override);
 
     if (overridden !== intent) {
@@ -68,8 +101,8 @@ export function applyOverridesToIntentModel(
     return overridden;
   });
 
-  // Count matched overrides
-  result.matched = matchedKeys.size;
+  // Count matched overrides (those that were applied, not stale)
+  result.matched = result.overriddenNodes.length;
 
   // Find ignored overrides (keys in overrides that didn't match any intent)
   for (const key of Object.keys(overrides)) {
