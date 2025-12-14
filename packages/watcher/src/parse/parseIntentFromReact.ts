@@ -60,15 +60,21 @@ export interface MarkerData {
 /**
  * Regex to match @figma markers in comments.
  *
+ * IMPORTANT: Only matches lines that START with // (after optional whitespace).
+ * Does NOT match lines like "* // @figma" inside block comments/docstrings.
+ *
  * Matches:
  *   // @figma node=NodeName text="Some Text" fill=Primary/Blue500
  *   // @figma node=TestBox fill=#FF0000
- *   /* @figma node=Card text="Title" *​/
+ *
+ * Does NOT match:
+ *   * // @figma node=<FigmaNodeName> (inside block comment)
+ *   /*​ @figma ... (block comment style - intentionally not supported)
  *
  * Groups:
  *   1: Everything after @figma (the attributes)
  */
-const FIGMA_MARKER_REGEX = /\/\/\s*@figma\s+(.+)$|\/\*\s*@figma\s+(.+?)\s*\*\//gm;
+const FIGMA_MARKER_REGEX = /^[ \t]*\/\/\s*@figma\s+(.+)$/gm;
 
 /**
  * Regex to extract individual attributes from marker.
@@ -112,6 +118,19 @@ function parseAttributes(attrString: string): Record<string, string> {
 }
 
 /**
+ * Check if a node name is a placeholder (wrapped in angle brackets).
+ *
+ * Placeholders like <FigmaNodeName> are used in documentation
+ * and should be ignored.
+ *
+ * @param nodeName - Node name to check
+ * @returns true if it's a placeholder
+ */
+function isPlaceholderNode(nodeName: string): boolean {
+  return nodeName.startsWith('<') && nodeName.endsWith('>');
+}
+
+/**
  * Extract all @figma markers from file content.
  *
  * @param content - File content as string
@@ -125,14 +144,17 @@ function extractMarkers(content: string): MarkerData[] {
 
   let match: RegExpExecArray | null;
   while ((match = FIGMA_MARKER_REGEX.exec(content)) !== null) {
-    // Get the attribute string from either // or /* style comment
-    const attrString = match[1] ?? match[2];
+    // Get the attribute string (now only from // style, group 1)
+    const attrString = match[1];
     if (!attrString) continue;
 
     const attrs = parseAttributes(attrString);
 
     // node is required
     if (!attrs['node']) continue;
+
+    // Skip placeholder node names (e.g., <FigmaNodeName>)
+    if (isPlaceholderNode(attrs['node'])) continue;
 
     // Find line number
     const matchIndex = match.index;
@@ -240,4 +262,4 @@ export function hasFigmaMarkers(content: string): boolean {
 // EXPORTS FOR TESTING
 // =============================================================================
 
-export { extractMarkers, parseAttributes, markerToIntent };
+export { extractMarkers, parseAttributes, markerToIntent, isPlaceholderNode };
