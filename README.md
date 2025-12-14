@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 5A.2)
+## What Works Today (Phase 5B)
 
 | Feature | Status |
 |---------|--------|
@@ -26,6 +26,10 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | `design-overrides.json` persistence | ✅ |
 | Override reconciliation layer | ✅ |
 | Override precedence controls | ✅ |
+| **Design → Code Materialization** | |
+| Patch artifact generation (reviewable diffs) | ✅ |
+| Marker line updates (direct source edits) | ✅ |
+| Dry-run mode (default, no writes) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -91,6 +95,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 5A** | Bidirectional sync (Design → Code capture via DESIGN_CHANGE) | ✅ |
 | **Phase 5A.1** | Override reconciliation layer | ✅ |
 | **Phase 5A.2** | Override precedence controls (feature flags) | ✅ |
+| **Phase 5B** | Design → Code materialization (patch + marker writes) | ✅ |
 
 ### Not Implemented Yet
 
@@ -151,6 +156,55 @@ You can control this behavior with environment variables (see below).
 
 ---
 
+## Design → Code Materialization (Phase 5B)
+
+Materialization converts design overrides into reviewable code artifacts. This is an optional feature that must be explicitly enabled.
+
+### Materialization Modes
+
+| Mode | Output | Description |
+|------|--------|-------------|
+| `off` | None | Default. No materialization occurs. |
+| `patch` | `design-materializations/*.patch.json` | Generates JSON patch artifacts for review |
+| `markers` | Updated `@figma` marker lines | Edits source files directly |
+
+### Patch Mode
+
+Generates a reviewable artifact without modifying source files:
+
+```json
+{
+  "file": "demo-app/src/App.tsx",
+  "generatedAt": "2025-12-14T00:00:00.000Z",
+  "changes": [
+    {
+      "node": "LoginButton",
+      "before": { "text": "Login", "fill": "Primary/Blue500" },
+      "after": { "text": "Sign in", "fill": "#FF5500" },
+      "source": "design-overrides.json",
+      "nodeId": "4:7"
+    }
+  ]
+}
+```
+
+### Markers Mode
+
+Updates existing `@figma` marker lines in source files:
+
+- Replaces `text="..."` and `fill=...` values
+- Only modifies lines that already contain `// @figma node=<NodeName>`
+- Does not insert new markers (unapplied overrides are logged)
+- Preserves formatting and indentation
+
+### Safety Defaults
+
+- **Dry-run by default**: `MATERIALIZE_DRY_RUN=true` means no files are written
+- **Atomic writes**: Uses temp file + rename for safe writes
+- **Clear logging**: `Materialize: mode=patch dryRun=true changes=2 unapplied=1`
+
+---
+
 ## Environment Variables
 
 | Variable | Default | Description |
@@ -164,6 +218,9 @@ You can control this behavior with environment variables (see below).
 | `ANTHROPIC_MODEL` | `claude-3-5-sonnet-20241022` | Anthropic model name |
 | `USE_OVERRIDES` | `true` | Enable design override reconciliation |
 | `OVERRIDES_PRECEDENCE` | `always` | `always` or `if_newer_than_code` |
+| `MATERIALIZE_MODE` | `off` | `off`, `patch`, or `markers` |
+| `MATERIALIZE_ON` | `design_change` | `design_change` or `file_save` |
+| `MATERIALIZE_DRY_RUN` | `true` | When true, log changes without writing files |
 | `ENABLE_AUDIT_LOG` | `false` | Enable sync-log.md audit trail |
 
 ### Examples
@@ -177,6 +234,18 @@ OVERRIDES_PRECEDENCE=if_newer_than_code pnpm dev:watcher
 
 # Enable LLM mode with audit logging
 USE_LLM_ANALYZER=true ENABLE_AUDIT_LOG=true OPENAI_API_KEY=sk-... pnpm dev:watcher
+
+# Patch-only materialization (dry run - see what would change)
+MATERIALIZE_MODE=patch MATERIALIZE_ON=file_save pnpm dev:watcher
+
+# Patch-only materialization (write artifacts)
+MATERIALIZE_MODE=patch MATERIALIZE_ON=file_save MATERIALIZE_DRY_RUN=false pnpm dev:watcher
+
+# Marker edits (dry run)
+MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save pnpm dev:watcher
+
+# Marker edits (write actual changes to source files)
+MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save MATERIALIZE_DRY_RUN=false pnpm dev:watcher
 ```
 
 ### Precedence Modes
@@ -351,10 +420,11 @@ ops=2
 
 The following files are **intentionally gitignored** as runtime artifacts:
 
-| File | Purpose |
-|------|---------|
+| File/Directory | Purpose |
+|----------------|---------|
 | `design-overrides.json` | Captured design changes (local state) |
 | `sync-log.md` | Audit trail (debug artifact) |
+| `design-materializations/` | Generated patch artifacts (Phase 5B) |
 
 These files are machine-local and should not be committed. Each developer/environment maintains their own override state.
 
@@ -371,12 +441,14 @@ aesthetic-function/
 │   │       ├── analyze/  # LLM-based intent analyzer
 │   │       ├── parse/    # @figma marker parser
 │   │       ├── reconcile/# Override reconciliation
+│   │       ├── materialize/ # Design → Code materialization
 │   │       ├── tokens/   # Design token resolution
 │   │       └── transform/# IntentModel → FigmaOps
 │   ├── server/           # WebSocket + HTTP relay
 │   └── figma-plugin/     # Figma sandbox plugin
 ├── demo-app/             # Sample React app with markers
 ├── design-overrides.json # (gitignored) Captured design changes
+├── design-materializations/ # (gitignored) Patch artifacts
 ├── sync-log.md           # (gitignored) Audit trail
 └── README.md
 ```

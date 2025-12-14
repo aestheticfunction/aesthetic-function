@@ -31,3 +31,4 @@ tmp/
 # Runtime artifacts
 design-overrides.json
 sync-log.md
+design-materializations/

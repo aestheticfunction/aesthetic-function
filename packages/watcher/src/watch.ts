@@ -42,6 +42,12 @@ import {
   getUseOverrides,
   getOverridesPrecedence,
 } from './reconcile/index.js';
+import {
+  materialize,
+  logMaterializeResult,
+  isMaterializeEnabled,
+  getMaterializeOn,
+} from './materialize/index.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -151,8 +157,10 @@ async function sendOperationsToServer(
  */
 async function processFileWithMarkers(
   content: string,
+  absolutePath: string,
   relativePath: string,
   serverUrl: string,
+  repoRoot: string,
   fileMtime?: Date
 ): Promise<void> {
   // Quick check for markers
@@ -179,6 +187,9 @@ async function processFileWithMarkers(
   const tokenContext = getDefaultTokenContext();
   let model = createIntentModel(parseResult.intents, relativePath);
 
+  // Load overrides for both reconciliation and materialization
+  const overrides = await loadDesignOverrides();
+
   // PHASE 5A.1/5A.2: Apply design overrides (soft reconciliation with precedence)
   const useOverrides = getUseOverrides();
   const precedence = getOverridesPrecedence();
@@ -186,7 +197,6 @@ async function processFileWithMarkers(
   if (!useOverrides) {
     console.log(`[Watcher] Overrides: USE_OVERRIDES=false (skipping)`);
   } else {
-    const overrides = await loadDesignOverrides();
     if (overrides && Object.keys(overrides).length > 0) {
       const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(
         model,
@@ -205,6 +215,23 @@ async function processFileWithMarkers(
           : '';
         console.log(`[Watcher] Overrides: precedence=always applied=${reconcileResult.matched}${matchedInfo} ignored=${reconcileResult.ignored}`);
       }
+    }
+  }
+
+  // PHASE 5B: Materialize design overrides to code (if enabled and triggered on file_save)
+  const materializeOn = getMaterializeOn();
+  if (isMaterializeEnabled() && materializeOn === 'file_save' && overrides && Object.keys(overrides).length > 0) {
+    const materializeResult = await materialize({
+      absolutePath,
+      relativePath,
+      content,
+      intents: parseResult.intents,
+      overrides,
+      repoRoot,
+    });
+
+    if (materializeResult && materializeResult.changes > 0) {
+      logMaterializeResult(materializeResult, '[Watcher]');
     }
   }
 
@@ -245,8 +272,10 @@ async function processFileWithMarkers(
  */
 async function processFileWithLLM(
   content: string,
+  absolutePath: string,
   relativePath: string,
   serverUrl: string,
+  repoRoot: string,
   fileMtime?: Date
 ): Promise<void> {
   console.log(`[Watcher] Using LLM analyzer...`);
@@ -283,6 +312,9 @@ async function processFileWithLLM(
 
   console.log(`[Watcher] Found ${analyzeResult.model.intents.length} intent(s) from LLM`);
 
+  // Load overrides for both reconciliation and materialization
+  const overrides = await loadDesignOverrides();
+
   // PHASE 5A.1/5A.2: Apply design overrides (soft reconciliation with precedence)
   let model = analyzeResult.model;
   const useOverrides = getUseOverrides();
@@ -291,7 +323,6 @@ async function processFileWithLLM(
   if (!useOverrides) {
     console.log(`[Watcher] Overrides: USE_OVERRIDES=false (skipping)`);
   } else {
-    const overrides = await loadDesignOverrides();
     if (overrides && Object.keys(overrides).length > 0) {
       const { model: reconciledModel, result: reconcileResult } = applyOverridesToIntentModel(
         model,
@@ -310,6 +341,24 @@ async function processFileWithLLM(
           : '';
         console.log(`[Watcher] Overrides: precedence=always applied=${reconcileResult.matched}${matchedInfo} ignored=${reconcileResult.ignored}`);
       }
+    }
+  }
+
+  // PHASE 5B: Materialize design overrides to code (if enabled and triggered on file_save)
+  // Note: LLM mode extracts intents differently, but we still materialize based on those intents
+  const materializeOn = getMaterializeOn();
+  if (isMaterializeEnabled() && materializeOn === 'file_save' && overrides && Object.keys(overrides).length > 0) {
+    const materializeResult = await materialize({
+      absolutePath,
+      relativePath,
+      content,
+      intents: analyzeResult.model.intents, // Use original intents, not reconciled
+      overrides,
+      repoRoot,
+    });
+
+    if (materializeResult && materializeResult.changes > 0) {
+      logMaterializeResult(materializeResult, '[Watcher]');
     }
   }
 
@@ -356,6 +405,7 @@ async function processFileWithLLM(
 async function processFile(filePath: string, serverUrl: string): Promise<void> {
   const absolutePath = resolve(filePath);
   const relativePath = relative(process.cwd(), absolutePath);
+  const repoRoot = process.cwd();
 
   console.log(`[Watcher] Processing: ${relativePath}`);
 
@@ -372,7 +422,7 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
       if (!isLLMAnalyzerAvailable()) {
         console.warn(`[Watcher] USE_LLM_ANALYZER=true but no API key configured`);
         console.warn(`[Watcher] Falling back to marker-based parsing`);
-        await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
+        await processFileWithMarkers(content, absolutePath, relativePath, serverUrl, repoRoot, fileMtime);
       } else {
         // Guard: skip LLM if no markers and LLM_ANALYZE_ALL is not enabled
         const hasMarkers = hasFigmaMarkers(content);
@@ -383,19 +433,19 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
 
         // Try LLM, fall back to markers on any error
         try {
-          await processFileWithLLM(content, relativePath, serverUrl, fileMtime);
+          await processFileWithLLM(content, absolutePath, relativePath, serverUrl, repoRoot, fileMtime);
         } catch (llmError) {
           const errorMsg = llmError instanceof Error ? llmError.message : String(llmError);
           console.warn(`[Watcher] LLM failed, falling back to marker-based parsing: ${errorMsg}`);
           if (hasMarkers) {
-            await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
+            await processFileWithMarkers(content, absolutePath, relativePath, serverUrl, repoRoot, fileMtime);
           } else {
             console.log(`[Watcher] No @figma markers to fall back to, skipping`);
           }
         }
       }
     } else {
-      await processFileWithMarkers(content, relativePath, serverUrl, fileMtime);
+      await processFileWithMarkers(content, absolutePath, relativePath, serverUrl, repoRoot, fileMtime);
     }
   } catch (error) {
     console.error(`[Watcher] ✗ Error processing file:`, error);
