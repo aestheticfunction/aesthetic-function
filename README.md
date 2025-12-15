@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 8B)
+## What Works Today (Phase 8C)
 
 | Feature | Status |
 |---------|--------|
@@ -62,6 +62,12 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | State → Figma property mapping | ✅ |
 | Variant info in DESIGN_CHANGE | ✅ |
 | DEBUG_LIST_VARIANTS diagnostic | ✅ |
+| **Component Mapping Registry (Phase 8C)** | |
+| component-map.json for stable node IDs | ✅ |
+| Automatic map updates on Send Selection | ✅ |
+| Watcher prefers mapped IDs over names | ✅ |
+| Plugin resolves `id:<nodeId>` queries | ✅ |
+| Idempotent server map merging | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -136,6 +142,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 7C** | Reconciliation policy + echo suppression | ✅ |
 | **Phase 8A** | Variant/state mapping (base/disabled/hover/pressed) | ✅ |
 | **Phase 8B** | Native Figma Variant Targeting (Component Sets) | ✅ |
+| **Phase 8C** | Component Mapping Registry (Stable IDs) | ✅ |
 
 ### Not Implemented Yet
 
@@ -145,7 +152,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), and native Figma variant targeting (Phase 8B). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), and stable ID mapping via component-map.json (Phase 8C). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -316,6 +323,106 @@ The plugin will:
 1. Look for a Component Set named `LoginButton`
 2. Resolve the variant with the matching state
 3. Apply the fill color to that variant
+
+---
+
+## Component Mapping Registry (Phase 8C)
+
+Phase 8C adds a deterministic mapping registry (`component-map.json`) that stores stable Figma node IDs for components and their variants. This enables sync targets to remain stable across renames and refactors.
+
+### Why Stable IDs?
+
+Figma node IDs remain constant for the lifetime of a node, even if:
+- The node is renamed
+- The node is moved to a different page
+- The Component Set is reorganized
+
+Without stable IDs, renaming a button from "LoginButton" to "SignInButton" would break all sync mappings. With stable IDs, the watcher uses the stored node ID directly.
+
+### How It Works
+
+1. **Send Selection**: When a designer selects a variant and clicks "Send Selection", the plugin sends both the DESIGN_CHANGE and a map update to the server
+2. **Map Storage**: The server merges the update into `component-map.json` at the repo root
+3. **Watcher Resolution**: On file save, the watcher checks `component-map.json` for a mapped node ID and uses `id:<nodeId>` format if found
+4. **Plugin Resolution**: The plugin resolves `id:` prefixed queries using `figma.getNodeById()` for direct lookup
+
+### Registry Format
+
+```json
+{
+  "version": 1,
+  "components": {
+    "LoginButton": {
+      "figma": {
+        "componentSetNodeId": "12:34",
+        "name": "LoginButton",
+        "variants": {
+          "base": { "nodeId": "12:35" },
+          "hover": { "nodeId": "12:36" },
+          "pressed": { "nodeId": "12:37" },
+          "disabled": { "nodeId": "12:38" }
+        }
+      }
+    }
+  }
+}
+```
+
+### Resolution Flow
+
+```
+Marker: @figma node=LoginButton::hover
+          ↓
+Watcher: Check component-map.json
+          ↓
+Found: LoginButton.figma.variants.hover.nodeId = "12:36"
+          ↓
+Emit: nodeQuery = "id:12:36"
+          ↓
+Plugin: figma.getNodeById("12:36") → direct node access
+```
+
+If no mapping exists, the watcher falls back to name-based resolution (`LoginButton::hover`).
+
+### Git Configuration
+
+By default, `component-map.json` is gitignored (local state). To commit it for team sharing:
+
+```bash
+# Remove from .gitignore or add exception
+echo '!component-map.json' >> .gitignore
+
+# Commit the map
+git add component-map.json
+git commit -m "Add component mapping for stable Figma IDs"
+```
+
+**Pros of committing**:
+- Team members get the same stable mappings
+- Mappings survive local file deletion
+
+**Pros of ignoring**:
+- Each developer has their own Figma document
+- No merge conflicts on mapping files
+
+### Environment Variable
+
+Control component map usage:
+
+```bash
+# Disable component map resolution
+USE_COMPONENT_MAP=false pnpm watcher
+
+# Enable explicitly (default if file exists)
+USE_COMPONENT_MAP=true pnpm watcher
+```
+
+### Fallback Behavior
+
+- If `component-map.json` doesn't exist: name-based resolution only
+- If component exists but variant missing: warns and falls back to name
+- If `id:` query fails (node deleted): warns and tries name-based resolution
+- If multiple Component Sets share a name: fails loudly (ambiguous)
 
 ---
 
@@ -816,10 +923,11 @@ The following files are **intentionally gitignored** as runtime artifacts:
 | File/Directory | Purpose |
 |----------------|---------|
 | `design-overrides.json` | Captured design changes (local state) |
+| `component-map.json` | Stable Figma node ID mappings (Phase 8C) |
 | `sync-log.md` | Audit trail (debug artifact) |
 | `design-materializations/` | Generated patch artifacts (Phase 5B) |
 
-These files are machine-local and should not be committed. Each developer/environment maintains their own override state.
+These files are machine-local and should not be committed by default. Each developer/environment maintains their own override state. However, `component-map.json` can optionally be committed for team sharing of stable ID mappings.
 
 ---
 
@@ -842,6 +950,7 @@ aesthetic-function/
 │   └── figma-plugin/     # Figma sandbox plugin
 ├── demo-app/             # Sample React app with markers
 ├── design-overrides.json # (gitignored) Captured design changes
+├── component-map.json    # (gitignored) Stable Figma node ID mappings
 ├── design-materializations/ # (gitignored) Patch artifacts
 ├── sync-log.md           # (gitignored) Audit trail
 └── README.md

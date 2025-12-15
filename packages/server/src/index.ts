@@ -21,7 +21,8 @@ import {
   type ApplyOperationsPayload,
   MessageType,
 } from '@aesthetic-function/shared';
-import { logBroadcast, logDesignChange, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
+import { logBroadcast, logDesignChange, logMapUpdate, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
+import { loadComponentMap, mergeMapUpdate, saveComponentMap, getComponentMapPath } from './componentMap.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
 
@@ -215,6 +216,71 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
     return;
   }
 
+  // Receive mapping update from Figma plugin (Component Map)
+  if (req.method === 'POST' && url.pathname === '/map-update') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body) as {
+          baseName: string;
+          componentSetNodeId?: string;
+          variantState: string | null;
+          variantNodeId: string;
+        };
+        
+        // Validate required fields
+        if (!data.baseName || typeof data.baseName !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing or invalid baseName' }));
+          return;
+        }
+        if (!data.variantNodeId || typeof data.variantNodeId !== 'string') {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Missing or invalid variantNodeId' }));
+          return;
+        }
+        
+        const timestamp = new Date().toISOString();
+        console.log(`[Server] MAP_UPDATE: ${data.baseName}${data.variantState ? '::' + data.variantState : ''} → ${data.variantNodeId}`);
+        
+        // Load existing map, merge update, and save if changed
+        const existing = await loadComponentMap();
+        const { map, changed } = mergeMapUpdate(existing, {
+          baseName: data.baseName,
+          componentSetNodeId: data.componentSetNodeId,
+          variantState: data.variantState,
+          variantNodeId: data.variantNodeId,
+        });
+        
+        if (changed) {
+          await saveComponentMap(map);
+          console.log(`[Server] ✓ Updated component-map.json`);
+          
+          // Audit log for map updates
+          logMapUpdate({
+            baseName: data.baseName,
+            variantState: data.variantState,
+            variantNodeId: data.variantNodeId,
+            componentSetNodeId: data.componentSetNodeId,
+            timestamp,
+            mapPath: getComponentMapPath(),
+          });
+        } else {
+          console.log(`[Server] No change to component-map.json (idempotent)`);
+        }
+        
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, changed }));
+      } catch (err) {
+        console.error('[Server] Error handling map-update:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to update component map' }));
+      }
+    });
+    return;
+  }
+
   // 404 for unknown routes
   res.writeHead(404, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify({ error: 'Not found' }));
@@ -342,7 +408,9 @@ httpServer.listen(PORT, () => {
   console.log(`[Server] Polling endpoint: GET http://localhost:${PORT}/poll`);
   console.log(`[Server] Test endpoint: POST http://localhost:${PORT}/test`);
   console.log(`[Server] Design change: POST http://localhost:${PORT}/design-change`);
+  console.log(`[Server] Map update: POST http://localhost:${PORT}/map-update`);
   console.log(`[Server] Audit log: ${isAuditLogEnabled() ? 'ENABLED (sync-log.md)' : 'disabled'}`);
+  console.log(`[Server] Component map: ${getComponentMapPath()}`);
   console.log('');
   console.log('[Server] For Figma plugin access, expose via tunnel:');
   console.log(`  npx cloudflared tunnel --url http://localhost:${PORT}`);

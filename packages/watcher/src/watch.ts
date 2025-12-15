@@ -48,6 +48,13 @@ import {
   isMaterializeEnabled,
   getMaterializeOn,
 } from './materialize/index.js';
+import {
+  loadComponentMap,
+  resolveFromMap,
+  createIdQuery,
+  componentMapExists,
+} from './reconcile/componentMap.js';
+import type { FigmaOperation } from './transform/intentToFigmaOps.js';
 
 // =============================================================================
 // CONFIGURATION
@@ -60,6 +67,30 @@ import {
 function isLLMAnalyzeAllEnabled(): boolean {
   const flag = process.env.LLM_ANALYZE_ALL?.toLowerCase();
   return flag === 'true' || flag === '1';
+}
+
+/**
+ * Check if component map resolution is enabled.
+ * Default: true if component-map.json exists.
+ * Can be disabled with USE_COMPONENT_MAP=false.
+ */
+let componentMapEnabled: boolean | null = null;
+
+async function isComponentMapEnabled(): Promise<boolean> {
+  // Explicit flag takes precedence
+  const flag = process.env.USE_COMPONENT_MAP?.toLowerCase();
+  if (flag === 'false' || flag === '0') {
+    return false;
+  }
+  if (flag === 'true' || flag === '1') {
+    return true;
+  }
+
+  // Default: enabled if file exists (cache the result)
+  if (componentMapEnabled === null) {
+    componentMapEnabled = await componentMapExists();
+  }
+  return componentMapEnabled;
 }
 
 const DEFAULT_WATCH_PATH = './demo-app/src';
@@ -145,6 +176,82 @@ async function sendOperationsToServer(
   }
 
   return response.json() as Promise<SendResult>;
+}
+
+// =============================================================================
+// COMPONENT MAP RESOLUTION (Phase 8C)
+// =============================================================================
+
+/**
+ * Parse a nodeQuery to extract base name and state.
+ * Handles "NodeName" and "NodeName::state" formats.
+ */
+function parseNodeQuery(nodeQuery: string): { baseName: string; state: string | null } {
+  const parts = nodeQuery.split('::');
+  return {
+    baseName: parts[0],
+    state: parts.length > 1 ? parts[1] : null,
+  };
+}
+
+/**
+ * Apply component map resolution to operations.
+ *
+ * For each operation with a nodeQuery, check if the component map has a
+ * mapped nodeId for that component/variant. If so, replace the nodeQuery
+ * with "id:<nodeId>" format for stable targeting.
+ *
+ * @param operations - Array of Figma operations
+ * @returns Modified operations with id: queries where applicable
+ */
+async function applyComponentMapResolution(
+  operations: FigmaOperation[]
+): Promise<FigmaOperation[]> {
+  // Check if component map is enabled
+  const enabled = await isComponentMapEnabled();
+  if (!enabled) {
+    return operations;
+  }
+
+  // Load the component map
+  const map = await loadComponentMap();
+  if (!map) {
+    return operations;
+  }
+
+  // Apply resolution to each operation
+  return operations.map((op) => {
+    if (!op.nodeQuery) {
+      return op;
+    }
+
+    // Parse the nodeQuery
+    const { baseName, state } = parseNodeQuery(op.nodeQuery);
+
+    // Check if we have a mapping
+    const resolution = resolveFromMap(map, baseName, state);
+
+    if (resolution.found && resolution.nodeId) {
+      // Replace nodeQuery with id: format
+      console.log(
+        `[Watcher] Map resolution: "${op.nodeQuery}" → id:${resolution.nodeId}`
+      );
+      return {
+        ...op,
+        nodeQuery: createIdQuery(resolution.nodeId),
+      };
+    }
+
+    // No mapping found - use original nodeQuery with warning if map exists
+    if (map.components[baseName]) {
+      // We have the component but not this variant
+      console.warn(
+        `[Watcher] ⚠ Component map has "${baseName}" but missing variant "${state ?? 'base'}"`
+      );
+    }
+
+    return op;
+  });
 }
 
 // =============================================================================
@@ -248,11 +355,14 @@ async function processFileWithMarkers(
     });
   }
 
+  // Phase 8C: Apply component map resolution for stable IDs
+  const resolvedOps = await applyComponentMapResolution(transformResult.operations);
+
   // Send to server
   const requestId = `watch-marker-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
   const result = await sendOperationsToServer(
-    transformResult.operations,
+    resolvedOps,
     {
       requestId,
       serverUrl,
@@ -375,6 +485,9 @@ async function processFileWithLLM(
     });
   }
 
+  // Phase 8C: Apply component map resolution for stable IDs
+  const resolvedOps = await applyComponentMapResolution(transformResult.operations);
+
   // Send to server
   const requestId = `watch-llm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -384,7 +497,7 @@ async function processFileWithLLM(
     : analyzeResult.source;
 
   const result = await sendOperationsToServer(
-    transformResult.operations,
+    resolvedOps,
     {
       requestId,
       serverUrl,

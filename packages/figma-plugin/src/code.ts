@@ -404,6 +404,89 @@ function deriveVariantNodeName(node: SceneNode): string {
 }
 
 /**
+ * Derive variant mapping info for the component map.
+ *
+ * This is used in CAPTURE_SELECTION to provide mapping data for stable IDs.
+ *
+ * @param node - The selected node
+ * @returns Mapping info or null if not a variant
+ */
+interface VariantMappingInfo {
+  /** Base component name (Component Set name) */
+  baseName: string;
+  /** Figma Component Set node ID */
+  componentSetNodeId: string;
+  /** Variant state (e.g., "hover") or null for base */
+  variantState: string | null;
+  /** Figma node ID for the specific variant */
+  variantNodeId: string;
+}
+
+function deriveVariantMappingInfo(node: SceneNode): VariantMappingInfo | null {
+  // Case 1: Node is a ComponentNode inside a ComponentSetNode
+  if (node.type === 'COMPONENT') {
+    const parent = node.parent;
+    if (parent && parent.type === 'COMPONENT_SET') {
+      // This is a variant component
+      const variantProps = (node as ComponentNode).variantProperties;
+      let variantState: string | null = null;
+
+      if (variantProps) {
+        const stateValue = variantProps['State'] || variantProps['state'] || variantProps['Variant'];
+        if (stateValue) {
+          variantState = figmaValueToStateKey(stateValue);
+          // 'base' state is represented as null in the mapping
+          if (variantState === 'base') {
+            variantState = null;
+          }
+        }
+      }
+
+      return {
+        baseName: parent.name,
+        componentSetNodeId: parent.id,
+        variantState,
+        variantNodeId: node.id,
+      };
+    }
+  }
+
+  // Case 2: Node is an INSTANCE of a variant
+  if (node.type === 'INSTANCE') {
+    const instance = node as InstanceNode;
+    const mainComponent = instance.mainComponent;
+    if (mainComponent) {
+      const parent = mainComponent.parent;
+      if (parent && parent.type === 'COMPONENT_SET') {
+        // This is an instance of a variant - map to the main component, not the instance
+        const variantProps = mainComponent.variantProperties;
+        let variantState: string | null = null;
+
+        if (variantProps) {
+          const stateValue = variantProps['State'] || variantProps['state'] || variantProps['Variant'];
+          if (stateValue) {
+            variantState = figmaValueToStateKey(stateValue);
+            if (variantState === 'base') {
+              variantState = null;
+            }
+          }
+        }
+
+        return {
+          baseName: parent.name,
+          componentSetNodeId: parent.id,
+          variantState,
+          variantNodeId: mainComponent.id, // Map to main component, not instance
+        };
+      }
+    }
+  }
+
+  // Not a variant component
+  return null;
+}
+
+/**
  * Map a Figma variant property value back to our state key convention.
  *
  * Figma uses capitalized values (Hover, Disabled, Pressed) while our convention
@@ -433,10 +516,11 @@ function findNodeByName(name: string): SceneNode | null {
 /**
  * Get the target node for an operation:
  * 1. If nodeId provided, find by ID (return null if not found)
- * 2. If nodeQuery provided, use variant-aware resolution:
- *    a. Parse for ::state suffix (e.g., "LoginButton::hover")
- *    b. If variant query, find Component Set and resolve variant
- *    c. Else, find by literal name
+ * 2. If nodeQuery provided:
+ *    a. If "id:<nodeId>" format, find by ID (Phase 8C stable IDs)
+ *    b. Else parse for ::state suffix (e.g., "LoginButton::hover")
+ *    c. If variant query, find Component Set and resolve variant
+ *    d. Else, find by literal name
  * 3. Only fall back to selection when neither nodeId nor nodeQuery is provided
  */
 function getTargetNode(op: { nodeId?: string | null; nodeQuery?: string }): SceneNode | null {
@@ -453,6 +537,20 @@ function getTargetNode(op: { nodeId?: string | null; nodeQuery?: string }): Scen
 
   // Try by name query with variant-aware resolution
   if (op.nodeQuery) {
+    // Phase 8C: Check for "id:<nodeId>" format (stable ID from component map)
+    if (op.nodeQuery.startsWith('id:')) {
+      const nodeId = op.nodeQuery.slice(3);
+      const node = figma.getNodeById(nodeId);
+      if (node && node.type !== 'DOCUMENT' && node.type !== 'PAGE') {
+        console.log(`[Plugin] Resolved by stable ID: id:${nodeId} → "${node.name}"`);
+        return node as SceneNode;
+      }
+      // Stable ID not found - this is a warning condition
+      console.warn(`[Plugin] Stable ID not found: ${nodeId} - falling back to name resolution`);
+      // Do NOT return null here - fall through to variant/name resolution
+      // The node may have been recreated with a new ID
+    }
+    
     const resolution = resolveTargetNode(op.nodeQuery);
     
     if (resolution.node) {
@@ -818,9 +916,16 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
       // This allows Code ↔ Design sync to use "ComponentName::state" format
       const resolvedNodeName = deriveVariantNodeName(node);
       
+      // Get variant mapping info for component-map.json updates
+      const variantMapping = deriveVariantMappingInfo(node);
+      
       console.log(`[Plugin] Captured ${changes.length} change(s) from "${resolvedNodeName}"`);
+      if (variantMapping) {
+        console.log(`[Plugin] Variant mapping: ${variantMapping.baseName}::${variantMapping.variantState ?? 'base'} → ${variantMapping.variantNodeId}`);
+      }
 
       // Send to ui.html for forwarding to server
+      // Include variantMapping if available for component-map.json updates
       figma.ui.postMessage({
         type: 'SELECTION_CAPTURED',
         payload: {
@@ -828,6 +933,8 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
           nodeName: resolvedNodeName,
           changes,
           source: 'figma-plugin',
+          // Phase 8C: Include variant mapping info for stable IDs
+          variantMapping: variantMapping,
         },
       });
       break;

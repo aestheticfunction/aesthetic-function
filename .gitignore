@@ -30,5 +30,6 @@ tmp/
 
 # Runtime artifacts
 design-overrides.json
+component-map.json
 sync-log.md
 design-materializations/

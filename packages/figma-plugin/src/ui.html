@@ -220,6 +220,11 @@
           var pl = msg.payload || {};
           log('Captured: ' + pl.nodeName + ' (' + (pl.changes || []).length + ' changes)');
           sendDesignChange(pl);
+          
+          // Phase 8C: If variant mapping info is present, send map update
+          if (pl.variantMapping) {
+            sendMapUpdate(pl.variantMapping);
+          }
         } else if (msg.type === 'OPERATION_RESULT') {
           var pl = msg.payload || {};
           var successCount = pl.successCount || 0;
@@ -281,6 +286,40 @@
         }
       } catch (e) {
         log('Error sending DESIGN_CHANGE: ' + e.message);
+      }
+    }
+
+    /**
+     * Send map update to server for component-map.json
+     * Phase 8C: Stable ID mapping for variants
+     */
+    async function sendMapUpdate(variantMapping) {
+      if (!currentServerUrl) {
+        return; // Silently skip if not connected
+      }
+      
+      try {
+        var res = await fetch(currentServerUrl + '/map-update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            baseName: variantMapping.baseName,
+            componentSetNodeId: variantMapping.componentSetNodeId,
+            variantState: variantMapping.variantState,
+            variantNodeId: variantMapping.variantNodeId
+          })
+        });
+        if (res.ok) {
+          var result = await res.json();
+          if (result.changed) {
+            log('✓ Updated component map: ' + variantMapping.baseName);
+          }
+        } else {
+          log('Map update failed: HTTP ' + res.status);
+        }
+      } catch (e) {
+        // Non-blocking - don't spam the log for map update failures
+        console.warn('Map update error:', e.message);
       }
     }
 

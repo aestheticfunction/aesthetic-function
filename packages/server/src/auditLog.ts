@@ -164,6 +164,59 @@ export function logDesignChange(entry: DesignChangeLogEntry): void {
 }
 
 /**
+ * Metadata for a component map update event.
+ */
+export interface MapUpdateLogEntry {
+  /** Base component name */
+  baseName: string;
+  /** Variant state (null for base) */
+  variantState: string | null;
+  /** Figma node ID for the variant */
+  variantNodeId: string;
+  /** Figma Component Set node ID (optional) */
+  componentSetNodeId?: string;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Path to component-map.json */
+  mapPath: string;
+}
+
+/**
+ * Log a component map update event to the audit trail.
+ *
+ * @param entry - The map update entry metadata
+ */
+export function logMapUpdate(entry: MapUpdateLogEntry): void {
+  if (!isAuditLogEnabled()) {
+    return;
+  }
+
+  const logEntry = formatMapUpdateEntry(entry);
+  queueLogEntry(logEntry);
+}
+
+/**
+ * Format a map update entry as markdown.
+ */
+function formatMapUpdateEntry(entry: MapUpdateLogEntry): string {
+  const variantKey = entry.variantState ?? 'base';
+  const componentKey = `${entry.baseName}::${variantKey}`;
+  
+  const lines: string[] = [
+    `## [${entry.timestamp}] MAP_UPDATE`,
+    `component=${componentKey}`,
+    `nodeId=${entry.variantNodeId}`,
+  ];
+  
+  if (entry.componentSetNodeId) {
+    lines.push(`componentSetNodeId=${entry.componentSetNodeId}`);
+  }
+  
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Flush any pending log entries immediately.
  * Useful for graceful shutdown.
  */
