@@ -22,6 +22,7 @@
     "test:transform": "tsx src/transform/__tests__/intentToFigmaOps.test.ts",
     "test:analyze": "vitest run src/analyze",
     "ast:report": "tsx src/ast/cliReport.ts",
+    "ast:write-feasibility": "tsx src/ast/cliWriteFeasibility.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

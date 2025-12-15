@@ -270,3 +270,91 @@ export interface AnchoredAstReport {
   /** All anchor mappings */
   anchors: Anchor[];
 }
+
+// =============================================================================
+// WRITE SAFETY ANALYSIS (Phase 6C)
+// =============================================================================
+
+/**
+ * Classification of how safe it is to auto-write a value back to source.
+ *
+ * WHY: Before implementing code writing, we need to understand which values
+ * can be safely modified programmatically. This analysis runs read-only
+ * to inform future write operations.
+ */
+export type WriteSafetyLevel = 'auto-writable' | 'conditionally-writable' | 'not-writable';
+
+/**
+ * Reasons why a value might not be auto-writable.
+ */
+export type WriteSafetyReason =
+  | 'literal' // Auto-writable: direct literal value
+  | 'simple-expression' // Conditionally writable: template literal, ternary with literals
+  | 'variable-reference' // Not writable: references a variable/prop
+  | 'function-call' // Not writable: result of a function call
+  | 'className' // Not writable: would require CSS modification
+  | 'computed' // Not writable: dynamic computation
+  | 'spread' // Not writable: spread operator may override
+  | 'external-style' // Not writable: style comes from external source
+  | 'complex-expression'; // Not writable: complex expression we can't analyze
+
+/**
+ * Write safety assessment for a single semantic value.
+ */
+export interface ValueWriteSafety {
+  /** The property path (e.g., "text.content", "layout.width") */
+  path: string;
+  /** Current value (if extractable) */
+  value?: string | number | boolean;
+  /** Safety classification */
+  level: WriteSafetyLevel;
+  /** Reason for the classification */
+  reason: WriteSafetyReason;
+  /** Source location where modification would occur */
+  loc?: SourceLocation;
+  /** Human-readable explanation */
+  explanation: string;
+}
+
+/**
+ * Complete write safety report for an anchored component.
+ */
+export interface WriteSafetyReport {
+  /** Node name from the @figma marker */
+  nodeName: string;
+  /** Component name */
+  componentName?: string;
+  /** Location of the component */
+  componentLoc?: SourceLocation;
+  /** All auto-writable values */
+  autoWritable: ValueWriteSafety[];
+  /** All conditionally writable values */
+  conditionallyWritable: ValueWriteSafety[];
+  /** All not-writable values */
+  notWritable: ValueWriteSafety[];
+  /** Summary counts */
+  summary: {
+    totalValues: number;
+    autoWritableCount: number;
+    conditionallyWritableCount: number;
+    notWritableCount: number;
+  };
+}
+
+/**
+ * Full write feasibility report for a file.
+ */
+export interface WriteFeasibilityReport {
+  /** Path to the analyzed file */
+  filePath: string;
+  /** Safety reports per anchored node */
+  reports: WriteSafetyReport[];
+  /** File-level summary */
+  summary: {
+    totalNodes: number;
+    totalValues: number;
+    autoWritableCount: number;
+    conditionallyWritableCount: number;
+    notWritableCount: number;
+  };
+}
