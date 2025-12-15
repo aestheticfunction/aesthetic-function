@@ -259,6 +259,8 @@ export async function materializeAst(
 /**
  * Log an AST write result summary.
  *
+ * In dry-run mode, prints detailed information about what would be written and why.
+ *
  * @param result - AST write result
  * @param prefix - Log prefix (e.g., '[Watcher]')
  */
@@ -273,11 +275,17 @@ export function logAstWriteResult(
     `${prefix} AST Write: mode=${result.mode}${dryRunLabel} applied=${result.applied}${skippedLabel}`
   );
 
+  // In dry-run mode, provide more detailed information
+  if (result.dryRun && result.operations.length > 0) {
+    console.log(`${prefix}   Would write the following changes:`);
+  }
+
   // Log details for operations
   for (const op of result.operations) {
     const status = op.writable ? '✓' : '✗';
+    const action = result.dryRun && op.writable ? 'would change' : op.writable ? 'changed' : 'skipped';
     console.log(
-      `${prefix}   ${status} ${op.op} ${op.nodeName} (L${op.loc.startLine}): "${op.before}" → "${op.after}"`
+      `${prefix}   ${status} ${op.op} ${op.nodeName} (L${op.loc.startLine}): "${op.before}" → "${op.after}" [${action}]`
     );
     if (!op.writable) {
       console.log(`${prefix}       reason: ${op.reason}`);

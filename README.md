@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 6A)
+## What Works Today (Phase 7C)
 
 | Feature | Status |
 |---------|--------|
@@ -35,6 +35,20 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Component detection (function + arrow) | ✅ |
 | Marker-to-component anchoring | ✅ |
 | Diff report: JSX vs Markers vs Overrides | ✅ |
+| **AST Semantic Extraction (Phase 6B/6C)** | |
+| Semantic color/layout extraction from JSX | ✅ |
+| AST write feasibility analysis | ✅ |
+| Token-to-style reverse mapping | ✅ |
+| Feasibility CLI (`feasibility:report`) | ✅ |
+| **AST Writes (Phase 7A/7B)** | |
+| AST-based source mutation via Babel | ✅ |
+| Marker-line edits via AST | ✅ |
+| Style object patching | ✅ |
+| Dry-run mode for AST writes | ✅ |
+| **Reconciliation Policy (Phase 7C)** | |
+| Unified precedence: override > marker > ast > code | ✅ |
+| Echo suppression guard (prevents feedback loops) | ✅ |
+| Resolution summary logging | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -102,19 +116,22 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 5A.2** | Override precedence controls (feature flags) | ✅ |
 | **Phase 5B** | Design → Code materialization (patch + marker writes) | ✅ |
 | **Phase 6A** | Read-only AST parsing with Babel | ✅ |
+| **Phase 6B** | Semantic extraction from JSX (colors, layout) | ✅ |
+| **Phase 6C** | AST write feasibility analysis | ✅ |
+| **Phase 7A** | AST-based source mutation | ✅ |
+| **Phase 7B** | Marker + style patching via AST | ✅ |
+| **Phase 7C** | Reconciliation policy + echo suppression | ✅ |
 
 ### Not Implemented Yet
 
 | Feature | Status |
 |---------|--------|
-| AST-based JSX mutation (write mode) | ❌ |
-| Design → JSX rewriting | ❌ |
 | Conflict resolution UI | ❌ |
 | Variant/state mapping | ❌ |
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes read-only AST parsing via Babel (Phase 6A), but does not perform AST-level mutations. Source file modifications are done via regex-based marker line edits.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -193,6 +210,112 @@ Summary: 3 markers, 4 components, 4 mismatches
 - **Auditing**: See drift between markers and actual code
 - **Validation**: Ensure markers match component content
 - **Pre-commit checks**: Detect undeclared changes before sync
+
+---
+
+## AST Semantic Extraction (Phase 6B/6C)
+
+Phase 6B adds deeper semantic extraction from JSX to understand colors, layout, and style patterns. Phase 6C adds feasibility analysis to determine which values can be safely mutated.
+
+### Semantic Categories
+
+| Category | Extraction |
+|----------|------------|
+| **Fill Colors** | Inline `backgroundColor`, `color` from style objects |
+| **Layout** | `gap`, `padding`, `margin` from style objects |
+| **Token Mapping** | Reverse-map hex values to design tokens |
+
+### Feasibility Analysis
+
+The feasibility analyzer determines which AST nodes can be safely modified:
+
+| Feasibility | Meaning |
+|-------------|---------|
+| `LITERAL_EASY` | Direct string/number literal, safe to modify |
+| `PROPERTY_SPREAD` | Style object needs spread handling |
+| `DYNAMIC_UNSAFE` | Expression/variable, cannot safely modify |
+| `NOT_FOUND` | Target not found in AST |
+
+### CLI Report
+
+```bash
+pnpm --filter @aesthetic-function/watcher feasibility:report demo-app/src/App.tsx
+```
+
+---
+
+## AST Writes (Phase 7A/7B)
+
+Phase 7A/7B implements AST-based source mutation using Babel. This enables direct modification of JSX literals and style objects while preserving formatting.
+
+### What It Can Mutate
+
+| Target | Example |
+|--------|---------|
+| **Marker text** | `// @figma node=X text="Old"` → `text="New"` |
+| **Marker fill** | `// @figma node=X fill=#OLD` → `fill=#NEW` |
+| **Style properties** | `style={{ backgroundColor: "#OLD" }}` → `"#NEW"` |
+| **JSX text** | `<Button>Old</Button>` → `<Button>New</Button>` |
+
+### Dry-Run Mode
+
+By default, AST writes are in dry-run mode (`MATERIALIZE_DRY_RUN=true`):
+
+```
+AST Write: Would write the following changes:
+  File: demo-app/src/App.tsx
+  Changes:
+    - LoginButton.text: "Login" → "Sign In"
+    - LoginButton.fill: "#3B82F6" → "#FF5500"
+```
+
+### AST Write Mode
+
+Set `MATERIALIZE_MODE=ast` and `MATERIALIZE_DRY_RUN=false` for actual writes.
+
+---
+
+## Reconciliation Policy (Phase 7C)
+
+Phase 7C defines a unified precedence policy to prevent "source of truth fights" between markers, AST values, and design overrides.
+
+### Precedence Order
+
+When determining the final value for a field:
+
+```
+1. override (design-overrides.json)  ← Highest priority
+2. marker   (@figma comment)
+3. ast      (JSX literal extracted by Babel)
+4. code     (fallback)               ← Lowest priority
+```
+
+### Resolution Example
+
+```
+LoginButton.text resolution:
+  code:     "Submit" (from JSX)
+  marker:   "Login"  (from @figma comment)
+  override: "Sign In" (from design-overrides.json)
+  → WINNER: "Sign In" (source: override)
+```
+
+### Echo Suppression
+
+After an AST write modifies a file, the watcher may re-trigger from the file save. Echo suppression prevents sending duplicate operations:
+
+1. When AST writes `LoginButton.text = "Sign In"`, record in cache
+2. When file save triggers re-parse, check cache
+3. If same value detected within TTL (5s default), suppress operation
+4. After TTL expires, allow new operations
+
+### Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ECHO_GUARD` | `true` | Enable echo suppression |
+| `ECHO_GUARD_TTL_MS` | `5000` | Cache TTL in milliseconds |
+| `OVERRIDES_PRECEDENCE` | `always` | `always` or `if_newer_than_code` |
 
 ---
 
@@ -306,6 +429,8 @@ Updates existing `@figma` marker lines in source files:
 | `MATERIALIZE_ON` | `design_change` | `design_change` or `file_save` |
 | `MATERIALIZE_DRY_RUN` | `true` | When true, log changes without writing files |
 | `ENABLE_AUDIT_LOG` | `false` | Enable sync-log.md audit trail |
+| `ECHO_GUARD` | `true` | Enable echo suppression after AST writes |
+| `ECHO_GUARD_TTL_MS` | `5000` | Echo cache TTL in milliseconds |
 
 ### Examples
 
@@ -523,10 +648,10 @@ aesthetic-function/
 │   ├── watcher/          # File watcher + transformer
 │   │   └── src/
 │   │       ├── analyze/  # LLM-based intent analyzer
-│   │       ├── ast/      # Babel-based AST parser (Phase 6A)
+│   │       ├── ast/      # Babel-based AST parser + feasibility analysis
 │   │       ├── parse/    # @figma marker parser
-│   │       ├── reconcile/# Override reconciliation
-│   │       ├── materialize/ # Design → Code materialization
+│   │       ├── reconcile/# Override reconciliation + precedence policy
+│   │       ├── materialize/ # Design → Code materialization + AST writes
 │   │       ├── tokens/   # Design token resolution
 │   │       └── transform/# IntentModel → FigmaOps
 │   ├── server/           # WebSocket + HTTP relay
@@ -553,6 +678,7 @@ aesthetic-function/
 | `pnpm tunnel` | Expose server via cloudflared |
 | `pnpm test:send` | Send test operations |
 | `pnpm --filter @aesthetic-function/watcher ast:report <file>` | Run AST diff report |
+| `pnpm --filter @aesthetic-function/watcher feasibility:report <file>` | Run feasibility analysis |
 
 ---
 
