@@ -122,6 +122,81 @@ export interface MarkerEditResult {
 }
 
 // =============================================================================
+// AST WRITE TYPES (Phase 7A)
+// =============================================================================
+
+import type { SourceLocation, WriteSafetyReason } from '../ast/types.js';
+
+/**
+ * Operation type for AST writes.
+ * MVP only supports SET_TEXT and SET_FILL.
+ */
+export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL';
+
+/**
+ * A single AST write operation.
+ * Represents a specific change to make in the source code.
+ */
+export interface AstWriteOp {
+  /** Operation type */
+  op: AstWriteOpType;
+  /** Node name from @figma marker */
+  nodeName: string;
+  /** The value before the change */
+  before: string;
+  /** The value after the change (from design override) */
+  after: string;
+  /** Source location of the value to modify */
+  loc: SourceLocation;
+  /** Whether this operation can be auto-written */
+  writable: boolean;
+  /** Reason for writability classification */
+  reason: WriteSafetyReason;
+  /** Human-readable explanation */
+  explanation: string;
+}
+
+/**
+ * Review artifact for AST patch mode.
+ * Contains all proposed changes for review before applying.
+ */
+export interface AstPatchArtifact {
+  /** File path this patch applies to */
+  file: string;
+  /** ISO timestamp when artifact was generated */
+  generatedAt: string;
+  /** All proposed changes (writable and not) */
+  operations: AstWriteOp[];
+  /** Summary statistics */
+  summary: {
+    /** Total operations proposed */
+    total: number;
+    /** Operations that can be auto-written */
+    writable: number;
+    /** Operations that cannot be auto-written */
+    notWritable: number;
+  };
+}
+
+/**
+ * Result of an AST write operation.
+ */
+export interface AstWriteResult {
+  /** Mode used ('patch' or 'write') */
+  mode: 'patch' | 'write';
+  /** Whether this was a dry run */
+  dryRun: boolean;
+  /** Number of operations applied/would-be-applied */
+  applied: number;
+  /** Number of operations skipped (not writable) */
+  skipped: number;
+  /** Path to artifact written (for patch mode) */
+  artifactPath?: string;
+  /** Detailed operations */
+  operations: AstWriteOp[];
+}
+
+// =============================================================================
 // MATERIALIZATION RESULT
 // =============================================================================
 

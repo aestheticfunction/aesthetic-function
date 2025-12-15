@@ -1,0 +1,71 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AST Patch - Output Stability > should produce stable operation output 1`] = `
+[
+  {
+    "after": "Log In",
+    "before": "Sign In",
+    "explanation": "Text literal "Sign In" → "Log In"",
+    "loc": {
+      "endColumn": 10,
+      "endLine": 6,
+      "startColumn": 73,
+      "startLine": 4,
+    },
+    "nodeName": "LoginButton",
+    "op": "SET_TEXT",
+    "reason": "literal",
+    "writable": true,
+  },
+  {
+    "after": "#10B981",
+    "before": "#3B82F6",
+    "explanation": "Fill literal "#3B82F6" → "#10B981"",
+    "loc": {
+      "endColumn": 53,
+      "endLine": 4,
+      "startColumn": 44,
+      "startLine": 4,
+    },
+    "nodeName": "LoginButton",
+    "op": "SET_FILL",
+    "reason": "literal",
+    "writable": true,
+  },
+]
+`;
+
+exports[`AST Patch - Output Stability > should produce stable output for mixed writable/not-writable 1`] = `
+[
+  {
+    "after": "Submit",
+    "before": "{text}",
+    "explanation": "Cannot modify: variable-reference",
+    "loc": {
+      "endColumn": 17,
+      "endLine": 5,
+      "startColumn": 13,
+      "startLine": 5,
+    },
+    "nodeName": "DynamicButton",
+    "op": "SET_TEXT",
+    "reason": "variable-reference",
+    "writable": false,
+  },
+  {
+    "after": "#10B981",
+    "before": "{color}",
+    "explanation": "Cannot modify: variable-reference",
+    "loc": {
+      "endColumn": 49,
+      "endLine": 4,
+      "startColumn": 44,
+      "startLine": 4,
+    },
+    "nodeName": "DynamicButton",
+    "op": "SET_FILL",
+    "reason": "variable-reference",
+    "writable": false,
+  },
+]
+`;
