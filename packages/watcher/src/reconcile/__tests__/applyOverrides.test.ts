@@ -501,4 +501,119 @@ describe('applyOverridesToIntentModel', () => {
       });
     });
   });
+
+  // ===========================================================================
+  // STATE-AWARE OVERRIDES (Phase 8A)
+  // ===========================================================================
+
+  describe('state-aware overrides (Phase 8A)', () => {
+    it('should apply override to base state intent using nodeName key', () => {
+      const model = createTestModel([
+        { type: 'BUTTON', nodeName: 'LoginButton', fillTokenOrHex: '#3B82F6' },
+      ]);
+      const overrides: DesignOverrides = {
+        LoginButton: {
+          nodeId: '4:7',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#FF0000',
+        },
+      };
+
+      const { model: result, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+
+      expect((result.intents[0] as ButtonIntent).fillTokenOrHex).toBe('#FF0000');
+      expect(reconcileResult.matched).toBe(1);
+    });
+
+    it('should apply override to hover state intent using NodeName::hover key', () => {
+      const model = createTestModel([
+        { type: 'BUTTON', nodeName: 'LoginButton', state: 'hover', fillTokenOrHex: '#3B82F6' },
+      ]);
+      const overrides: DesignOverrides = {
+        'LoginButton::hover': {
+          nodeId: '4:8',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#2563EB',
+        },
+      };
+
+      const { model: result, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+
+      expect((result.intents[0] as ButtonIntent).fillTokenOrHex).toBe('#2563EB');
+      expect(reconcileResult.matched).toBe(1);
+      expect(reconcileResult.overriddenNodes).toEqual(['LoginButton::hover']);
+    });
+
+    it('should apply override to disabled state intent using NodeName::disabled key', () => {
+      const model = createTestModel([
+        { type: 'BUTTON', nodeName: 'SubmitButton', state: 'disabled', fillTokenOrHex: '#CCCCCC', text: 'Submit' },
+      ]);
+      const overrides: DesignOverrides = {
+        'SubmitButton::disabled': {
+          nodeId: '4:9',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#9CA3AF',
+          text: 'Disabled',
+        },
+      };
+
+      const { model: result } = applyOverridesToIntentModel(model, overrides);
+
+      const button = result.intents[0] as ButtonIntent;
+      expect(button.fillTokenOrHex).toBe('#9CA3AF');
+      expect(button.text).toBe('Disabled');
+    });
+
+    it('should NOT apply base override to hover state intent', () => {
+      const model = createTestModel([
+        { type: 'BUTTON', nodeName: 'LoginButton', state: 'hover', fillTokenOrHex: '#3B82F6' },
+      ]);
+      const overrides: DesignOverrides = {
+        LoginButton: { // base key, not hover
+          nodeId: '4:7',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#FF0000',
+        },
+      };
+
+      const { model: result, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+
+      // Should NOT be overridden because state doesn't match
+      expect((result.intents[0] as ButtonIntent).fillTokenOrHex).toBe('#3B82F6');
+      expect(reconcileResult.matched).toBe(0);
+      expect(reconcileResult.ignored).toBe(1); // LoginButton key is ignored
+    });
+
+    it('should apply different overrides to base and hover states independently', () => {
+      const model = createTestModel([
+        { type: 'BUTTON', nodeName: 'Button', fillTokenOrHex: '#FFFFFF' },
+        { type: 'BUTTON', nodeName: 'Button', state: 'hover', fillTokenOrHex: '#FFFFFF' },
+        { type: 'BUTTON', nodeName: 'Button', state: 'disabled', fillTokenOrHex: '#FFFFFF' },
+      ]);
+      const overrides: DesignOverrides = {
+        Button: {
+          nodeId: '4:1',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#3B82F6',
+        },
+        'Button::hover': {
+          nodeId: '4:2',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#2563EB',
+        },
+        'Button::disabled': {
+          nodeId: '4:3',
+          lastUpdated: '2025-01-01T00:00:00Z',
+          fill: '#9CA3AF',
+        },
+      };
+
+      const { model: result, result: reconcileResult } = applyOverridesToIntentModel(model, overrides);
+
+      expect((result.intents[0] as ButtonIntent).fillTokenOrHex).toBe('#3B82F6');
+      expect((result.intents[1] as ButtonIntent).fillTokenOrHex).toBe('#2563EB');
+      expect((result.intents[2] as ButtonIntent).fillTokenOrHex).toBe('#9CA3AF');
+      expect(reconcileResult.matched).toBe(3);
+    });
+  });
 });

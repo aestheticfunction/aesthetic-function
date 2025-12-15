@@ -6,7 +6,15 @@
  * WHY: Defines the structure of design overrides captured from Figma.
  * These overrides are applied to the IntentModel before transforming
  * to Figma operations, creating a closed feedback loop.
+ *
+ * OVERRIDE KEY NAMING (Phase 8A):
+ * - Base state: "LoginButton"
+ * - Non-base state: "LoginButton::hover", "LoginButton::disabled"
+ *
+ * This allows the same override file to contain values for different states.
  */
+
+import type { ComponentState } from '../transform/types.js';
 
 // =============================================================================
 // DESIGN OVERRIDE TYPES
@@ -49,9 +57,43 @@ export interface LayoutOverride {
 
 /**
  * The complete design-overrides.json structure.
- * Keys are node names (e.g., "LoginButton", "WelcomeText").
+ * Keys are node names, optionally with state suffix:
+ * - "LoginButton" (base state)
+ * - "LoginButton::hover" (hover state)
+ * - "LoginButton::disabled" (disabled state)
  */
 export type DesignOverrides = Record<string, DesignOverride>;
+
+/**
+ * Get the override key for a given node name and state.
+ *
+ * @param nodeName - Base node name
+ * @param state - Component state (default: 'base')
+ * @returns Override key (e.g., "LoginButton" or "LoginButton::hover")
+ */
+export function getOverrideKey(nodeName: string, state?: ComponentState): string {
+  if (!state || state === 'base') {
+    return nodeName;
+  }
+  return `${nodeName}::${state}`;
+}
+
+/**
+ * Parse an override key into node name and state.
+ *
+ * @param key - Override key (e.g., "LoginButton::hover")
+ * @returns Object with nodeName and state
+ */
+export function parseOverrideKey(key: string): { nodeName: string; state: ComponentState } {
+  const parts = key.split('::');
+  if (parts.length === 2) {
+    const state = parts[1] as ComponentState;
+    if (['base', 'disabled', 'hover', 'pressed'].includes(state)) {
+      return { nodeName: parts[0], state };
+    }
+  }
+  return { nodeName: key, state: 'base' };
+}
 
 // =============================================================================
 // RECONCILIATION RESULT

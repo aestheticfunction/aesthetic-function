@@ -17,8 +17,9 @@
  * 4. Otherwise fall back to code-derived IntentModel
  */
 
-import type { Intent, IntentModel } from '../transform/types.js';
+import type { Intent, IntentModel, ComponentState } from '../transform/types.js';
 import type { DesignOverrides } from './types.js';
+import { getOverrideKey } from './types.js';
 import type { OverridePrecedence } from './config.js';
 import { isOverrideNewerThanFile } from './config.js';
 
@@ -127,6 +128,8 @@ export interface MarkerIntent {
   nodeName: string;
   text?: string;
   fill?: string;
+  /** Component state for variant mapping (Phase 8A) */
+  state?: ComponentState;
 }
 
 /**
@@ -134,6 +137,8 @@ export interface MarkerIntent {
  */
 export interface AstSemantics {
   nodeName: string;
+  /** Component state (Phase 8A) */
+  state?: ComponentState;
   /** Text literals found in component */
   textLiterals?: string[];
   /** Fill literals found in component (backgroundColor) */
@@ -257,9 +262,14 @@ function resolveWithoutOverride(
 /**
  * Resolve intents with full policy.
  *
+ * STATE HANDLING (Phase 8A):
+ * - Uses getOverrideKey(nodeName, state) to look up overrides
+ * - Uses nodeName::state format for marker/AST lookups
+ * - Each state is resolved independently
+ *
  * @param baseModel - Base IntentModel from code parsing
- * @param markerIntents - Marker-derived intents
- * @param astSemantics - AST-derived semantics per node
+ * @param markerIntents - Marker-derived intents (keyed by nodeName or nodeName::state)
+ * @param astSemantics - AST-derived semantics per node (keyed by nodeName or nodeName::state)
  * @param overrides - Design overrides
  * @param options - Policy options
  * @returns Resolved model and resolution report
@@ -283,9 +293,13 @@ export function resolveWithPolicy(
 
   const resolvedIntents = baseModel.intents.map((intent) => {
     const nodeName = intent.nodeName;
-    const override = overrides?.[nodeName];
-    const marker = markerIntents.get(nodeName);
-    const ast = astSemantics.get(nodeName);
+    const state = intent.state;
+    
+    // Use state-aware keys for lookups
+    const overrideKey = getOverrideKey(nodeName, state);
+    const override = overrides?.[overrideKey];
+    const marker = markerIntents.get(overrideKey) ?? markerIntents.get(nodeName);
+    const ast = astSemantics.get(overrideKey) ?? astSemantics.get(nodeName);
 
     const nodeResolution: NodeResolution = { nodeName };
     const intentResolution: ResolvedIntent['_resolution'] = {};

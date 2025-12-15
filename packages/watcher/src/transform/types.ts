@@ -13,6 +13,27 @@
  */
 
 // =============================================================================
+// STATE TYPES
+// =============================================================================
+
+/**
+ * Component state for variant mapping.
+ *
+ * WHY: Design systems define different visual states for interactive components.
+ * This allows syncing each state to a different Figma variant/node.
+ *
+ * NAMING CONVENTION:
+ * - base: NodeName (e.g., LoginButton)
+ * - non-base: NodeName::state (e.g., LoginButton::hover)
+ */
+export type ComponentState = 'base' | 'disabled' | 'hover' | 'pressed';
+
+/**
+ * Default state when not specified.
+ */
+export const DEFAULT_COMPONENT_STATE: ComponentState = 'base';
+
+// =============================================================================
 // INTENT TYPES
 // =============================================================================
 
@@ -24,6 +45,16 @@ export interface BaseIntent {
   nodeName: string;
   /** Optional Figma node ID if known */
   nodeId?: string;
+  /**
+   * Component state for variant mapping.
+   * Default: 'base'
+   *
+   * WHY: Allows syncing different states (disabled, hover, pressed)
+   * to different Figma nodes using naming convention:
+   * - base: LoginButton
+   * - non-base: LoginButton::hover
+   */
+  state?: ComponentState;
 }
 
 /**
@@ -131,4 +162,50 @@ export function isTextIntent(intent: Intent): intent is TextIntent {
  */
 export function isFrameIntent(intent: Intent): intent is FrameIntent {
   return intent.type === 'FRAME';
+}
+
+// =============================================================================
+// STATE HELPERS
+// =============================================================================
+
+/**
+ * Get the target node name for Figma, including state suffix if non-base.
+ *
+ * NAMING CONVENTION:
+ * - base state: NodeName (e.g., "LoginButton")
+ * - non-base state: NodeName::state (e.g., "LoginButton::hover")
+ *
+ * WHY: Allows Figma to have separate nodes for each state variant
+ * without changing the core nodeName in the Intent.
+ *
+ * @param nodeName - Base node name
+ * @param state - Component state (default: 'base')
+ * @returns Target node name with state suffix if non-base
+ */
+export function getTargetNodeName(nodeName: string, state?: ComponentState): string {
+  if (!state || state === 'base') {
+    return nodeName;
+  }
+  return `${nodeName}::${state}`;
+}
+
+/**
+ * Parse a target node name into base name and state.
+ *
+ * @param targetName - Target node name (possibly with ::state suffix)
+ * @returns Object with nodeName and state
+ */
+export function parseTargetNodeName(targetName: string): { nodeName: string; state: ComponentState } {
+  const parts = targetName.split('::');
+  if (parts.length === 2 && isValidComponentState(parts[1])) {
+    return { nodeName: parts[0], state: parts[1] as ComponentState };
+  }
+  return { nodeName: targetName, state: 'base' };
+}
+
+/**
+ * Check if a string is a valid component state.
+ */
+export function isValidComponentState(s: string): s is ComponentState {
+  return s === 'base' || s === 'disabled' || s === 'hover' || s === 'pressed';
 }

@@ -286,3 +286,96 @@ describe('Echo Guard - Cache Management', () => {
     expect(getCacheSize()).toBe(1);
   });
 });
+
+// =============================================================================
+// STATE-AWARE CACHE KEYS (Phase 8A)
+// =============================================================================
+
+describe('Echo Guard - State-aware cache keys (Phase 8A)', () => {
+  it('should differentiate base and hover states in cache', () => {
+    const baseKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'LoginButton',
+      field: 'fill',
+      state: 'base',
+    };
+    const hoverKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'LoginButton',
+      field: 'fill',
+      state: 'hover',
+    };
+
+    recordAppliedValue(baseKey, '#3B82F6');
+    recordAppliedValue(hoverKey, '#2563EB');
+
+    // Same node, same field, but different states
+    expect(shouldSuppress(baseKey, '#3B82F6').suppressed).toBe(true);
+    expect(shouldSuppress(hoverKey, '#2563EB').suppressed).toBe(true);
+
+    // Should NOT suppress if checking opposite state's value
+    expect(shouldSuppress(baseKey, '#2563EB').suppressed).toBe(false);
+    expect(shouldSuppress(hoverKey, '#3B82F6').suppressed).toBe(false);
+
+    expect(getCacheSize()).toBe(2);
+  });
+
+  it('should treat undefined state as base', () => {
+    const undefinedStateKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'Button',
+      field: 'text',
+      // state is undefined (defaults to 'base')
+    };
+    const explicitBaseKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'Button',
+      field: 'text',
+      state: 'base',
+    };
+
+    recordAppliedValue(undefinedStateKey, 'Click');
+
+    // Both undefined and explicit 'base' should match
+    expect(shouldSuppress(explicitBaseKey, 'Click').suppressed).toBe(true);
+  });
+
+  it('should parse cache key with state correctly', () => {
+    const keyStr = 'path/to/file.tsx|LoginButton|text|hover';
+    const parsed = parseCacheKey(keyStr);
+
+    expect(parsed.filePath).toBe('path/to/file.tsx');
+    expect(parsed.nodeName).toBe('LoginButton');
+    expect(parsed.field).toBe('text');
+    expect(parsed.state).toBe('hover');
+  });
+
+  it('should parse old format cache key (no state) as base', () => {
+    const keyStr = 'path/to/file.tsx|LoginButton|text';
+    const parsed = parseCacheKey(keyStr);
+
+    expect(parsed.filePath).toBe('path/to/file.tsx');
+    expect(parsed.nodeName).toBe('LoginButton');
+    expect(parsed.field).toBe('text');
+    expect(parsed.state).toBe('base');
+  });
+
+  it('should not suppress disabled state when only hover is cached', () => {
+    const hoverKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'Button',
+      field: 'fill',
+      state: 'hover',
+    };
+    const disabledKey: EchoCacheKey = {
+      filePath: 'test.tsx',
+      nodeName: 'Button',
+      field: 'fill',
+      state: 'disabled',
+    };
+
+    recordAppliedValue(hoverKey, '#2563EB');
+
+    expect(shouldSuppress(disabledKey, '#2563EB').suppressed).toBe(false);
+  });
+});

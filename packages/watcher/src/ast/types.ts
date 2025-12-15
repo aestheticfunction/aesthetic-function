@@ -83,6 +83,31 @@ export interface BooleanSemantics {
 }
 
 /**
+ * Derive component state from boolean semantics (Phase 8A).
+ *
+ * WHY: When JSX has `disabled={true}` with high confidence,
+ * we can infer the component represents a "disabled" state variant.
+ *
+ * @param booleans - Boolean semantics from AST extraction
+ * @returns Inferred component state, or undefined if no high-confidence match
+ */
+export function deriveStateFromBooleans(
+  booleans: BooleanSemantics
+): 'disabled' | undefined {
+  // Only infer state for high-confidence disabled={true}
+  if (
+    booleans.disabled &&
+    booleans.disabled.value === true &&
+    booleans.disabled.confidence === 'high'
+  ) {
+    return 'disabled';
+  }
+  // Note: hover/pressed states cannot be inferred from static JSX
+  // They would require event handlers or CSS pseudoclass analysis
+  return undefined;
+}
+
+/**
  * Numeric layout semantics (from props and inline styles).
  */
 export interface LayoutSemantics {

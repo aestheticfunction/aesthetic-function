@@ -277,3 +277,65 @@ describe('hasFigmaMarkers', () => {
     expect(hasFigmaMarkers('// regular comment')).toBe(false);
   });
 });
+
+// =============================================================================
+// STATE PARSING (Phase 8A)
+// =============================================================================
+
+describe('State parsing (Phase 8A)', () => {
+  it('should parse state=hover from marker', () => {
+    const content = `// @figma node=LoginButton state=hover fill=#FF0000`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].state).toBe('hover');
+    expect(result.intents[0].nodeName).toBe('LoginButton');
+  });
+
+  it('should parse state=disabled from marker', () => {
+    const content = `// @figma node=SubmitButton state=disabled fill=#CCCCCC text="Disabled"`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].state).toBe('disabled');
+    expect(result.intents[0].nodeName).toBe('SubmitButton');
+  });
+
+  it('should parse state=pressed from marker', () => {
+    const content = `// @figma node=ActionButton state=pressed fill=#000000`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].state).toBe('pressed');
+  });
+
+  it('should default to undefined state (base) when not specified', () => {
+    const content = `// @figma node=NormalButton fill=#3B82F6`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].state).toBeUndefined();
+  });
+
+  it('should ignore invalid state values', () => {
+    const content = `// @figma node=Button state=invalid fill=#FF0000`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(1);
+    expect(result.intents[0].state).toBeUndefined();
+  });
+
+  it('should parse multiple markers with different states', () => {
+    const content = `
+// @figma node=Button fill=#3B82F6 text="Click me"
+// @figma node=Button state=hover fill=#2563EB text="Click me"
+// @figma node=Button state=disabled fill=#9CA3AF text="Click me"
+`;
+    const result = parseIntentFromReact(content, 'test.tsx');
+    
+    expect(result.intents).toHaveLength(3);
+    expect(result.intents[0].state).toBeUndefined(); // base
+    expect(result.intents[1].state).toBe('hover');
+    expect(result.intents[2].state).toBe('disabled');
+  });
+});

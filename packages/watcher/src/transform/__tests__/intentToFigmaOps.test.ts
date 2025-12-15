@@ -170,3 +170,97 @@ describe('Edge Cases', () => {
     expect(fillOp && 'color' in fillOp && fillOp.color).toBe('#10B981');
   });
 });
+
+// =============================================================================
+// STATE TARGETING (Phase 8A)
+// =============================================================================
+
+describe('State targeting (Phase 8A)', () => {
+  const ctx = getDefaultTokenContext();
+
+  it('base state (undefined) uses nodeName as-is', () => {
+    const intent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'LoginButton',
+      fillTokenOrHex: '#3B82F6',
+    };
+    const result = intentToFigmaOps(createIntentModel([intent]), ctx);
+    const fillOp = result.operations.find(op => op.op === 'SET_FILL');
+    expect(fillOp && 'nodeQuery' in fillOp && fillOp.nodeQuery).toBe('LoginButton');
+  });
+
+  it('hover state uses NodeName::hover format', () => {
+    const intent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'LoginButton',
+      state: 'hover',
+      fillTokenOrHex: '#2563EB',
+    };
+    const result = intentToFigmaOps(createIntentModel([intent]), ctx);
+    const fillOp = result.operations.find(op => op.op === 'SET_FILL');
+    expect(fillOp && 'nodeQuery' in fillOp && fillOp.nodeQuery).toBe('LoginButton::hover');
+  });
+
+  it('disabled state uses NodeName::disabled format', () => {
+    const intent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'SubmitButton',
+      state: 'disabled',
+      fillTokenOrHex: '#9CA3AF',
+      text: 'Disabled',
+    };
+    const result = intentToFigmaOps(createIntentModel([intent]), ctx);
+    
+    const fillOp = result.operations.find(op => op.op === 'SET_FILL');
+    const textOp = result.operations.find(op => op.op === 'SET_TEXT');
+    
+    expect(fillOp && 'nodeQuery' in fillOp && fillOp.nodeQuery).toBe('SubmitButton::disabled');
+    expect(textOp && 'nodeQuery' in textOp && textOp.nodeQuery).toBe('SubmitButton::disabled');
+  });
+
+  it('pressed state uses NodeName::pressed format', () => {
+    const intent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'ActionButton',
+      state: 'pressed',
+      fillTokenOrHex: '#1E40AF',
+    };
+    const result = intentToFigmaOps(createIntentModel([intent]), ctx);
+    const fillOp = result.operations.find(op => op.op === 'SET_FILL');
+    expect(fillOp && 'nodeQuery' in fillOp && fillOp.nodeQuery).toBe('ActionButton::pressed');
+  });
+
+  it('TextIntent with state uses state suffix', () => {
+    const intent: TextIntent = {
+      type: 'TEXT',
+      nodeName: 'Label',
+      state: 'disabled',
+      characters: 'Disabled text',
+    };
+    const result = intentToFigmaOps(createIntentModel([intent]), ctx);
+    const textOp = result.operations.find(op => op.op === 'SET_TEXT');
+    expect(textOp && 'nodeQuery' in textOp && textOp.nodeQuery).toBe('Label::disabled');
+  });
+
+  it('multiple states for same node produce separate operations', () => {
+    const baseIntent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'Button',
+      fillTokenOrHex: '#3B82F6',
+    };
+    const hoverIntent: ButtonIntent = {
+      type: 'BUTTON',
+      nodeName: 'Button',
+      state: 'hover',
+      fillTokenOrHex: '#2563EB',
+    };
+    const result = intentToFigmaOps(createIntentModel([baseIntent, hoverIntent]), ctx);
+    
+    const fillOps = result.operations.filter(op => op.op === 'SET_FILL');
+    expect(fillOps).toHaveLength(2);
+    
+    const nodeQueries = fillOps.map(op => 'nodeQuery' in op && op.nodeQuery);
+    expect(nodeQueries).toContain('Button');
+    expect(nodeQueries).toContain('Button::hover');
+  });
+});

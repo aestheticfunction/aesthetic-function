@@ -23,7 +23,8 @@
  * - No LLM calls
  */
 
-import type { Intent, ButtonIntent, TextIntent } from '../transform/types.js';
+import type { Intent, ButtonIntent, TextIntent, ComponentState } from '../transform/types.js';
+import { isValidComponentState } from '../transform/types.js';
 
 // =============================================================================
 // TYPES
@@ -47,6 +48,8 @@ export interface MarkerData {
   text?: string;
   /** Optional fill color (token or hex) */
   fill?: string;
+  /** Component state (base, disabled, hover, pressed) */
+  state?: ComponentState;
   /** Raw marker line for debugging */
   rawLine: string;
   /** Line number in file */
@@ -163,10 +166,17 @@ function extractMarkers(content: string): MarkerData[] {
       if (content[i] === '\n') lineNumber++;
     }
 
+    // Parse state attribute (validate it's a valid ComponentState)
+    const stateAttr = attrs['state'];
+    const state: ComponentState | undefined = stateAttr && isValidComponentState(stateAttr)
+      ? stateAttr
+      : undefined;
+
     markers.push({
       node: attrs['node'],
       text: attrs['text'],
       fill: attrs['fill'],
+      state,
       rawLine: match[0].trim(),
       lineNumber,
     });
@@ -183,11 +193,13 @@ function extractMarkers(content: string): MarkerData[] {
  * - If marker has only fill → ButtonIntent (without text - fill-only)
  * - If marker has only text → TextIntent
  *
+ * State is propagated to the intent if specified in the marker.
+ *
  * @param marker - Parsed marker data
  * @returns Intent or null if invalid
  */
 function markerToIntent(marker: MarkerData): Intent | null {
-  const { node, text, fill } = marker;
+  const { node, text, fill, state } = marker;
 
   // If we have fill, treat as Button (can also update frames)
   if (fill) {
@@ -200,16 +212,25 @@ function markerToIntent(marker: MarkerData): Intent | null {
     if (text) {
       intent.text = text;
     }
+    // Set state if specified (defaults to 'base' if undefined)
+    if (state) {
+      intent.state = state;
+    }
     return intent;
   }
 
   // If we only have text, treat as TextIntent
   if (text) {
-    return {
+    const intent: TextIntent = {
       type: 'TEXT',
       nodeName: node,
       characters: text,
-    } satisfies TextIntent;
+    };
+    // Set state if specified (defaults to 'base' if undefined)
+    if (state) {
+      intent.state = state;
+    }
+    return intent;
   }
 
   // Neither text nor fill - invalid marker

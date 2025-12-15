@@ -22,13 +22,18 @@
 // TYPES
 // =============================================================================
 
+import type { ComponentState } from '../transform/types.js';
+
 /**
  * Cache key components.
+ * Now includes state for Phase 8A variant/state mapping.
  */
 export interface EchoCacheKey {
   filePath: string;
   nodeName: string;
   field: string;
+  /** Component state (default: 'base') */
+  state?: ComponentState;
 }
 
 /**
@@ -89,15 +94,18 @@ export function isEchoGuardEnabled(): boolean {
 
 /**
  * In-memory cache for last applied values.
- * Key format: `${filePath}|${nodeName}|${field}`
+ * Key format: `${filePath}|${nodeName}|${field}|${state}`
+ * Note: state is included to support per-state echo suppression (Phase 8A).
  */
 const echoCache = new Map<string, EchoCacheEntry>();
 
 /**
  * Build cache key string.
+ * Includes state to differentiate between base/hover/disabled/pressed.
  */
 function buildCacheKey(key: EchoCacheKey): string {
-  return `${key.filePath}|${key.nodeName}|${key.field}`;
+  const state = key.state ?? 'base';
+  return `${key.filePath}|${key.nodeName}|${key.field}|${state}`;
 }
 
 /**
@@ -105,8 +113,14 @@ function buildCacheKey(key: EchoCacheKey): string {
  * Exported for testing/debugging purposes.
  */
 export function parseCacheKey(keyStr: string): EchoCacheKey {
-  const [filePath, nodeName, field] = keyStr.split('|');
-  return { filePath, nodeName, field };
+  const parts = keyStr.split('|');
+  // Support both old format (3 parts) and new format (4 parts)
+  if (parts.length === 4) {
+    const [filePath, nodeName, field, state] = parts;
+    return { filePath, nodeName, field, state: state as ComponentState };
+  }
+  const [filePath, nodeName, field] = parts;
+  return { filePath, nodeName, field, state: 'base' };
 }
 
 // =============================================================================

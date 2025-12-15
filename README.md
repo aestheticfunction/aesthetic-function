@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 7C)
+## What Works Today (Phase 8A)
 
 | Feature | Status |
 |---------|--------|
@@ -49,6 +49,13 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Unified precedence: override > marker > ast > code | ✅ |
 | Echo suppression guard (prevents feedback loops) | ✅ |
 | Resolution summary logging | ✅ |
+| **Variant/State Mapping (Phase 8A)** | |
+| Component state dimension (base/disabled/hover/pressed) | ✅ |
+| State-aware marker parsing (`state=hover`) | ✅ |
+| State-aware Figma node targeting (`NodeName::hover`) | ✅ |
+| Per-state override keys in design-overrides.json | ✅ |
+| State-aware echo suppression cache | ✅ |
+| Disabled state inference from AST (`disabled={true}`) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -121,17 +128,89 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 7A** | AST-based source mutation | ✅ |
 | **Phase 7B** | Marker + style patching via AST | ✅ |
 | **Phase 7C** | Reconciliation policy + echo suppression | ✅ |
+| **Phase 8A** | Variant/state mapping (base/disabled/hover/pressed) | ✅ |
 
 ### Not Implemented Yet
 
 | Feature | Status |
 |---------|--------|
 | Conflict resolution UI | ❌ |
-| Variant/state mapping | ❌ |
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C) and variant/state mapping (Phase 8A). Echo suppression prevents feedback loops when AST writes trigger file save events.
+
+---
+
+## Variant/State Mapping (Phase 8A)
+
+Phase 8A adds a state dimension to the intent pipeline, enabling synchronization of different component states (base, disabled, hover, pressed) to Figma.
+
+### Component States
+
+| State | Description | Figma Node Name |
+|-------|-------------|-----------------|
+| `base` | Default state (no suffix) | `LoginButton` |
+| `hover` | Mouse hover state | `LoginButton::hover` |
+| `disabled` | Disabled/inactive state | `LoginButton::disabled` |
+| `pressed` | Active/pressed state | `LoginButton::pressed` |
+
+### Marker Syntax
+
+Use the `state=` attribute to specify component state:
+
+```tsx
+// @figma node=LoginButton fill=#3B82F6 text="Login"
+// @figma node=LoginButton state=hover fill=#2563EB text="Login"
+// @figma node=LoginButton state=disabled fill=#9CA3AF text="Login"
+// @figma node=LoginButton state=pressed fill=#1E40AF text="Login"
+```
+
+### Figma Naming Convention
+
+Operations target nodes using a `::` suffix for non-base states:
+
+- **Base state**: `LoginButton` (no suffix)
+- **Hover state**: `LoginButton::hover`
+- **Disabled state**: `LoginButton::disabled`
+- **Pressed state**: `LoginButton::pressed`
+
+In your Figma document, name nodes to match this convention or use component variants.
+
+### Override Keys
+
+Design overrides support per-state keys:
+
+```json
+{
+  "LoginButton": {
+    "nodeId": "4:7",
+    "lastUpdated": "2025-01-15T10:30:00.000Z",
+    "fill": "#3B82F6",
+    "text": "Sign In"
+  },
+  "LoginButton::hover": {
+    "nodeId": "4:8",
+    "lastUpdated": "2025-01-15T10:30:00.000Z",
+    "fill": "#2563EB"
+  },
+  "LoginButton::disabled": {
+    "nodeId": "4:9",
+    "lastUpdated": "2025-01-15T10:30:00.000Z",
+    "fill": "#9CA3AF"
+  }
+}
+```
+
+### AST State Inference
+
+The system can infer `disabled` state from JSX with high confidence:
+
+```tsx
+<Button disabled={true}>Submit</Button>  // → state: 'disabled'
+```
+
+Note: `hover` and `pressed` states cannot be inferred from static JSX and must be explicitly declared via markers.
 
 ---
 

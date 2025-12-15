@@ -7,16 +7,21 @@
  * with code-derived intents before being sent back to Figma.
  *
  * RECONCILIATION RULES:
- * - Match overrides by key = intent.nodeName
+ * - Match overrides by key = getOverrideKey(intent.nodeName, intent.state)
  * - Override text field for TEXT and BUTTON intents
  * - Override fill field for BUTTON, TEXT, FRAME intents
  * - Unsupported fields are ignored
  * - Missing intents for an override key are logged and ignored
  * - Precedence controls when overrides are applied
+ *
+ * STATE HANDLING (Phase 8A):
+ * - Override keys can include state suffix: "LoginButton::hover"
+ * - Each state is resolved independently
  */
 
 import type { IntentModel, Intent, ButtonIntent, TextIntent, FrameIntent } from '../transform/types.js';
 import type { DesignOverrides, ReconcileResult } from './types.js';
+import { getOverrideKey } from './types.js';
 import type { OverridePrecedence } from './config.js';
 import { isOverrideNewerThanFile } from './config.js';
 
@@ -75,19 +80,21 @@ export function applyOverridesToIntentModel(
 
   // Create new intents with overrides applied
   const reconciledIntents = model.intents.map((intent) => {
-    const override = overrides[intent.nodeName];
+    // Get the state-aware override key
+    const overrideKey = getOverrideKey(intent.nodeName, intent.state);
+    const override = overrides[overrideKey];
     if (!override) {
       return intent; // No override for this intent
     }
 
-    matchedKeys.add(intent.nodeName);
+    matchedKeys.add(overrideKey);
 
     // Check precedence for if_newer_than_code mode
     if (precedence === 'if_newer_than_code' && fileMtime) {
       if (!isOverrideNewerThanFile(override.lastUpdated, fileMtime)) {
         // Override is stale (older than or equal to file mtime)
         result.stale++;
-        result.staleKeys.push(intent.nodeName);
+        result.staleKeys.push(overrideKey);
         return intent; // Don't apply this override
       }
     }
@@ -95,7 +102,7 @@ export function applyOverridesToIntentModel(
     const overridden = applyOverrideToIntent(intent, override);
 
     if (overridden !== intent) {
-      result.overriddenNodes.push(intent.nodeName);
+      result.overriddenNodes.push(overrideKey);
     }
 
     return overridden;

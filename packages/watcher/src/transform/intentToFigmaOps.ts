@@ -24,6 +24,7 @@ import type {
   TextIntent,
   FrameIntent,
 } from './types.js';
+import { getTargetNodeName } from './types.js';
 import {
   type DesignTokenContext,
   resolveColorToken,
@@ -92,6 +93,10 @@ export interface TransformResult {
  * WHY: A button typically needs fill color and optionally text content updates.
  * We only emit SET_TEXT if text was explicitly specified.
  *
+ * STATE HANDLING: Uses getTargetNodeName to generate state-aware node names:
+ * - base state: LoginButton
+ * - non-base state: LoginButton::hover
+ *
  * @param intent - Button intent to transform
  * @param tokenContext - Design token context for color resolution
  * @returns Array of Figma operations
@@ -102,6 +107,9 @@ function transformButtonIntent(
 ): { ops: FigmaOperation[]; resolvedTokens: TransformResult['resolvedTokens'] } {
   const ops: FigmaOperation[] = [];
   const resolvedTokens: TransformResult['resolvedTokens'] = [];
+
+  // Get target node name with state suffix if non-base
+  const targetNodeName = getTargetNodeName(intent.nodeName, intent.state);
 
   // Resolve fill color (token or hex → hex)
   const resolvedFill = resolveColorToken(intent.fillTokenOrHex, tokenContext);
@@ -114,7 +122,7 @@ function transformButtonIntent(
   // SET_FILL operation for the button background
   ops.push({
     op: 'SET_FILL',
-    nodeQuery: intent.nodeName,
+    nodeQuery: targetNodeName,
     nodeId: intent.nodeId ?? null,
     color: resolvedFill,
   });
@@ -124,7 +132,7 @@ function transformButtonIntent(
   if (intent.text !== undefined) {
     ops.push({
       op: 'SET_TEXT',
-      nodeQuery: intent.nodeName,
+      nodeQuery: targetNodeName,
       nodeId: intent.nodeId ?? null,
       text: intent.text,
     });
@@ -135,6 +143,8 @@ function transformButtonIntent(
 
 /**
  * Transform a TextIntent to Figma operations.
+ *
+ * STATE HANDLING: Uses getTargetNodeName to generate state-aware node names.
  *
  * @param intent - Text intent to transform
  * @param tokenContext - Design token context for color resolution
@@ -147,10 +157,13 @@ function transformTextIntent(
   const ops: FigmaOperation[] = [];
   const resolvedTokens: TransformResult['resolvedTokens'] = [];
 
+  // Get target node name with state suffix if non-base
+  const targetNodeName = getTargetNodeName(intent.nodeName, intent.state);
+
   // SET_TEXT operation
   ops.push({
     op: 'SET_TEXT',
-    nodeQuery: intent.nodeName,
+    nodeQuery: targetNodeName,
     nodeId: intent.nodeId ?? null,
     text: intent.characters,
   });
@@ -166,7 +179,7 @@ function transformTextIntent(
 
     ops.push({
       op: 'SET_FILL',
-      nodeQuery: intent.nodeName,
+      nodeQuery: targetNodeName,
       nodeId: intent.nodeId ?? null,
       color: resolvedColor,
     });
@@ -177,6 +190,8 @@ function transformTextIntent(
 
 /**
  * Transform a FrameIntent to Figma operations.
+ *
+ * STATE HANDLING: Uses getTargetNodeName to generate state-aware node names.
  *
  * @param intent - Frame intent to transform
  * @param tokenContext - Design token context for color resolution
@@ -189,6 +204,9 @@ function transformFrameIntent(
   const ops: FigmaOperation[] = [];
   const resolvedTokens: TransformResult['resolvedTokens'] = [];
 
+  // Get target node name with state suffix if non-base
+  const targetNodeName = getTargetNodeName(intent.nodeName, intent.state);
+
   // SET_FILL operation for frame background (if specified)
   if (intent.fillTokenOrHex) {
     const resolvedFill = resolveColorToken(intent.fillTokenOrHex, tokenContext);
@@ -200,7 +218,7 @@ function transformFrameIntent(
 
     ops.push({
       op: 'SET_FILL',
-      nodeQuery: intent.nodeName,
+      nodeQuery: targetNodeName,
       nodeId: intent.nodeId ?? null,
       color: resolvedFill,
     });
