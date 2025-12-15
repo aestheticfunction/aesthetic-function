@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 8A)
+## What Works Today (Phase 8B)
 
 | Feature | Status |
 |---------|--------|
@@ -56,6 +56,12 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Per-state override keys in design-overrides.json | ✅ |
 | State-aware echo suppression cache | ✅ |
 | Disabled state inference from AST (`disabled={true}`) | ✅ |
+| **Native Figma Variant Targeting (Phase 8B)** | |
+| Component Set variant resolution | ✅ |
+| Variant query parsing (`NodeName::state`) | ✅ |
+| State → Figma property mapping | ✅ |
+| Variant info in DESIGN_CHANGE | ✅ |
+| DEBUG_LIST_VARIANTS diagnostic | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -129,6 +135,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 7B** | Marker + style patching via AST | ✅ |
 | **Phase 7C** | Reconciliation policy + echo suppression | ✅ |
 | **Phase 8A** | Variant/state mapping (base/disabled/hover/pressed) | ✅ |
+| **Phase 8B** | Native Figma Variant Targeting (Component Sets) | ✅ |
 
 ### Not Implemented Yet
 
@@ -138,7 +145,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C) and variant/state mapping (Phase 8A). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), and native Figma variant targeting (Phase 8B). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -211,6 +218,104 @@ The system can infer `disabled` state from JSX with high confidence:
 ```
 
 Note: `hover` and `pressed` states cannot be inferred from static JSX and must be explicitly declared via markers.
+
+---
+
+## Native Figma Variant Targeting (Phase 8B)
+
+Phase 8B adds first-class support for Figma Component Sets with variants. Instead of requiring designers to manually name nodes like `LoginButton::hover`, the plugin can now resolve variant components directly from Component Sets.
+
+### How It Works
+
+When an operation targets `LoginButton::hover`:
+
+1. **Parse variant query**: Extract `baseName=LoginButton`, `state=hover`
+2. **Find Component Set**: Search current page for a Component Set named `LoginButton`
+3. **Resolve variant**: Find the variant with `State=Hover` property
+4. **Execute operation**: Apply changes to the resolved variant component
+
+If no Component Set is found, it falls back to finding a node literally named `LoginButton::hover`.
+
+### Figma Component Set Setup
+
+For variant targeting to work, your Figma document needs:
+
+1. **Component Set** named after your component (e.g., `LoginButton`)
+2. **Variants** with a `State` property containing values like:
+   - `Base` or `Default` (for base state)
+   - `Hover` (for hover state)
+   - `Disabled` (for disabled state)
+   - `Pressed` (for pressed state)
+
+Example Component Set structure in Figma:
+```
+LoginButton (Component Set)
+├── State=Base (variant component)
+├── State=Hover (variant component)
+├── State=Disabled (variant component)
+└── State=Pressed (variant component)
+```
+
+### State Mapping
+
+The plugin maps code states to Figma property values:
+
+| Code State | Figma Property Values |
+|------------|----------------------|
+| `base` | Base, Default |
+| `hover` | Hover |
+| `disabled` | Disabled |
+| `pressed` | Pressed |
+
+Property names checked: `State`, `state`, `Variant` (in that order).
+
+### Variant Info in DESIGN_CHANGE
+
+When a designer selects a variant component and clicks "Send Selection", the plugin now detects the variant context and includes the `NodeName::state` format in the message:
+
+```json
+{
+  "type": "DESIGN_CHANGE",
+  "payload": {
+    "nodeName": "LoginButton::hover",
+    "changes": [{ "changeType": "fill", "value": "#2563EB" }]
+  }
+}
+```
+
+This enables the reconciliation layer to store overrides with the correct state key.
+
+### Diagnostic: DEBUG_LIST_VARIANTS
+
+Set `DEBUG_LIST_VARIANTS = true` in `packages/figma-plugin/src/code.ts` to log all Component Sets and their variants on plugin startup:
+
+```
+[Figma Plugin] Found 2 Component Set(s):
+  - "LoginButton" with 4 variant(s):
+      • State=Base (State=Base)
+      • State=Hover (State=Hover)
+      • State=Disabled (State=Disabled)
+      • State=Pressed (State=Pressed)
+  - "IconButton" with 2 variant(s):
+      • State=Default (State=Default)
+      • State=Hover (State=Hover)
+```
+
+### Example Markers
+
+Target specific variants with the standard `::state` syntax:
+
+```tsx
+// @figma node=LoginButton fill=#3B82F6 text="Login"
+// @figma node=LoginButton::hover fill=#2563EB
+// @figma node=LoginButton::disabled fill=#9CA3AF
+// @figma node=LoginButton::pressed fill=#1E40AF
+```
+
+The plugin will:
+1. Look for a Component Set named `LoginButton`
+2. Resolve the variant with the matching state
+3. Apply the fill color to that variant
 
 ---
 
