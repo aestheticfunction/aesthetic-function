@@ -129,9 +129,15 @@ import type { SourceLocation, WriteSafetyReason } from '../ast/types.js';
 
 /**
  * Operation type for AST writes.
- * MVP only supports SET_TEXT and SET_FILL.
+ * Supports SET_TEXT, SET_FILL, and SET_LAYOUT operations.
  */
-export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL';
+export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL' | 'SET_LAYOUT';
+
+/**
+ * Layout property keys supported by SET_LAYOUT operations.
+ * WHY: Only support numeric layout properties that map directly to CSS/Figma.
+ */
+export type LayoutKey = 'gap' | 'padding' | 'margin' | 'width' | 'height';
 
 /**
  * A single AST write operation.
@@ -154,6 +160,8 @@ export interface AstWriteOp {
   reason: WriteSafetyReason;
   /** Human-readable explanation */
   explanation: string;
+  /** Layout property key (only for SET_LAYOUT operations) */
+  layoutKey?: LayoutKey;
 }
 
 /**

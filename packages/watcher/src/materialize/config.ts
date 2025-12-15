@@ -46,8 +46,11 @@ export type AstWriteMode = 'off' | 'patch' | 'write';
 
 /**
  * Allowed AST write operation types.
+ * SET_TEXT: Modify JSX text content
+ * SET_FILL: Modify backgroundColor in inline styles
+ * SET_LAYOUT: Modify layout properties (gap, padding, margin, width, height)
  */
-export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL';
+export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL' | 'SET_LAYOUT';
 
 // =============================================================================
 // CONFIGURATION HELPERS
@@ -113,9 +116,9 @@ export function isMaterializeEnabled(): boolean {
 
 /**
  * Default allowed AST write operations.
- * MVP only supports SET_TEXT and SET_FILL.
+ * Supports SET_TEXT, SET_FILL, and SET_LAYOUT.
  */
-const DEFAULT_AST_WRITE_ALLOW: AstWriteOpType[] = ['SET_TEXT', 'SET_FILL'];
+const DEFAULT_AST_WRITE_ALLOW: AstWriteOpType[] = ['SET_TEXT', 'SET_FILL', 'SET_LAYOUT'];
 
 /**
  * Get the AST write mode.
@@ -163,7 +166,7 @@ export function getAstWriteAllow(): AstWriteOpType[] {
   const valid: AstWriteOpType[] = [];
   
   for (const op of ops) {
-    if (op === 'SET_TEXT' || op === 'SET_FILL') {
+    if (op === 'SET_TEXT' || op === 'SET_FILL' || op === 'SET_LAYOUT') {
       valid.push(op);
     }
   }
@@ -186,6 +189,6 @@ export function isAstWriteEnabled(): boolean {
  * @param opType - The operation type to check
  * @returns true if the operation is allowed
  */
-export function isAstWriteOpAllowed(opType: 'SET_TEXT' | 'SET_FILL'): boolean {
+export function isAstWriteOpAllowed(opType: 'SET_TEXT' | 'SET_FILL' | 'SET_LAYOUT'): boolean {
   return getAstWriteAllow().includes(opType);
 }

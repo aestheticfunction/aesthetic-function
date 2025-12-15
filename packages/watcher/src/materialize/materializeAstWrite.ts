@@ -28,10 +28,11 @@ import * as t from '@babel/types';
 import * as babelGenerator from '@babel/generator';
 
 import type { DesignOverrides } from '../reconcile/types.js';
-import type { AstWriteOp, AstWriteResult } from './types.js';
+import type { AstWriteOp, AstWriteResult, LayoutKey } from './types.js';
 import type { SourceLocation } from '../ast/types.js';
 import { anchorMarkersToAst } from '../ast/parseIntentFromReactAst.js';
 import { isAstWriteOpAllowed, getAstWriteDryRun } from './config.js';
+import { LAYOUT_KEYS } from './materializeAstPatch.js';
 
 // Handle ESM/CJS interop for @babel/traverse
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -309,6 +310,99 @@ function applyFillChange(
   return modified;
 }
 
+/**
+ * Apply layout property changes to the AST.
+ * Modifies numeric or string literals for layout properties in inline style objects.
+ * WHY: Layout properties (gap, padding, margin, width, height) map to Figma AutoLayout.
+ */
+function applyLayoutChange(
+  ast: t.File,
+  componentStartLine: number,
+  componentEndLine: number,
+  targetLoc: SourceLocation,
+  layoutKey: LayoutKey,
+  newValue: string
+): boolean {
+  let modified = false;
+
+  // Determine if new value should be numeric or string
+  const numericValue = parseFloat(newValue);
+  const isNumeric = !isNaN(numericValue) && String(numericValue) === newValue;
+
+  traverse(ast, {
+    NumericLiteral(path) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      // Check if within component bounds and matches target location
+      if (
+        loc.start.line >= componentStartLine &&
+        loc.end.line <= componentEndLine &&
+        loc.start.line === targetLoc.startLine &&
+        loc.start.column === targetLoc.startColumn
+      ) {
+        // Verify this is a layout property value
+        const parent = path.parent;
+        if (!t.isObjectProperty(parent)) return;
+
+        const key = t.isIdentifier(parent.key)
+          ? parent.key.name
+          : t.isStringLiteral(parent.key)
+            ? parent.key.value
+            : null;
+
+        if (key !== layoutKey) return;
+
+        if (isNumeric) {
+          // Replace with numeric value
+          path.node.value = numericValue;
+        } else {
+          // Replace numeric with string literal
+          path.replaceWith(t.stringLiteral(newValue));
+        }
+        modified = true;
+        path.stop();
+      }
+    },
+    StringLiteral(path) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      // Check if within component bounds and matches target location
+      if (
+        loc.start.line >= componentStartLine &&
+        loc.end.line <= componentEndLine &&
+        loc.start.line === targetLoc.startLine &&
+        loc.start.column === targetLoc.startColumn
+      ) {
+        // Verify this is a layout property value
+        const parent = path.parent;
+        if (!t.isObjectProperty(parent)) return;
+
+        const key = t.isIdentifier(parent.key)
+          ? parent.key.name
+          : t.isStringLiteral(parent.key)
+            ? parent.key.value
+            : null;
+
+        if (key !== layoutKey) return;
+
+        if (isNumeric) {
+          // Replace string with numeric literal
+          path.replaceWith(t.numericLiteral(numericValue));
+        } else {
+          // Replace with new string value
+          path.node.value = newValue;
+        }
+        modified = true;
+        path.stop();
+      }
+    },
+  });
+
+  return modified;
+}
+
 // =============================================================================
 // MAIN WRITE FUNCTION
 // =============================================================================
@@ -409,6 +503,19 @@ export async function materializeAstWrite(
       );
       operations.push(...fillOps);
       appliedOps.push(...fillOps.filter((op) => op.writable));
+    }
+
+    // Process SET_LAYOUT operations
+    if (override.layout !== undefined && isAstWriteOpAllowed('SET_LAYOUT')) {
+      // Find layout values and apply changes for each key
+      const layoutOps = findAndApplyLayoutChanges(
+        ast,
+        componentInfo,
+        anchor.nodeName,
+        override.layout
+      );
+      operations.push(...layoutOps);
+      appliedOps.push(...layoutOps.filter((op) => op.writable));
     }
   }
 
@@ -688,6 +795,210 @@ function findAndApplyFillChanges(
                 writable: false,
                 reason: 'function-call',
                 explanation: `Cannot modify: function-call`,
+              });
+            }
+          }
+        }
+      },
+    }
+  );
+
+  return operations;
+}
+
+/**
+ * Find layout values and apply changes, returning operation records.
+ * WHY: Layout properties (gap, padding, margin, width, height) map to Figma AutoLayout.
+ */
+function findAndApplyLayoutChanges(
+  ast: t.File,
+  componentInfo: ComponentInfo,
+  nodeName: string,
+  layoutOverride: { gap?: number | string; padding?: number | string; margin?: number | string; width?: number | string; height?: number | string }
+): AstWriteOp[] {
+  const operations: AstWriteOp[] = [];
+
+  traverse(
+    {
+      type: 'File',
+      program: {
+        type: 'Program',
+        body: [componentInfo.node as t.Statement],
+        directives: [],
+        sourceType: 'module',
+      },
+    } as t.File,
+    {
+      JSXOpeningElement(path) {
+        for (const attr of path.node.attributes) {
+          if (!t.isJSXAttribute(attr)) continue;
+          if (!t.isJSXIdentifier(attr.name)) continue;
+          if (attr.name.name !== 'style') continue;
+
+          if (!t.isJSXExpressionContainer(attr.value)) continue;
+          const expr = attr.value.expression;
+
+          // External style variable - report for all layout keys that have overrides
+          if (t.isIdentifier(expr)) {
+            for (const layoutKey of LAYOUT_KEYS) {
+              const overrideValue = layoutOverride[layoutKey];
+              if (overrideValue === undefined) continue;
+
+              operations.push({
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: `{${expr.name}}`,
+                after: String(overrideValue),
+                loc: toSourceLocation(attr.loc),
+                writable: false,
+                reason: 'external-style',
+                explanation: `Cannot modify: external-style`,
+                layoutKey,
+              });
+            }
+            continue;
+          }
+
+          if (!t.isObjectExpression(expr)) continue;
+
+          for (const prop of expr.properties) {
+            // Spread element
+            if (t.isSpreadElement(prop)) {
+              for (const layoutKey of LAYOUT_KEYS) {
+                const overrideValue = layoutOverride[layoutKey];
+                if (overrideValue === undefined) continue;
+
+                operations.push({
+                  op: 'SET_LAYOUT',
+                  nodeName,
+                  before: '{...spread}',
+                  after: String(overrideValue),
+                  loc: toSourceLocation(prop.loc),
+                  writable: false,
+                  reason: 'spread',
+                  explanation: `Cannot modify: spread`,
+                  layoutKey,
+                });
+              }
+              continue;
+            }
+
+            if (!t.isObjectProperty(prop)) continue;
+
+            const key = t.isIdentifier(prop.key)
+              ? prop.key.name
+              : t.isStringLiteral(prop.key)
+                ? prop.key.value
+                : null;
+
+            // Only process layout keys that have overrides
+            if (!key || !LAYOUT_KEYS.has(key as LayoutKey)) continue;
+            const layoutKey = key as LayoutKey;
+            const overrideValue = layoutOverride[layoutKey];
+            if (overrideValue === undefined) continue;
+
+            const targetValue = String(overrideValue);
+            const loc = toSourceLocation(prop.value.loc);
+
+            // Numeric literal - writable
+            if (t.isNumericLiteral(prop.value)) {
+              const currentValue = String(prop.value.value);
+              if (currentValue === targetValue) continue;
+
+              const op: AstWriteOp = {
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: currentValue,
+                after: targetValue,
+                loc,
+                writable: true,
+                reason: 'literal',
+                explanation: `Layout ${layoutKey} literal "${currentValue}" → "${targetValue}"`,
+                layoutKey,
+              };
+
+              const applied = applyLayoutChange(
+                ast,
+                componentInfo.startLine,
+                componentInfo.endLine,
+                loc,
+                layoutKey,
+                targetValue
+              );
+
+              if (applied) {
+                operations.push(op);
+              }
+            }
+            // String literal - writable
+            else if (t.isStringLiteral(prop.value)) {
+              if (prop.value.value === targetValue) continue;
+
+              const op: AstWriteOp = {
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: prop.value.value,
+                after: targetValue,
+                loc,
+                writable: true,
+                reason: 'literal',
+                explanation: `Layout ${layoutKey} literal "${prop.value.value}" → "${targetValue}"`,
+                layoutKey,
+              };
+
+              const applied = applyLayoutChange(
+                ast,
+                componentInfo.startLine,
+                componentInfo.endLine,
+                loc,
+                layoutKey,
+                targetValue
+              );
+
+              if (applied) {
+                operations.push(op);
+              }
+            }
+            // Variable reference - not writable
+            else if (t.isIdentifier(prop.value)) {
+              operations.push({
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: `{${prop.value.name}}`,
+                after: targetValue,
+                loc,
+                writable: false,
+                reason: 'variable-reference',
+                explanation: `Cannot modify: variable-reference`,
+                layoutKey,
+              });
+            }
+            // Function call - not writable
+            else if (t.isCallExpression(prop.value)) {
+              operations.push({
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: '{fn()}',
+                after: targetValue,
+                loc,
+                writable: false,
+                reason: 'function-call',
+                explanation: `Cannot modify: function-call`,
+                layoutKey,
+              });
+            }
+            // Member expression - not writable
+            else if (t.isMemberExpression(prop.value)) {
+              operations.push({
+                op: 'SET_LAYOUT',
+                nodeName,
+                before: '{member}',
+                after: targetValue,
+                loc,
+                writable: false,
+                reason: 'variable-reference',
+                explanation: `Cannot modify: member-expression`,
+                layoutKey,
               });
             }
           }

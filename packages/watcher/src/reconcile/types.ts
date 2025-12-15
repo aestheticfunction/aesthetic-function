@@ -25,6 +25,26 @@ export interface DesignOverride {
   text?: string;
   /** Overridden fill color as hex (for any node with fill) */
   fill?: string;
+  /** Layout overrides (Phase 7B) */
+  layout?: LayoutOverride;
+}
+
+/**
+ * Layout override properties.
+ * WHY: Maps Figma AutoLayout properties to CSS equivalents.
+ * Values can be numbers (px) or strings ("12px", "auto", etc).
+ */
+export interface LayoutOverride {
+  /** Gap between children (maps to Figma itemSpacing) */
+  gap?: number | string;
+  /** Padding (maps to Figma padding properties) */
+  padding?: number | string;
+  /** Margin (external spacing) */
+  margin?: number | string;
+  /** Width (maps to Figma width) */
+  width?: number | string;
+  /** Height (maps to Figma height) */
+  height?: number | string;
 }
 
 /**

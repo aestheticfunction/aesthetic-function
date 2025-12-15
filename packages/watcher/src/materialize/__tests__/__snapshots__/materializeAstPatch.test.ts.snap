@@ -35,6 +35,91 @@ exports[`AST Patch - Output Stability > should produce stable operation output 1
 ]
 `;
 
+exports[`AST Patch - Output Stability > should produce stable output for layout operations 1`] = `
+[
+  {
+    "after": "12",
+    "before": "8",
+    "explanation": "Layout gap literal "8" → "12"",
+    "layoutKey": "gap",
+    "loc": {
+      "endColumn": 30,
+      "endLine": 4,
+      "startColumn": 29,
+      "startLine": 4,
+    },
+    "nodeName": "LayoutContainer",
+    "op": "SET_LAYOUT",
+    "reason": "literal",
+    "writable": true,
+  },
+  {
+    "after": "24",
+    "before": "16",
+    "explanation": "Layout padding literal "16" → "24"",
+    "layoutKey": "padding",
+    "loc": {
+      "endColumn": 43,
+      "endLine": 4,
+      "startColumn": 41,
+      "startLine": 4,
+    },
+    "nodeName": "LayoutContainer",
+    "op": "SET_LAYOUT",
+    "reason": "literal",
+    "writable": true,
+  },
+  {
+    "after": "8",
+    "before": "4",
+    "explanation": "Layout margin literal "4" → "8"",
+    "layoutKey": "margin",
+    "loc": {
+      "endColumn": 54,
+      "endLine": 4,
+      "startColumn": 53,
+      "startLine": 4,
+    },
+    "nodeName": "LayoutContainer",
+    "op": "SET_LAYOUT",
+    "reason": "literal",
+    "writable": true,
+  },
+  {
+    "after": "200",
+    "before": "100",
+    "explanation": "Layout width literal "100" → "200"",
+    "layoutKey": "width",
+    "loc": {
+      "endColumn": 66,
+      "endLine": 4,
+      "startColumn": 63,
+      "startLine": 4,
+    },
+    "nodeName": "LayoutContainer",
+    "op": "SET_LAYOUT",
+    "reason": "literal",
+    "writable": true,
+  },
+  {
+    "after": "100",
+    "before": "50",
+    "explanation": "Layout height literal "50" → "100"",
+    "layoutKey": "height",
+    "loc": {
+      "endColumn": 78,
+      "endLine": 4,
+      "startColumn": 76,
+      "startLine": 4,
+    },
+    "nodeName": "LayoutContainer",
+    "op": "SET_LAYOUT",
+    "reason": "literal",
+    "writable": true,
+  },
+]
+`;
+
 exports[`AST Patch - Output Stability > should produce stable output for mixed writable/not-writable 1`] = `
 [
   {

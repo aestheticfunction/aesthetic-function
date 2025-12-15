@@ -1,11 +1,12 @@
 /**
  * @aesthetic-function/watcher - materialize/__tests__/materializeAstPatch.test.ts
  *
- * Tests for AST-based patch generation (Phase 7A).
+ * Tests for AST-based patch generation (Phase 7A + 7B).
  *
  * Covers:
  * - Text literal replacement in JSX children
  * - backgroundColor literal replacement in inline style object
+ * - Layout property replacement (gap, padding, margin, width, height)
  * - Refusal to change when value is not auto-writable
  * - Output formatting stability (snapshot)
  */
@@ -23,7 +24,7 @@ vi.mock('../config.js', async () => {
   const actual = await vi.importActual('../config.js');
   return {
     ...actual,
-    isAstWriteOpAllowed: (op: string) => op === 'SET_TEXT' || op === 'SET_FILL',
+    isAstWriteOpAllowed: (op: string) => op === 'SET_TEXT' || op === 'SET_FILL' || op === 'SET_LAYOUT',
   };
 });
 
@@ -295,6 +296,253 @@ describe('AST Patch - Fill Replacement', () => {
 });
 
 // =============================================================================
+// LAYOUT REPLACEMENT TESTS (Phase 7B)
+// =============================================================================
+
+describe('AST Patch - Layout Replacement', () => {
+  it('should create SET_LAYOUT operation for gap numeric literal', () => {
+    const code = wrapWithMarker(
+      'TestContainer',
+      `function TestContainer() {
+        return <div style={{ gap: 8 }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestContainer: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 16 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(1);
+    expect(layoutOps[0].nodeName).toBe('TestContainer');
+    expect(layoutOps[0].before).toBe('8');
+    expect(layoutOps[0].after).toBe('16');
+    expect(layoutOps[0].writable).toBe(true);
+    expect(layoutOps[0].reason).toBe('literal');
+    expect(layoutOps[0].layoutKey).toBe('gap');
+  });
+
+  it('should create SET_LAYOUT operation for padding string literal', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={{ padding: "12px" }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { padding: '24px' },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(1);
+    expect(layoutOps[0].before).toBe('12px');
+    expect(layoutOps[0].after).toBe('24px');
+    expect(layoutOps[0].writable).toBe(true);
+    expect(layoutOps[0].layoutKey).toBe('padding');
+  });
+
+  it('should create multiple SET_LAYOUT operations for multiple properties', () => {
+    const code = wrapWithMarker(
+      'TestCard',
+      `function TestCard() {
+        return <div style={{ gap: 8, padding: 16, margin: 4 }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestCard: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 12, padding: 24, margin: 8 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(3);
+    expect(layoutOps.every((op) => op.writable)).toBe(true);
+
+    const gapOp = layoutOps.find((op) => op.layoutKey === 'gap');
+    const paddingOp = layoutOps.find((op) => op.layoutKey === 'padding');
+    const marginOp = layoutOps.find((op) => op.layoutKey === 'margin');
+
+    expect(gapOp?.before).toBe('8');
+    expect(gapOp?.after).toBe('12');
+    expect(paddingOp?.before).toBe('16');
+    expect(paddingOp?.after).toBe('24');
+    expect(marginOp?.before).toBe('4');
+    expect(marginOp?.after).toBe('8');
+  });
+
+  it('should not create operation when layout value already matches', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={{ gap: 16 }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 16 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(0);
+  });
+
+  it('should mark variable reference layout value as not-writable', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        const spacing = 8;
+        return <div style={{ gap: spacing }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 16 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(1);
+    expect(layoutOps[0].writable).toBe(false);
+    expect(layoutOps[0].reason).toBe('variable-reference');
+  });
+
+  it('should mark function call layout value as not-writable', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={{ padding: getPadding() }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { padding: 24 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(1);
+    expect(layoutOps[0].writable).toBe(false);
+    expect(layoutOps[0].reason).toBe('function-call');
+  });
+
+  it('should mark spread in style object as not-writable for layout', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={{ ...baseStyles }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 16 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(1);
+    expect(layoutOps[0].writable).toBe(false);
+    expect(layoutOps[0].reason).toBe('spread');
+  });
+
+  it('should mark external style variable as not-writable for layout', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={boxStyles}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { gap: 16, padding: 24 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    // Reports for each layout key that has an override
+    expect(layoutOps.length).toBe(2);
+    expect(layoutOps.every((op) => !op.writable)).toBe(true);
+    expect(layoutOps.every((op) => op.reason === 'external-style')).toBe(true);
+  });
+
+  it('should handle width and height layout properties', () => {
+    const code = wrapWithMarker(
+      'TestBox',
+      `function TestBox() {
+        return <div style={{ width: 100, height: 50 }}>Content</div>;
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      TestBox: {
+        nodeId: 'node-1',
+        lastUpdated: new Date().toISOString(),
+        layout: { width: 200, height: 100 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(2);
+
+    const widthOp = layoutOps.find((op) => op.layoutKey === 'width');
+    const heightOp = layoutOps.find((op) => op.layoutKey === 'height');
+
+    expect(widthOp?.before).toBe('100');
+    expect(widthOp?.after).toBe('200');
+    expect(widthOp?.writable).toBe(true);
+
+    expect(heightOp?.before).toBe('50');
+    expect(heightOp?.after).toBe('100');
+    expect(heightOp?.writable).toBe(true);
+  });
+});
+
+// =============================================================================
 // MIXED TEXT AND FILL TESTS
 // =============================================================================
 
@@ -488,5 +736,34 @@ describe('AST Patch - Output Stability', () => {
     // All should be not-writable
     expect(ops.every((op) => !op.writable)).toBe(true);
     expect(ops).toMatchSnapshot();
+  });
+
+  it('should produce stable output for layout operations', () => {
+    const code = wrapWithMarker(
+      'LayoutContainer',
+      `function LayoutContainer() {
+        return (
+          <div style={{ gap: 8, padding: 16, margin: 4, width: 100, height: 50 }}>
+            Content
+          </div>
+        );
+      }`
+    );
+
+    const overrides: DesignOverrides = {
+      LayoutContainer: {
+        nodeId: 'node-1',
+        lastUpdated: '2024-01-01T00:00:00.000Z',
+        layout: { gap: 12, padding: 24, margin: 8, width: 200, height: 100 },
+      },
+    };
+
+    const ops = computeAstWriteOps(code, 'test.tsx', overrides);
+
+    // All layout ops should be writable
+    const layoutOps = ops.filter((op) => op.op === 'SET_LAYOUT');
+    expect(layoutOps.length).toBe(5);
+    expect(layoutOps.every((op) => op.writable)).toBe(true);
+    expect(layoutOps).toMatchSnapshot();
   });
 });

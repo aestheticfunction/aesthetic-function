@@ -26,7 +26,7 @@ import type { TraverseOptions } from '@babel/traverse';
 import * as t from '@babel/types';
 
 import type { DesignOverrides } from '../reconcile/types.js';
-import type { AstWriteOp, AstPatchArtifact, AstWriteResult } from './types.js';
+import type { AstWriteOp, AstPatchArtifact, AstWriteResult, LayoutKey } from './types.js';
 import type { SourceLocation } from '../ast/types.js';
 import { anchorMarkersToAst } from '../ast/parseIntentFromReactAst.js';
 import { isAstWriteOpAllowed } from './config.js';
@@ -56,6 +56,15 @@ const traverse = getTraverseFunction();
 
 /** Directory for AST patch artifacts */
 export const AST_MATERIALIZATIONS_DIR = 'design-materializations';
+
+/** Layout property keys that can be modified by SET_LAYOUT operations */
+export const LAYOUT_KEYS: ReadonlySet<LayoutKey> = new Set([
+  'gap',
+  'padding',
+  'margin',
+  'width',
+  'height',
+]);
 
 // =============================================================================
 // HELPER FUNCTIONS
@@ -156,6 +165,21 @@ interface FillValueInfo {
   loc: SourceLocation;
   writable: boolean;
   reason: 'literal' | 'variable-reference' | 'function-call' | 'external-style' | 'spread' | 'complex-expression';
+  node: t.Node;
+}
+
+interface LayoutValueInfo {
+  /** Layout property key (gap, padding, margin, width, height) */
+  key: LayoutKey;
+  /** Current value as string */
+  value: string;
+  /** Source location for the value node */
+  loc: SourceLocation;
+  /** Whether the value can be auto-written */
+  writable: boolean;
+  /** Reason for writability classification */
+  reason: 'literal' | 'variable-reference' | 'function-call' | 'external-style' | 'spread' | 'complex-expression';
+  /** AST node for the value */
   node: t.Node;
 }
 
@@ -356,6 +380,158 @@ function findFillValues(componentNode: t.Node): FillValueInfo[] {
   return values;
 }
 
+/**
+ * Find layout values in a component's inline styles.
+ * WHY: Layout properties (gap, padding, margin, width, height) can be modified
+ * when they are numeric or string literals in inline style objects.
+ */
+function findLayoutValues(componentNode: t.Node): LayoutValueInfo[] {
+  const values: LayoutValueInfo[] = [];
+
+  traverse(
+    {
+      type: 'File',
+      program: {
+        type: 'Program',
+        body: [componentNode as t.Statement],
+        directives: [],
+        sourceType: 'module',
+      },
+    } as t.File,
+    {
+      JSXOpeningElement(path) {
+        for (const attr of path.node.attributes) {
+          if (!t.isJSXAttribute(attr)) continue;
+          if (!t.isJSXIdentifier(attr.name)) continue;
+          if (attr.name.name !== 'style') continue;
+
+          // style={...}
+          if (!t.isJSXExpressionContainer(attr.value)) continue;
+          const expr = attr.value.expression;
+
+          // style={styleVariable} - not writable (external style)
+          if (t.isIdentifier(expr)) {
+            // Report external style for all layout keys
+            for (const layoutKey of LAYOUT_KEYS) {
+              values.push({
+                key: layoutKey,
+                value: `{${expr.name}}`,
+                loc: toSourceLocation(attr.loc),
+                writable: false,
+                reason: 'external-style',
+                node: expr,
+              });
+            }
+            continue;
+          }
+
+          // style={{ ... }}
+          if (!t.isObjectExpression(expr)) continue;
+
+          for (const prop of expr.properties) {
+            // Spread element - affects all potential layout keys
+            if (t.isSpreadElement(prop)) {
+              for (const layoutKey of LAYOUT_KEYS) {
+                values.push({
+                  key: layoutKey,
+                  value: '{...spread}',
+                  loc: toSourceLocation(prop.loc),
+                  writable: false,
+                  reason: 'spread',
+                  node: prop,
+                });
+              }
+              continue;
+            }
+
+            if (!t.isObjectProperty(prop)) continue;
+
+            const key = t.isIdentifier(prop.key)
+              ? prop.key.name
+              : t.isStringLiteral(prop.key)
+                ? prop.key.value
+                : null;
+
+            // Only process layout keys
+            if (!key || !LAYOUT_KEYS.has(key as LayoutKey)) continue;
+
+            const layoutKey = key as LayoutKey;
+
+            // Numeric literal - writable
+            if (t.isNumericLiteral(prop.value)) {
+              values.push({
+                key: layoutKey,
+                value: String(prop.value.value),
+                loc: toSourceLocation(prop.value.loc),
+                writable: true,
+                reason: 'literal',
+                node: prop.value,
+              });
+            }
+            // String literal (e.g., "12px") - writable
+            else if (t.isStringLiteral(prop.value)) {
+              values.push({
+                key: layoutKey,
+                value: prop.value.value,
+                loc: toSourceLocation(prop.value.loc),
+                writable: true,
+                reason: 'literal',
+                node: prop.value,
+              });
+            }
+            // Variable reference - not writable
+            else if (t.isIdentifier(prop.value)) {
+              values.push({
+                key: layoutKey,
+                value: `{${prop.value.name}}`,
+                loc: toSourceLocation(prop.value.loc),
+                writable: false,
+                reason: 'variable-reference',
+                node: prop.value,
+              });
+            }
+            // Function call - not writable
+            else if (t.isCallExpression(prop.value)) {
+              values.push({
+                key: layoutKey,
+                value: '{fn()}',
+                loc: toSourceLocation(prop.value.loc),
+                writable: false,
+                reason: 'function-call',
+                node: prop.value,
+              });
+            }
+            // Member expression (e.g., theme.spacing.md) - not writable
+            else if (t.isMemberExpression(prop.value)) {
+              values.push({
+                key: layoutKey,
+                value: '{member}',
+                loc: toSourceLocation(prop.value.loc),
+                writable: false,
+                reason: 'variable-reference',
+                node: prop.value,
+              });
+            }
+            // Other complex expressions - not writable
+            else {
+              values.push({
+                key: layoutKey,
+                value: '{...}',
+                loc: toSourceLocation(prop.value.loc),
+                writable: false,
+                reason: 'complex-expression',
+                node: prop.value,
+              });
+            }
+          }
+        }
+      },
+    }
+  );
+
+  return values;
+}
+
 // =============================================================================
 // OPERATION COMPUTATION
 // =============================================================================
@@ -448,6 +624,42 @@ export function computeAstWriteOps(
               ? `Fill literal "${fillValue.value}" → "${override.fill}"`
               : `Cannot modify: ${fillValue.reason}`,
           });
+        }
+      }
+    }
+
+    // Process SET_LAYOUT operations
+    if (override.layout !== undefined && isAstWriteOpAllowed('SET_LAYOUT')) {
+      const layoutValues = findLayoutValues(componentInfo.node);
+
+      // Process each layout key that has an override
+      for (const layoutKey of LAYOUT_KEYS) {
+        const overrideValue = override.layout[layoutKey];
+        if (overrideValue === undefined) continue;
+
+        // Convert override value to string for comparison
+        const overrideStr = String(overrideValue);
+
+        // Find matching layout values for this key
+        const matchingValues = layoutValues.filter((v) => v.key === layoutKey);
+
+        for (const layoutValue of matchingValues) {
+          // Only create operation if value differs from override
+          if (layoutValue.value !== overrideStr) {
+            operations.push({
+              op: 'SET_LAYOUT',
+              nodeName: anchor.nodeName,
+              before: layoutValue.value,
+              after: overrideStr,
+              loc: layoutValue.loc,
+              writable: layoutValue.writable,
+              reason: layoutValue.reason,
+              explanation: layoutValue.writable
+                ? `Layout ${layoutKey} literal "${layoutValue.value}" → "${overrideStr}"`
+                : `Cannot modify: ${layoutValue.reason}`,
+              layoutKey,
+            });
+          }
         }
       }
     }
