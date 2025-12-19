@@ -33,3 +33,12 @@ ops=4
 - node="LoginButton" action=SET_TEXT value="Login"
 - node="TestBox" action=SET_FILL value="#FF0000"
 - node="WelcomeText" action=SET_TEXT value="Welcome to the Demo"
+## [2025-12-19T20:16:04.093Z] [design-1766175364093-8e0f] type=DESIGN_CHANGE source=figma-plugin
+node="LoginButton::hover" (23:28)
+changes=2 watchers=1
+- text="Hover here"
+- fill="#2563EB"
+## [2025-12-19T20:16:04.406Z] MAP_UPDATE
+component=LoginButton::hover
+nodeId=23:28
+componentSetNodeId=23:27

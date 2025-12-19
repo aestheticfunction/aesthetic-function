@@ -17,7 +17,7 @@
  */
 
 import { readFile, writeFile, access } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 // =============================================================================
 // TYPES
@@ -83,10 +83,21 @@ export interface MapUpdatePayload {
 /** Current schema version */
 export const COMPONENT_MAP_VERSION = 1;
 
-/** Path to component-map.json at repo root */
+/**
+ * Get the default path to component-map.json at the repo root.
+ *
+ * WHY: We use process.cwd() instead of __dirname because:
+ * - The watcher runs via tsx in an ESM-like environment where __dirname is not defined
+ * - process.cwd() is the working directory (typically packages/watcher when running watcher)
+ * - We resolve up to the monorepo root from there
+ *
+ * ASSUMPTION: The watcher is run from packages/watcher directory.
+ * If run from a different directory, use setComponentMapPath() to override.
+ */
 const getDefaultMapPath = (): string => {
-  // Watcher package is at packages/watcher, so repo root is 4 levels up from this file
-  return join(__dirname, '..', '..', '..', '..', 'component-map.json');
+  // When running from packages/watcher, go up 2 levels to reach repo root
+  const projectRoot = resolve(process.cwd(), '..', '..');
+  return join(projectRoot, 'component-map.json');
 };
 
 /** Cached map path (allows override for testing) */

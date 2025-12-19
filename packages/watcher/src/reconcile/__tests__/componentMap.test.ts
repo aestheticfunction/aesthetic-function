@@ -304,5 +304,22 @@ describe('componentMap', () => {
     it('returns custom path when set', () => {
       expect(getComponentMapPath()).toBe(tempMapPath);
     });
+
+    it('uses process.cwd() for default path (ESM safe)', () => {
+      // Clear the custom path temporarily (must use null, not empty string)
+      const customPath = getComponentMapPath();
+      setComponentMapPath(null);
+
+      // Get the default path - should use process.cwd()
+      const defaultPath = getComponentMapPath();
+
+      // Restore custom path for other tests
+      setComponentMapPath(customPath);
+
+      // The default path should end with component-map.json
+      expect(defaultPath).toMatch(/component-map\.json$/);
+      // And be an absolute path (not undefined/empty from missing __dirname)
+      expect(defaultPath.startsWith('/')).toBe(true);
+    });
   });
 });
