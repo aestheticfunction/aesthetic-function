@@ -44,3 +44,26 @@ export {
   type SuppressionCheck,
   type SuppressionSummary,
 } from './echoGuard.js';
+
+// Phase 8C-8D: Component map with stable IDs
+export {
+  loadComponentMap,
+  saveComponentMap,
+  mergeMapUpdate,
+  migrateComponentMap,
+  resolveFromMap,
+  createIdQuery,
+  parseIdQuery,
+  componentMapExists,
+  setComponentMapPath,
+  getComponentMapPath,
+  COMPONENT_MAP_VERSION,
+  type ComponentMap,
+  type ComponentEntry,
+  type VariantMapping,
+  type FigmaComponentMapping,
+  type MapUpdatePayload,
+  type ComponentMapResolution,
+  type MigrationResult,
+  type LoadComponentMapOptions,
+} from './componentMap.js';

@@ -43,6 +43,17 @@ export interface FigmaComponentMapping {
  * Component entry in the registry.
  */
 export interface ComponentEntry {
+  /**
+   * Stable component key derived from code (Phase 8D).
+   * Format: <dir>/<exportName> or just <exportName>.
+   * Used as primary lookup key in v2+ maps.
+   */
+  componentKey?: string;
+  /**
+   * Legacy key names that should also resolve to this component (Phase 8D).
+   * Preserves backward compatibility during migration.
+   */
+  legacyKeys?: string[];
   /** Figma-specific mapping data */
   figma: FigmaComponentMapping;
 }
@@ -78,8 +89,15 @@ export interface MapUpdatePayload {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-/** Current schema version */
-export const COMPONENT_MAP_VERSION = 1;
+/**
+ * Current schema version.
+ * - v1: Original schema with baseName as key
+ * - v2: Added componentKey and legacyKeys for stable code-derived identity
+ *
+ * NOTE: Server writes entries without componentKey - the watcher handles
+ * migration when it loads the map with AST context.
+ */
+export const COMPONENT_MAP_VERSION = 2;
 
 /** Path to component-map.json at repo root */
 const getDefaultMapPath = (): string => {

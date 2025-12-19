@@ -23,7 +23,7 @@ import React from 'react';
 // =============================================================================
 
 // @figma node=LoginButton text="Login" fill=#3B82F5
-// @figma node=LoginButton::hover text="Hover here" fill=#2563EB
+// @figma node=LoginButton::hover text="Hover" fill=#2563EB
 export function LoginButton() {
   return (
     <button

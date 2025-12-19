@@ -63,6 +63,7 @@ import type {
   FlexSemantics,
   VisualSemantics,
 } from './types.js';
+import { computeComponentKey } from './types.js';
 import { extractMarkers, type MarkerData } from '../parse/parseIntentFromReact.js';
 
 // =============================================================================
@@ -547,8 +548,14 @@ export function parseIntentFromReactAst(code: string, filePath: string): AstInte
       literals.styleLiterals
     );
 
+    // Compute componentKey for exported components (Phase 8D)
+    const componentKey = comp.isExported
+      ? computeComponentKey(filePath, comp.name)
+      : undefined;
+
     return {
       componentName: comp.name,
+      componentKey,
       isExported: comp.isExported,
       loc: {
         startLine: comp.startLine,
@@ -659,6 +666,8 @@ export function anchorMarkersToAst(
     }
 
     anchor.componentName = matchedComponent.componentName;
+    // Propagate componentKey from matched component (Phase 8D)
+    anchor.componentKey = matchedComponent.componentKey;
     anchor.componentLoc = matchedComponent.loc;
 
     // Extract literals

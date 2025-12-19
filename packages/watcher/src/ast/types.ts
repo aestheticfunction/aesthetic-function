@@ -219,6 +219,79 @@ export interface InlineStyleLiteral {
 }
 
 // =============================================================================
+// COMPONENT KEY DERIVATION (Phase 8D)
+// =============================================================================
+
+/**
+ * Default source root for component key derivation.
+ * Paths are computed relative to this directory.
+ */
+export const DEFAULT_COMPONENT_KEY_ROOT = 'demo-app/src';
+
+/**
+ * Compute a stable component key from file path and export name.
+ *
+ * WHY: Component keys provide stable identity across renames and refactors.
+ * The key is derived from the code structure, making it deterministic and
+ * independent of Figma node names.
+ *
+ * Format: <relativePath>/<exportName> (e.g., "auth/LoginButton", "Card")
+ *
+ * @param filePath - Absolute or relative path to the source file
+ * @param exportName - Name of the exported component
+ * @param root - Source root to compute relative paths from (default: demo-app/src)
+ * @returns Stable component key
+ */
+export function computeComponentKey(
+  filePath: string,
+  exportName: string,
+  root: string = DEFAULT_COMPONENT_KEY_ROOT
+): string {
+  // Normalize path separators
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  const normalizedRoot = root.replace(/\\/g, '/');
+
+  // Find the root in the path
+  const rootIndex = normalizedPath.indexOf(normalizedRoot);
+  let relativePath: string;
+
+  if (rootIndex !== -1) {
+    // Extract path after root, remove leading slash
+    relativePath = normalizedPath.slice(rootIndex + normalizedRoot.length);
+    if (relativePath.startsWith('/')) {
+      relativePath = relativePath.slice(1);
+    }
+  } else {
+    // Root not found, use just the filename
+    const lastSlash = normalizedPath.lastIndexOf('/');
+    relativePath = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
+  }
+
+  // Remove file extension
+  const extensionMatch = relativePath.match(/\.(tsx?|jsx?)$/);
+  if (extensionMatch) {
+    relativePath = relativePath.slice(0, -extensionMatch[0].length);
+  }
+
+  // Build the key: dir/exportName or just exportName if at root
+  if (relativePath === '' || relativePath === exportName) {
+    // File is named same as export (e.g., Card.tsx exports Card)
+    return exportName;
+  }
+
+  // Get directory path (without filename)
+  const lastSlash = relativePath.lastIndexOf('/');
+  if (lastSlash >= 0) {
+    const dirPath = relativePath.slice(0, lastSlash);
+    return `${dirPath}/${exportName}`;
+  }
+
+  // File at root level with different name than export
+  // Use just the export name for simplicity
+  return exportName;
+}
+
+// =============================================================================
 // COMPONENT REPORTS
 // =============================================================================
 
@@ -228,6 +301,12 @@ export interface InlineStyleLiteral {
 export interface AstComponentReport {
   /** Function or const name (e.g., "LoginButton", "App") */
   componentName: string;
+  /**
+   * Stable component key for mapping registry (Phase 8D).
+   * Format: <dir>/<exportName> or just <exportName> if at root.
+   * Optional because it requires file path context to compute.
+   */
+  componentKey?: string;
   /** Whether the component is exported */
   isExported: boolean;
   /** Location of the component definition */
@@ -278,6 +357,11 @@ export interface Anchor {
   markerLine: number;
   /** Name of the matched component (if found) */
   componentName?: string;
+  /**
+   * Stable component key for mapping registry (Phase 8D).
+   * Populated when componentName is known and file path is available.
+   */
+  componentKey?: string;
   /** Location of the matched component */
   componentLoc?: SourceLocation;
   /** Extracted literals from the component */

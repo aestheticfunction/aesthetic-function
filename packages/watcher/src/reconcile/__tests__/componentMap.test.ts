@@ -6,6 +6,7 @@ import {
   loadComponentMap,
   saveComponentMap,
   mergeMapUpdate,
+  migrateComponentMap,
   resolveFromMap,
   createIdQuery,
   parseIdQuery,
@@ -14,7 +15,9 @@ import {
   COMPONENT_MAP_VERSION,
   type ComponentMap,
   type MapUpdatePayload,
+  type ComponentEntry,
 } from '../componentMap.js';
+import type { AnchoredAstReport, Anchor } from '../../ast/types.js';
 
 describe('componentMap', () => {
   let tempDir: string;
@@ -224,9 +227,142 @@ describe('componentMap', () => {
     });
   });
 
+  // =============================================================================
+  // MIGRATION TESTS (Phase 8D)
+  // =============================================================================
+
+  describe('migrateComponentMap (Phase 8D)', () => {
+    it('returns unchanged for v2 map', () => {
+      const map: ComponentMap = {
+        version: 2,
+        components: {
+          LoginButton: {
+            componentKey: 'auth/LoginButton',
+            figma: {
+              name: 'LoginButton',
+              variants: { base: { nodeId: '12:35' } },
+            },
+          },
+        },
+      };
+
+      const { map: migrated, changed } = migrateComponentMap(map);
+
+      expect(changed).toBe(false);
+      expect(migrated).toEqual(map);
+    });
+
+    it('migrates v1 map to v2 without anchors', () => {
+      const map: ComponentMap = {
+        version: 1,
+        components: {
+          LoginButton: {
+            figma: {
+              name: 'LoginButton',
+              variants: { base: { nodeId: '12:35' } },
+            },
+          },
+        },
+      };
+
+      const { map: migrated, changed } = migrateComponentMap(map);
+
+      expect(changed).toBe(true);
+      expect(migrated.version).toBe(2);
+      expect(migrated.components.LoginButton.componentKey).toBe('LoginButton');
+    });
+
+    it('migrates v1 map with anchors to derive componentKey', () => {
+      const map: ComponentMap = {
+        version: 1,
+        components: {
+          LoginButton: {
+            figma: {
+              name: 'LoginButton',
+              variants: { base: { nodeId: '12:35' } },
+            },
+          },
+        },
+      };
+
+      const anchors: AnchoredAstReport[] = [
+        {
+          filePath: '/demo-app/src/auth/LoginButton.tsx',
+          anchors: [
+            {
+              nodeName: 'LoginButton',
+              markerLine: 5,
+              componentName: 'LoginButton',
+              componentKey: 'auth/LoginButton',
+              extracted: {},
+              notes: [],
+            } as Anchor,
+          ],
+        },
+      ];
+
+      const { map: migrated, changed } = migrateComponentMap(map, anchors);
+
+      expect(changed).toBe(true);
+      expect(migrated.version).toBe(2);
+      expect(migrated.components.LoginButton.componentKey).toBe('auth/LoginButton');
+      expect(migrated.components.LoginButton.legacyKeys).toEqual(['LoginButton']);
+    });
+
+    it('is idempotent - running twice does not change result', () => {
+      const map: ComponentMap = {
+        version: 1,
+        components: {
+          LoginButton: {
+            figma: {
+              name: 'LoginButton',
+              variants: { base: { nodeId: '12:35' } },
+            },
+          },
+        },
+      };
+
+      const { map: first, changed: firstChanged } = migrateComponentMap(map);
+      const { map: second, changed: secondChanged } = migrateComponentMap(first);
+
+      expect(firstChanged).toBe(true);
+      expect(secondChanged).toBe(false);
+      expect(second).toEqual(first);
+    });
+
+    it('preserves existing v2 fields during no-op migration', () => {
+      const map: ComponentMap = {
+        version: 2,
+        components: {
+          LoginButton: {
+            componentKey: 'auth/LoginButton',
+            legacyKeys: ['LoginButton', 'OldLoginButton'],
+            figma: {
+              name: 'LoginButton',
+              componentSetNodeId: '12:34',
+              variants: {
+                base: { nodeId: '12:35' },
+                hover: { nodeId: '12:36' },
+              },
+            },
+          },
+        },
+      };
+
+      const { map: migrated, changed } = migrateComponentMap(map);
+
+      expect(changed).toBe(false);
+      expect(migrated.components.LoginButton.componentKey).toBe('auth/LoginButton');
+      expect(migrated.components.LoginButton.legacyKeys).toEqual([
+        'LoginButton',
+        'OldLoginButton',
+      ]);
+    });
+  });
+
   describe('resolveFromMap', () => {
     const map: ComponentMap = {
-      version: 1,
+      version: 2,
       components: {
         LoginButton: {
           figma: {
@@ -247,7 +383,7 @@ describe('componentMap', () => {
 
       expect(result.found).toBe(true);
       expect(result.nodeId).toBe('12:35');
-      expect(result.source).toBe('map');
+      expect(result.source).toBe('directKey');
     });
 
     it('returns nodeId for existing state variant', () => {
@@ -255,7 +391,7 @@ describe('componentMap', () => {
 
       expect(result.found).toBe(true);
       expect(result.nodeId).toBe('12:36');
-      expect(result.source).toBe('map');
+      expect(result.source).toBe('directKey');
     });
 
     it('returns not found for missing component', () => {
@@ -280,6 +416,59 @@ describe('componentMap', () => {
       expect(result.found).toBe(false);
       expect(result.nodeId).toBeNull();
       expect(result.source).toBe('none');
+    });
+
+    // Phase 8D: componentKey-first resolution
+    describe('componentKey resolution (Phase 8D)', () => {
+      const mapWithComponentKey: ComponentMap = {
+        version: 2,
+        components: {
+          LoginButton: {
+            componentKey: 'auth/LoginButton',
+            legacyKeys: ['LoginButton'],
+            figma: {
+              name: 'LoginButton',
+              variants: {
+                base: { nodeId: '12:35' },
+              },
+            },
+          },
+        },
+      };
+
+      it('resolves by componentKey when provided', () => {
+        const result = resolveFromMap(
+          mapWithComponentKey,
+          'SomeOtherName', // baseName doesn't match
+          null,
+          'auth/LoginButton' // componentKey matches
+        );
+
+        expect(result.found).toBe(true);
+        expect(result.nodeId).toBe('12:35');
+        expect(result.source).toBe('componentKey');
+      });
+
+      it('resolves by legacyKey when componentKey not found', () => {
+        const result = resolveFromMap(
+          mapWithComponentKey,
+          'LoginButton', // matches legacyKey
+          null,
+          'nonexistent/Key' // componentKey doesn't match
+        );
+
+        expect(result.found).toBe(true);
+        expect(result.nodeId).toBe('12:35');
+        expect(result.source).toBe('legacyKey');
+      });
+
+      it('falls back to directKey when no componentKey provided', () => {
+        const result = resolveFromMap(mapWithComponentKey, 'LoginButton', null);
+
+        expect(result.found).toBe(true);
+        expect(result.nodeId).toBe('12:35');
+        expect(result.source).toBe('legacyKey');
+      });
     });
   });
 

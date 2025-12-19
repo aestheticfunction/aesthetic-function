@@ -4,6 +4,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
 {
   "anchors": [
     {
+      "componentKey": "LoginButton",
       "componentLoc": {
         "endLine": 44,
         "startLine": 27,
@@ -55,6 +56,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
       "notes": [],
     },
     {
+      "componentKey": "LoginButton",
       "componentLoc": {
         "endLine": 44,
         "startLine": 27,
@@ -106,6 +108,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
       "notes": [],
     },
     {
+      "componentKey": "TestBox",
       "componentLoc": {
         "endLine": 62,
         "startLine": 51,
@@ -162,6 +165,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
       "notes": [],
     },
     {
+      "componentKey": "WelcomeHeading",
       "componentLoc": {
         "endLine": 71,
         "startLine": 69,
@@ -205,6 +209,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
 {
   "components": [
     {
+      "componentKey": "LoginButton",
       "componentName": "LoginButton",
       "inlineStyleLiterals": [
         {
@@ -348,6 +353,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       },
     },
     {
+      "componentKey": "TestBox",
       "componentName": "TestBox",
       "inlineStyleLiterals": [
         {
@@ -445,6 +451,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       },
     },
     {
+      "componentKey": "WelcomeHeading",
       "componentName": "WelcomeHeading",
       "inlineStyleLiterals": [],
       "isExported": true,
@@ -486,6 +493,7 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       },
     },
     {
+      "componentKey": "App",
       "componentName": "App",
       "inlineStyleLiterals": [
         {
