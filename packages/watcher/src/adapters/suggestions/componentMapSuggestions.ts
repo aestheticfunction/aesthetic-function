@@ -12,11 +12,17 @@
  * - Augments with adapter semantics (framework-specific naming hints)
  * - Reports suggestions in the CLI without writing files
  *
+ * VARIANT STATE POLICY (10C Fix):
+ * - Variant suggestions are EXPLICIT-ONLY (markers/overrides), never inferred from semantics
+ * - Only states from @figma state=X markers or design-overrides.json ::state keys are included
+ * - Semantic analysis (disabled boolean, hover hints) may appear in reason but NOT create states
+ *
  * WHAT THIS DOES NOT DO:
  * - Write files (read-only only)
  * - Include Figma node IDs (no nodeId, no figma scope)
  * - Modify protocol or server payloads
  * - Affect reconciliation logic
+ * - Infer variant states from semantic analysis
  *
  * ARCHITECTURE:
  * - ComponentMapSuggestion: Type describing a single suggestion
@@ -24,9 +30,11 @@
  * - CLI integration via cliReport.ts
  */
 
-import type { AnchoredAstReport, ComponentSemanticIntent } from '../../ast/types.js';
+import type { AnchoredAstReport } from '../../ast/types.js';
 import type { FileAdapterResult, ComponentAdapterResult } from '../../ast/parseIntentFromReactAst.js';
 import type { ComponentMap } from '../../reconcile/componentMap.js';
+import type { MarkerData } from '../../parse/parseIntentFromReact.js';
+import type { DesignOverrides } from '../../reconcile/types.js';
 
 // =============================================================================
 // TYPES
@@ -140,40 +148,6 @@ function toFigmaName(componentName: string): string {
 }
 
 /**
- * Extract variant states from semantics.
- * Currently derives from boolean states (disabled, checked, selected).
- */
-function deriveVariantStates(
-  semantics: Partial<ComponentSemanticIntent> | undefined
-): string[] {
-  const states: string[] = [];
-
-  if (!semantics) return states;
-
-  // Derive from boolean fields
-  if (semantics.booleans?.disabled !== undefined) {
-    states.push('disabled');
-  }
-  if (semantics.booleans?.checked !== undefined) {
-    states.push('checked');
-  }
-  if (semantics.booleans?.selected !== undefined) {
-    states.push('selected');
-  }
-
-  // Add hover as a common variant for interactive components
-  // (buttons, inputs, etc. typically have hover states)
-  const componentCategory = (semantics as Record<string, unknown>)['category'];
-  if (componentCategory === 'button' || componentCategory === 'input') {
-    if (!states.includes('hover')) {
-      states.push('hover');
-    }
-  }
-
-  return states;
-}
-
-/**
  * Get adapter display name from adapter result.
  */
 function getAdapterDisplayName(
@@ -195,12 +169,16 @@ function getAdapterId(
 
 /**
  * Build a suggestion from AST anchor and optional adapter result.
+ *
+ * NOTE: explicitStates are derived ONLY from @figma markers or design-overrides.json,
+ * never from semantic analysis (disabled boolean, hover hints, etc.).
  */
 function buildSuggestion(
   componentKey: string,
   componentName: string,
   adapterResult: ComponentAdapterResult | undefined,
-  existingEntry: { name: string } | undefined
+  existingEntry: { name: string } | undefined,
+  explicitStates: string[]
 ): ComponentMapSuggestion {
   // Determine source
   const hasAdapter = adapterResult?.hasAdapterMatch ?? false;
@@ -228,21 +206,9 @@ function buildSuggestion(
     }
   }
 
-  // Derive variant states from merged semantics
-  const semantics = adapterResult?.mergedSemantics;
-  const variantStatesSuggested = deriveVariantStates(semantics);
-
-  // Add common variants based on adapter metadata
-  if (hasAdapter && adapterResult) {
-    const meta = adapterResult.contributions[0]?.frameworkMetadata;
-    // Buttons typically have hover/pressed states
-    if (meta?.component === 'Button' && !variantStatesSuggested.includes('hover')) {
-      variantStatesSuggested.push('hover');
-    }
-    if (meta?.component === 'Button' && !variantStatesSuggested.includes('pressed')) {
-      variantStatesSuggested.push('pressed');
-    }
-  }
+  // Use explicit states ONLY (from markers/overrides)
+  // Do NOT derive from semantics (disabled boolean, hover hints, etc.)
+  const variantStatesSuggested = [...explicitStates];
 
   return {
     componentKey,
@@ -265,15 +231,22 @@ function buildSuggestion(
  *
  * READ-ONLY: This function only generates suggestions, it does NOT write files.
  *
+ * VARIANT STATE POLICY: Variant suggestions are EXPLICIT-ONLY (markers/overrides),
+ * never inferred from semantics.
+ *
  * @param anchoredReport - AST anchored report with component info
  * @param adapterResult - Optional adapter extraction results
  * @param existingMap - Optional existing component map for comparison
+ * @param markers - Optional parsed markers for explicit state extraction
+ * @param overrides - Optional design overrides for explicit state extraction
  * @returns Suggestions for component-map.json entries
  */
 export function generateSuggestions(
   anchoredReport: AnchoredAstReport,
   adapterResult?: FileAdapterResult,
-  existingMap?: ComponentMap | null
+  existingMap?: ComponentMap | null,
+  markers?: MarkerData[],
+  overrides?: DesignOverrides | null
 ): SuggestionResult {
   const suggestions: ComponentMapSuggestion[] = [];
   let skippedCount = 0;
@@ -283,6 +256,52 @@ export function generateSuggestions(
   if (adapterResult) {
     for (const comp of adapterResult.components) {
       adapterByComponent.set(comp.componentName, comp);
+    }
+  }
+
+  // Build explicit states lookup by component key
+  // States are from markers (state=X) and overrides (key::state)
+  const explicitStatesByComponent = new Map<string, Set<string>>();
+
+  // Collect explicit states from markers
+  if (markers) {
+    for (const anchor of anchoredReport.anchors) {
+      if (!anchor.componentKey) continue;
+
+      // Find marker for this anchor by line number
+      const marker = markers.find((m) => m.lineNumber === anchor.markerLine);
+      if (marker?.state && marker.state !== 'base') {
+        if (!explicitStatesByComponent.has(anchor.componentKey)) {
+          explicitStatesByComponent.set(anchor.componentKey, new Set());
+        }
+        explicitStatesByComponent.get(anchor.componentKey)!.add(marker.state);
+      }
+    }
+  }
+
+  // Collect explicit states from override keys (key::state format)
+  if (overrides) {
+    for (const key of Object.keys(overrides)) {
+      const parts = key.split('::');
+      if (parts.length === 2) {
+        const [baseName, state] = parts;
+        if (state && state !== 'base') {
+          // Try to match override key to component key
+          for (const anchor of anchoredReport.anchors) {
+            if (!anchor.componentKey) continue;
+            if (
+              anchor.componentKey === baseName ||
+              anchor.componentKey.endsWith('/' + baseName) ||
+              anchor.componentName === baseName
+            ) {
+              if (!explicitStatesByComponent.has(anchor.componentKey)) {
+                explicitStatesByComponent.set(anchor.componentKey, new Set());
+              }
+              explicitStatesByComponent.get(anchor.componentKey)!.add(state);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -307,12 +326,18 @@ export function generateSuggestions(
     // Get adapter result for this component
     const adapterRes = adapterByComponent.get(anchor.componentName);
 
+    // Get explicit states for this component (from markers/overrides only)
+    const explicitStates = Array.from(
+      explicitStatesByComponent.get(anchor.componentKey) ?? []
+    ).sort();
+
     // Build suggestion
     const suggestion = buildSuggestion(
       anchor.componentKey,
       anchor.componentName,
       adapterRes,
-      existingFigmaEntry
+      existingFigmaEntry,
+      explicitStates
     );
 
     suggestions.push(suggestion);

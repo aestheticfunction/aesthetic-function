@@ -23,7 +23,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractMarkers } from '../parse/parseIntentFromReact.js';
+import { extractMarkers, type MarkerData } from '../parse/parseIntentFromReact.js';
 import { loadDesignOverrides } from '../reconcile/loadDesignOverrides.js';
 import { loadComponentMap } from '../reconcile/componentMap.js';
 import { parseIntentFromReactAst, anchorMarkersToAst, runAdaptersOnFile } from './parseIntentFromReactAst.js';
@@ -75,19 +75,6 @@ interface DiffEntry {
 // =============================================================================
 // REPORT GENERATION
 // =============================================================================
-
-/**
- * Generate marker summary from parsed markers.
- */
-function getMarkerSummary(code: string): MarkerSummaryEntry[] {
-  const markers = extractMarkers(code);
-  return markers.map((m) => ({
-    nodeName: m.node,
-    line: m.lineNumber,
-    text: m.text,
-    fill: m.fill,
-  }));
-}
 
 /**
  * Compare JSX values with marker values for a single anchor.
@@ -484,8 +471,14 @@ async function main(): Promise<void> {
   console.log('AST REPORT');
   console.log(`File: ${relativePath}`);
 
-  // Parse markers
-  const markerSummary = getMarkerSummary(code);
+  // Parse markers (also used for explicit state extraction in 10C)
+  const markers: MarkerData[] = extractMarkers(code);
+  const markerSummary = markers.map((m) => ({
+    nodeName: m.node,
+    line: m.lineNumber,
+    text: m.text,
+    fill: m.fill,
+  }));
 
   // Parse AST and anchor
   const astReport = parseIntentFromReactAst(code, relativePath);
@@ -501,10 +494,13 @@ async function main(): Promise<void> {
   const componentMap = await loadComponentMap();
 
   // Generate component map suggestions (Phase 10C - READ-ONLY)
+  // Pass markers and overrides for explicit-only variant state extraction
   const suggestionResult = generateSuggestions(
     anchoredReport,
     adapterResult,
-    componentMap
+    componentMap,
+    markers,
+    overrides
   );
 
   // Build marker lookup

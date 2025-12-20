@@ -102,7 +102,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | **Component Map Suggestions (Phase 10C)** | |
 | AST-based suggestion derivation | ✅ |
 | Adapter-augmented Figma name hints | ✅ |
-| Variant state detection (disabled, hover, pressed) | ✅ |
+| Explicit-only variant states (markers/overrides) | ✅ |
 | CLI output (read-only, no file writes) | ✅ |
 | Existing map entry detection | ✅ |
 | **Observability** | |
@@ -1062,7 +1062,10 @@ Phase 10C adds **read-only** suggestions for bootstrapping `component-map.json`.
 **Key Characteristics:**
 - **READ-ONLY**: Suggestions are printed to CLI only, no files are written
 - **No Figma node IDs**: Code-only analysis, users must map to Figma manually
-- **Variant detection**: Suggests variant states based on semantic analysis (disabled, hover, pressed)
+- **Explicit-only variant states**: Variant suggestions (`variantStatesSuggested`) are derived ONLY from explicit sources:
+  - `@figma state=X` markers in code (e.g., `// @figma node="Button" state=hover`)
+  - `design-overrides.json` keys with `::state` suffix (e.g., `"LoginButton::disabled"`)
+  - **Never** inferred from semantics (disabled boolean, hover style hints, etc.)
 - **Adapter-aware naming**: Uses framework metadata for better Figma name suggestions
 
 **Example CLI Output:**
@@ -1074,7 +1077,7 @@ Phase 10C adds **read-only** suggestions for bootstrapping `component-map.json`.
   NEW (not in component-map.json):
     components/LoginButton
       → Suggested name: "Ant Design Button"
-      → Variants: [hover, pressed, disabled]
+      → Variants: [hover]  (explicit: state=hover marker found)
       → Source: combined (antd)
       → Reason: Ant Design adapter: Button
 

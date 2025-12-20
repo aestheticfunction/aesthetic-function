@@ -9,32 +9,33 @@
  * - Suggestions from adapter semantics
  * - Combined suggestions (AST + adapter)
  * - Detection of existing map entries
- * - Variant state derivation
+ * - Explicit-only variant state derivation (10C Fix)
  * - Figma name generation
+ *
+ * VARIANT STATE POLICY (10C Fix):
+ * - Variant suggestions are EXPLICIT-ONLY (markers/overrides)
+ * - Never inferred from semantics (disabled boolean, hover hints, etc.)
  *
  * IMPORTANT: These tests use fixtures only (no demo-app reads).
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as parser from '@babel/parser';
-import * as babelTypes from '@babel/types';
+import { describe, it, expect } from 'vitest';
 
 import {
   generateSuggestions,
   filterNewSuggestions,
   filterUpdateSuggestions,
-  type ComponentMapSuggestion,
   type SuggestionResult,
 } from '../componentMapSuggestions.js';
 import {
   anchorMarkersToAst,
   parseIntentFromReactAst,
   runAdaptersOnFile,
+  extractMarkers,
 } from '../../../ast/parseIntentFromReactAst.js';
 import type { ComponentMap } from '../../../reconcile/componentMap.js';
 import type { AnchoredAstReport } from '../../../ast/types.js';
+import type { DesignOverrides } from '../../../reconcile/types.js';
 
 // =============================================================================
 // Test Fixtures (Inline)
@@ -98,16 +99,48 @@ export function InfoCard() {
 `;
 
 /**
- * Fixture with Vuetify components for adapter matching.
+ * Fixture with explicit state marker (state=hover).
+ * Tests that explicit states ARE included in variantStatesSuggested.
+ * NOTE: Marker must be BEFORE the component definition for anchoring to work.
  */
-const VUETIFY_FIXTURE = `
+const EXPLICIT_STATE_FIXTURE = `
 import React from 'react';
 
-export function ActionButton() {
-  return (
-    // @figma node="VuetifyAction"
-    <v-btn color="primary" disabled>Click Me</v-btn>
-  );
+// @figma node="HoverAction" state=hover
+export function HoverButton() {
+  return <button>Hover Me</button>;
+}
+`;
+
+/**
+ * Fixture with disabled prop but NO ::disabled marker.
+ * Tests that semantic states are NOT included in variantStatesSuggested.
+ */
+const DISABLED_NO_MARKER_FIXTURE = `
+import React from 'react';
+import { Button } from 'antd';
+
+// @figma node="DisabledAction"
+export function DisabledButton() {
+  return <Button type="primary" disabled={true}>Disabled</Button>;
+}
+`;
+
+/**
+ * Fixture with multiple explicit state markers for same component.
+ * NOTE: Each marker-component pair is anchored separately.
+ */
+const MULTIPLE_STATES_FIXTURE = `
+import React from 'react';
+
+// @figma node="StateButton" state=hover
+export function MultiStateButtonHover() {
+  return <button>Hover</button>;
+}
+
+// @figma node="StateButton" state=disabled
+export function MultiStateButtonDisabled() {
+  return <button>Disabled</button>;
 }
 `;
 
@@ -125,6 +158,7 @@ function parseAndRunAdapters(code: string, filePath: string) {
   return {
     anchored: anchorMarkersToAst(code, filePath, astReport),
     adapters: runAdaptersOnFile(code, filePath, astReport),
+    markers: extractMarkers(code),
   };
 }
 
@@ -250,44 +284,134 @@ describe('generateSuggestions', () => {
     });
   });
 
-  describe('variant state derivation', () => {
-    it('should derive disabled state from adapter semantics', () => {
-      const { anchored, adapters } = parseAndRunAdapters(
-        ANTD_FIXTURE,
-        'test/AntdComponents.tsx'
+  describe('explicit-only variant states (10C Fix)', () => {
+    it('should NOT infer disabled state from semantics (disabled prop without marker)', () => {
+      // This fixture has disabled={true} but no state=disabled marker
+      const { anchored, adapters, markers } = parseAndRunAdapters(
+        DISABLED_NO_MARKER_FIXTURE,
+        'test/DisabledButton.tsx'
       );
 
-      const result = generateSuggestions(anchored, adapters);
+      const result = generateSuggestions(anchored, adapters, null, markers);
 
-      // The SubmitButton has disabled prop, so should suggest disabled variant
-      const buttonSuggestion = result.suggestions.find(
-        (s) => s.componentKey?.includes('SubmitButton') || s.figmaNameSuggestion.includes('Button')
-      );
-
-      if (buttonSuggestion && buttonSuggestion.source === 'combined') {
-        // Should have disabled in variant states if semantics detected it
-        // Note: exact behavior depends on adapter extraction
+      // All suggestions should NOT have disabled since there's no explicit state=disabled marker
+      // (even though the component has disabled={true} prop)
+      for (const s of result.suggestions) {
+        expect(s.variantStatesSuggested).not.toContain('disabled');
       }
     });
 
-    it('should suggest hover/pressed for Button components', () => {
-      const { anchored, adapters } = parseAndRunAdapters(
+    it('should NOT infer hover/pressed states from adapter component type', () => {
+      // ANTD_FIXTURE has Button but no state= markers
+      const { anchored, adapters, markers } = parseAndRunAdapters(
         ANTD_FIXTURE,
         'test/AntdComponents.tsx'
       );
 
-      const result = generateSuggestions(anchored, adapters);
+      const result = generateSuggestions(anchored, adapters, null, markers);
 
-      // Find Button suggestion
-      const buttonSuggestion = result.suggestions.find(
-        (s) => s.adapterId === 'antd' && s.figmaNameSuggestion.includes('Button')
+      // Find AntD Button suggestions
+      const antdButtonSuggestions = result.suggestions.filter(
+        (s) => s.adapterId === 'antd'
       );
 
-      if (buttonSuggestion) {
-        // Buttons should typically have hover and pressed variants
-        expect(buttonSuggestion.variantStatesSuggested).toContain('hover');
-        expect(buttonSuggestion.variantStatesSuggested).toContain('pressed');
+      // All AntD Button suggestions should NOT have hover/pressed
+      // since there are no explicit state= markers (10C Fix)
+      for (const s of antdButtonSuggestions) {
+        expect(s.variantStatesSuggested).not.toContain('hover');
+        expect(s.variantStatesSuggested).not.toContain('pressed');
       }
+    });
+
+    it('should include explicit states from state= markers', () => {
+      const { anchored, adapters, markers } = parseAndRunAdapters(
+        EXPLICIT_STATE_FIXTURE,
+        'test/HoverButton.tsx'
+      );
+
+      const result = generateSuggestions(anchored, adapters, null, markers);
+
+      // At least one suggestion should have hover (from state=hover marker)
+      const hasHover = result.suggestions.some((s) =>
+        s.variantStatesSuggested.includes('hover')
+      );
+      expect(hasHover).toBe(true);
+    });
+
+    it('should include explicit states from override ::state keys', () => {
+      const anchored = parseAndAnchor(MINIMAL_FIXTURE, 'test/LoginButton.tsx');
+
+      // Get the actual component key from the anchor
+      const componentKey = anchored.anchors.find((a) => a.componentKey)?.componentKey;
+      const componentName = anchored.anchors.find((a) => a.componentName)?.componentName;
+
+      // Simulate overrides with ::disabled and ::hover keys matching the component
+      const overrides: DesignOverrides = {};
+      if (componentKey) {
+        overrides[`${componentKey}::disabled`] = {
+          nodeId: '123:456',
+          text: 'Disabled',
+          lastUpdated: new Date().toISOString(),
+        };
+        overrides[`${componentKey}::hover`] = {
+          nodeId: '123:789',
+          fill: '#blue',
+          lastUpdated: new Date().toISOString(),
+        };
+      } else if (componentName) {
+        // Use componentName if no componentKey
+        overrides[`${componentName}::disabled`] = {
+          nodeId: '123:456',
+          text: 'Disabled',
+          lastUpdated: new Date().toISOString(),
+        };
+        overrides[`${componentName}::hover`] = {
+          nodeId: '123:789',
+          fill: '#blue',
+          lastUpdated: new Date().toISOString(),
+        };
+      }
+
+      const result = generateSuggestions(anchored, undefined, null, [], overrides);
+
+      // At least one suggestion should have disabled and hover from override keys
+      const hasBothStates = result.suggestions.some(
+        (s) =>
+          s.variantStatesSuggested.includes('disabled') &&
+          s.variantStatesSuggested.includes('hover')
+      );
+
+      // If we have anchors with keys/names, we should have matched states
+      if (componentKey || componentName) {
+        expect(hasBothStates).toBe(true);
+      }
+    });
+
+    it('should have empty variantStatesSuggested when no explicit states exist', () => {
+      const anchored = parseAndAnchor(MINIMAL_FIXTURE, 'test/LoginButton.tsx');
+
+      // No markers, no overrides with states
+      const result = generateSuggestions(anchored);
+
+      for (const s of result.suggestions) {
+        expect(s.variantStatesSuggested).toEqual([]);
+      }
+    });
+
+    it('should collect multiple explicit states from different markers', () => {
+      const { anchored, adapters, markers } = parseAndRunAdapters(
+        MULTIPLE_STATES_FIXTURE,
+        'test/MultiState.tsx'
+      );
+
+      const result = generateSuggestions(anchored, adapters, null, markers);
+
+      // Collect all explicit states from all suggestions
+      const allStates = new Set(result.suggestions.flatMap((s) => s.variantStatesSuggested));
+
+      // Should have both hover and disabled since they're explicit state= markers
+      expect(allStates.has('hover')).toBe(true);
+      expect(allStates.has('disabled')).toBe(true);
     });
   });
 
@@ -437,7 +561,6 @@ describe('edge cases', () => {
     const emptyAnchored: AnchoredAstReport = {
       filePath: 'test/empty.tsx',
       anchors: [],
-      stats: { totalMarkers: 0, anchored: 0, ambiguous: 0 },
     };
 
     const result = generateSuggestions(emptyAnchored);
@@ -462,7 +585,6 @@ describe('edge cases', () => {
           notes: [],
         },
       ],
-      stats: { totalMarkers: 1, anchored: 1, ambiguous: 0 },
     };
 
     const result = generateSuggestions(anchoredWithoutKey);
@@ -485,7 +607,6 @@ describe('edge cases', () => {
           notes: [],
         },
       ],
-      stats: { totalMarkers: 1, anchored: 1, ambiguous: 0 },
     };
 
     const result = generateSuggestions(anchoredWithoutName);
