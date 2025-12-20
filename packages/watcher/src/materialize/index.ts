@@ -259,7 +259,10 @@ export async function materializeAst(
 /**
  * Log an AST write result summary.
  *
- * In dry-run mode, prints detailed information about what would be written and why.
+ * Provides clear, actionable output:
+ * - Shows effective configuration (mode and dryRun)
+ * - Lists each operation with status (applied/skipped/would-apply)
+ * - Only shows "dry-run" messaging when dryRun === true
  *
  * @param result - AST write result
  * @param prefix - Log prefix (e.g., '[Watcher]')
@@ -268,26 +271,37 @@ export function logAstWriteResult(
   result: AstWriteResult,
   prefix = '[Watcher]'
 ): void {
-  const dryRunLabel = result.dryRun ? ' (dry-run)' : '';
-  const skippedLabel = result.skipped > 0 ? ` skipped=${result.skipped}` : '';
-
+  // Summary line with all key metrics
   console.log(
-    `${prefix} AST Write: mode=${result.mode}${dryRunLabel} applied=${result.applied}${skippedLabel}`
+    `${prefix} AST Write: mode=${result.mode} dryRun=${result.dryRun} applied=${result.applied} skipped=${result.skipped}`
   );
 
-  // In dry-run mode, provide more detailed information
+  // Only show "would write" message when actually in dry-run mode
   if (result.dryRun && result.operations.length > 0) {
-    console.log(`${prefix}   Would write the following changes:`);
+    const writableOps = result.operations.filter((op) => op.writable);
+    if (writableOps.length > 0) {
+      console.log(`${prefix}   DRY RUN: Would write ${writableOps.length} change(s) to source file`);
+    }
+  } else if (!result.dryRun && result.applied > 0) {
+    console.log(`${prefix}   APPLIED: Wrote ${result.applied} change(s) to source file`);
   }
 
   // Log details for operations
   for (const op of result.operations) {
     const status = op.writable ? '✓' : '✗';
-    const action = result.dryRun && op.writable ? 'would change' : op.writable ? 'changed' : 'skipped';
+    let action: string;
+    if (!op.writable) {
+      action = 'skipped (not writable)';
+    } else if (result.dryRun) {
+      action = 'would write';
+    } else {
+      action = 'written';
+    }
+    
     console.log(
       `${prefix}   ${status} ${op.op} ${op.nodeName} (L${op.loc.startLine}): "${op.before}" → "${op.after}" [${action}]`
     );
-    if (!op.writable) {
+    if (!op.writable && op.reason) {
       console.log(`${prefix}       reason: ${op.reason}`);
     }
   }

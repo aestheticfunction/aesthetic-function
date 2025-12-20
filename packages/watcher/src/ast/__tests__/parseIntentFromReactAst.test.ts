@@ -3,8 +3,14 @@
  *
  * Tests for the AST-based React analyzer.
  *
+ * IMPORTANT: Snapshot tests use fixtures from __fixtures__/, NOT demo-app/.
+ * This ensures:
+ * - Snapshots are deterministic and stable
+ * - Human edits to demo-app don't break tests
+ * - Each fixture is version-controlled with its expected output
+ *
  * Includes:
- * - Snapshot test against demo-app/src/App.tsx
+ * - Snapshot test against App.fixture.tsx
  * - Unit tests for component extraction
  * - Unit tests for literal extraction
  * - Unit tests for marker anchoring
@@ -27,11 +33,20 @@ const __dirname = dirname(__filename);
 // =============================================================================
 
 /**
- * Read the demo App.tsx file.
+ * Normalized fixture path for snapshots.
+ * Using a constant path ensures snapshots are identical across machines.
  */
-function readDemoApp(): string {
-  const appPath = join(__dirname, '..', '..', '..', '..', '..', 'demo-app', 'src', 'App.tsx');
-  return readFileSync(appPath, 'utf-8');
+const FIXTURE_PATH = 'fixtures/App.fixture.tsx';
+
+/**
+ * Read the App fixture file for snapshot tests.
+ *
+ * ⚠️ Uses __fixtures__/App.fixture.tsx, NOT demo-app/src/App.tsx.
+ * This decouples tests from human-editable demo content.
+ */
+function readAppFixture(): string {
+  const fixturePath = join(__dirname, '..', '..', '__fixtures__', 'App.fixture.tsx');
+  return readFileSync(fixturePath, 'utf-8');
 }
 
 // =============================================================================
@@ -39,12 +54,16 @@ function readDemoApp(): string {
 // =============================================================================
 
 describe('parseIntentFromReactAst - Snapshot', () => {
-  it('should produce stable output for demo-app/src/App.tsx', () => {
-    const code = readDemoApp();
-    const report = parseIntentFromReactAst(code, 'demo-app/src/App.tsx');
+  /**
+   * ⚠️ This test uses App.fixture.tsx, NOT demo-app/src/App.tsx.
+   * Editing demo-app content will NOT affect this snapshot.
+   */
+  it('should produce stable output for App.fixture.tsx', () => {
+    const code = readAppFixture();
+    const report = parseIntentFromReactAst(code, FIXTURE_PATH);
 
     // Verify structure
-    expect(report.filePath).toBe('demo-app/src/App.tsx');
+    expect(report.filePath).toBe(FIXTURE_PATH);
     expect(report.components).toBeDefined();
     expect(Array.isArray(report.components)).toBe(true);
 
@@ -52,12 +71,16 @@ describe('parseIntentFromReactAst - Snapshot', () => {
     expect(report).toMatchSnapshot();
   });
 
-  it('should produce stable anchored report for demo-app/src/App.tsx', () => {
-    const code = readDemoApp();
-    const anchoredReport = anchorMarkersToAst(code, 'demo-app/src/App.tsx');
+  /**
+   * ⚠️ This test uses App.fixture.tsx, NOT demo-app/src/App.tsx.
+   * Editing demo-app content will NOT affect this snapshot.
+   */
+  it('should produce stable anchored report for App.fixture.tsx', () => {
+    const code = readAppFixture();
+    const anchoredReport = anchorMarkersToAst(code, FIXTURE_PATH);
 
     // Verify structure
-    expect(anchoredReport.filePath).toBe('demo-app/src/App.tsx');
+    expect(anchoredReport.filePath).toBe(FIXTURE_PATH);
     expect(anchoredReport.anchors).toBeDefined();
     expect(Array.isArray(anchoredReport.anchors)).toBe(true);
 
@@ -479,11 +502,15 @@ export function Button() {
     expect(anchored.anchors[1].componentName).toBe('Button');
   });
 
-  it('should handle demo-app/src/App.tsx markers correctly', () => {
-    const code = readDemoApp();
-    const anchored = anchorMarkersToAst(code, 'demo-app/src/App.tsx');
+  /**
+   * ⚠️ This test uses App.fixture.tsx, NOT demo-app/src/App.tsx.
+   * Editing demo-app content will NOT affect this test.
+   */
+  it('should handle App.fixture.tsx markers correctly', () => {
+    const code = readAppFixture();
+    const anchored = anchorMarkersToAst(code, FIXTURE_PATH);
 
-    // Should have 3 markers: LoginButton, TestBox, WelcomeText
+    // Should have 4 markers: LoginButton, LoginButton::hover, TestBox, WelcomeText
     const loginButton = anchored.anchors.find((a) => a.nodeName === 'LoginButton');
     const testBox = anchored.anchors.find((a) => a.nodeName === 'TestBox');
     const welcomeText = anchored.anchors.find((a) => a.nodeName === 'WelcomeText');

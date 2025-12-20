@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 8C)
+## What Works Today (Phase 9C)
 
 | Feature | Status |
 |---------|--------|
@@ -68,6 +68,21 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Watcher prefers mapped IDs over names | ✅ |
 | Plugin resolves `id:<nodeId>` queries | ✅ |
 | Idempotent server map merging | ✅ |
+| **Feature Orchestrator (Phase 9A)** | |
+| Prompt → Code → Figma pipeline | ✅ |
+| LLM context bundle (AST, intents, overrides, tokens) | ✅ |
+| Patch artifact generation + validation | ✅ |
+| State-aware apply routing (markers/overrides for non-base) | ✅ |
+| **Post-Apply Emit (Phase 9B)** | |
+| Immediate Figma refresh after apply | ✅ |
+| Watcher suppression (prevents duplicate sends) | ✅ |
+| Debounced emit for rapid writes | ✅ |
+| **Observability & DX (Phase 9C)** | |
+| TraceSummary structured logging | ✅ |
+| Ops-hash based suppression (smarter dedup) | ✅ |
+| OPERATION_RESULT failure logging | ✅ |
+| Demo scripts (demo:server, demo:watcher, etc.) | ✅ |
+| TRACE/TRACE_JSON/TRACE_VERBOSE env vars | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -143,6 +158,9 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 8A** | Variant/state mapping (base/disabled/hover/pressed) | ✅ |
 | **Phase 8B** | Native Figma Variant Targeting (Component Sets) | ✅ |
 | **Phase 8C** | Component Mapping Registry (Stable IDs) | ✅ |
+| **Phase 9A** | Feature Orchestrator (Prompt → Code → Figma) | ✅ |
+| **Phase 9B** | Orchestrator "Apply → Re-emit Ops" (Immediate Figma Refresh) | ✅ |
+| **Phase 9C** | Production Hardening, Observability & Demo DX | ✅ |
 
 ### Not Implemented Yet
 
@@ -152,7 +170,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), and stable ID mapping via component-map.json (Phase 8C). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), and the Feature Orchestrator with immediate Figma refresh (Phase 9A/9B). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -719,9 +737,17 @@ Updates existing `@figma` marker lines in source files:
 | `MATERIALIZE_MODE` | `off` | `off`, `patch`, or `markers` |
 | `MATERIALIZE_ON` | `design_change` | `design_change` or `file_save` |
 | `MATERIALIZE_DRY_RUN` | `true` | When true, log changes without writing files |
+| `AST_WRITE_MODE` | `off` | `off`, `patch`, or `write` — Controls AST-based code writes |
+| `AST_WRITE_DRY_RUN` | `true` | When true, log what would change without writing. Set to `false` to actually write. |
+| `AST_WRITE_ALLOW` | `SET_TEXT,SET_FILL,SET_LAYOUT` | Comma-separated list of allowed write operations |
+| `POST_APPLY_EMIT` | `false` | Immediately emit to Figma after Feature Orchestrator apply |
+| `POST_APPLY_EMIT_DEBOUNCE_MS` | `200` | Debounce delay for post-apply emit (ms) |
 | `ENABLE_AUDIT_LOG` | `false` | Enable sync-log.md audit trail |
 | `ECHO_GUARD` | `true` | Enable echo suppression after AST writes |
 | `ECHO_GUARD_TTL_MS` | `5000` | Echo cache TTL in milliseconds |
+| `TRACE` | `true` | Enable structured trace logging |
+| `TRACE_JSON` | `false` | Output traces as JSON (one per line) |
+| `TRACE_VERBOSE` | `false` | Include detailed timings and resolution info |
 
 ### Examples
 
@@ -746,6 +772,40 @@ MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save pnpm dev:watcher
 
 # Marker edits (write actual changes to source files)
 MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save MATERIALIZE_DRY_RUN=false pnpm dev:watcher
+
+# Feature Orchestrator: Generate a patch artifact (dry-run by default)
+pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --component LoginButton \
+  --state hover \
+  --prompt "Make the hover state button use the success green token"
+
+# Feature Orchestrator: Preview what would be applied
+AST_WRITE_MODE=write pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --prompt "Change the Card title to 'Welcome'" \
+  --apply --dry-run
+
+# Feature Orchestrator: Actually apply the patch to source code
+AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --prompt "Change the Card title to 'Welcome'" \
+  --apply
+
+# Or use the --no-dry-run CLI flag (same as AST_WRITE_DRY_RUN=false)
+AST_WRITE_MODE=write pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --prompt "Change the Card title to 'Welcome'" \
+  --apply --no-dry-run
+
+# Feature Orchestrator: Apply AND immediately push to Figma (Phase 9B)
+POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --component LoginButton \
+  --state hover \
+  --prompt "Make the hover state button use the success green token and change its label to 'Continue'" \
+  --apply
 ```
 
 ### Precedence Modes
@@ -754,6 +814,251 @@ MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save MATERIALIZE_DRY_RUN=false pnpm
 |------|----------|
 | `always` | Overrides always win over code values (default) |
 | `if_newer_than_code` | Only apply overrides where `lastUpdated` > file mtime |
+
+---
+
+## Fast Demo: Immediate Figma Refresh (Phase 9B)
+
+This section shows how to use the Feature Orchestrator with immediate Figma updates.
+
+### Prerequisites
+
+1. **Start the server** (with optional tunnel for remote Figma access):
+   ```bash
+   pnpm dev:server
+   ```
+
+2. **Start the watcher** (for normal file-change sync):
+   ```bash
+   pnpm dev:watcher
+   ```
+
+3. **Load the Figma plugin**:
+   - Open Figma Desktop
+   - Run the plugin from `Plugins > Development > Import plugin from manifest...`
+   - Point to `packages/figma-plugin/manifest.json`
+
+4. **Ensure your Figma document has matching nodes**:
+   - Create a frame named `LoginButton` (or `LoginButton::hover` for state variants)
+   - Alternatively, create a Component Set named `LoginButton` with `State=Hover` variant
+
+### Run Feature Orchestrator with POST_APPLY_EMIT
+
+```bash
+POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher feature \
+  --file demo-app/src/App.tsx \
+  --component LoginButton \
+  --state hover \
+  --prompt "Make the hover state button use the success green token and change its label to 'Continue'" \
+  --apply
+```
+
+### What Happens
+
+1. **LLM generates changes**: The orchestrator calls the LLM with the prompt and code context
+2. **State-aware apply**: Hover state changes go to markers/overrides (not base JSX)
+3. **Post-apply emit**: Immediately after apply, the system:
+   - Reads the updated file from disk
+   - Parses the intent model
+   - Applies reconciliation and overrides
+   - Transforms to FigmaOperations
+   - Sends to the server
+4. **Figma updates**: Connected Figma plugin receives operations and updates the document
+
+### Expected Output
+
+```
+[Orchestrator] Processing feature request for demo-app/src/App.tsx
+[Orchestrator] Prompt: "Make the hover state button use the success green token..."
+...
+[Orchestrator] Successfully applied changes
+[Orchestrator] Post-apply emit: enabled
+[PostApplyEmit] Starting emit for demo-app/src/App.tsx
+[PostApplyEmit] Component: LoginButton, State: hover
+[PostApplyEmit] Using marker parser...
+[PostApplyEmit] Generated 2 operation(s)
+[PostApplyEmit] ✓ Sent 2 ops (1 client(s))
+[Orchestrator] Post-apply emit: ops=2 sent=true clients=1
+```
+
+### Watcher Suppression
+
+When `POST_APPLY_EMIT` is enabled:
+- The feature orchestrator records the file path after emit
+- The watcher detects the file change but **suppresses** the duplicate send
+- Logs show: `[Watcher] Suppressed: demo-app/src/App.tsx (recently emitted by Feature Orchestrator)`
+
+This prevents double-updates to Figma.
+
+---
+
+## Observability (Phase 9C)
+
+Phase 9C adds production-grade observability with structured logging to answer "what happened and why?" when debugging sync issues.
+
+### TraceSummary
+
+Every pipeline run (watcher or orchestrator) generates a `TraceSummary` with:
+
+- **requestId**: Unique identifier for tracing
+- **source**: Origin (`watcher`, `feature-emit-marker`, `feature-emit-llm`)
+- **parseMode**: How intents were extracted (`markers`, `llm`, `ast`)
+- **intentsCount**: Number of intents found
+- **opsCount**: Number of Figma operations generated
+- **resolution**: Override/marker/ast precedence details
+- **emit**: Whether operations were sent and to how many clients
+
+### Example Trace Output
+
+```
+[Trace] requestId=feature-emit-1234 file=demo-app/src/App.tsx parse=markers intents=4 ops=6
+[Trace] resolution: override=2 marker=2 ast=0 code=2 map: used=true mappedOps=6
+[Trace] emit: enabled=true sent=true clients=1 suppressedWatcher=true
+```
+
+### Trace Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TRACE` | `true` | Enable trace logging (human-readable) |
+| `TRACE_JSON` | `false` | Output traces as JSON (for log aggregation) |
+| `TRACE_VERBOSE` | `false` | Include detailed timings and resolution info |
+
+### Usage
+
+```bash
+# Default human-readable traces
+TRACE=true pnpm dev:watcher
+
+# JSON output for log aggregation
+TRACE_JSON=true pnpm dev:watcher
+
+# Verbose mode with timing details
+TRACE_VERBOSE=true pnpm dev:watcher
+```
+
+### Suppression Logging
+
+The enhanced suppression system logs decisions:
+
+```
+[Trace] [suppression] demo-app/src/App.tsx: SUPPRESSED (same-ops)
+[Trace] [suppression] demo-app/src/App.tsx: not suppressed (different-ops)
+```
+
+The ops-hash comparison prevents suppression of genuinely different changes that happen within the TTL window.
+
+---
+
+## Troubleshooting
+
+Common issues and solutions:
+
+### "Figma doesn't update when I save a file"
+
+1. **Check server is running**: `pnpm dev:server` should show "HTTP server listening on http://localhost:3001"
+2. **Check watcher is running**: `pnpm dev:watcher` should show "Watcher started"
+3. **Check plugin is connected**: Plugin UI should show "Connected" status
+4. **Check for markers**: File must contain `// @figma node=...` markers
+5. **Check node names match**: Figma nodes must be named exactly as specified in markers
+
+### "Operations sent but node not found in Figma"
+
+Look for this log in the server:
+```
+[Server] ✗ OPERATION_RESULT failed for requestId=...
+[Server]   Error: Node not found: "LoginButton"
+```
+
+Solutions:
+- Verify node exists with exact name in Figma
+- Use `component-map.json` for stable ID mapping
+- Enable `DEBUG_LIST_VARIANTS=true` in plugin to see available nodes
+
+### "Duplicate operations sent"
+
+The suppression system should prevent this. If it happens:
+
+1. Check suppression logs: `TRACE=true pnpm dev:watcher`
+2. Look for: `[Trace] [suppression]` entries
+3. If different ops are being incorrectly suppressed, the ops-hash may need debugging
+
+### "Override changes not reflected"
+
+1. Check `design-overrides.json` exists with the node entry
+2. Verify `USE_OVERRIDES=true` (default)
+3. Check precedence: `OVERRIDES_PRECEDENCE=always` means overrides always win
+4. If using `if_newer_than_code`, ensure override timestamp is newer than file mtime
+
+### "LLM mode returns empty intents"
+
+1. Verify API key is set: `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+2. Check provider setting: `LLM_PROVIDER=openai` or `anthropic`
+3. Look for fallback: `[Watcher] LLM failed, falling back to markers`
+4. Try with markers first to verify basic pipeline works
+
+### Enable Verbose Diagnostics
+
+```bash
+# Full trace output with timing details
+TRACE=true TRACE_VERBOSE=true ENABLE_AUDIT_LOG=true pnpm dev:watcher
+```
+
+---
+
+## Demo Scripts (Phase 9C)
+
+Quick-start scripts for demos and development:
+
+| Command | Description |
+|---------|-------------|
+| `pnpm demo:server` | Start the relay server with pretty logging |
+| `pnpm demo:watcher` | Start the file watcher with trace output |
+| `pnpm demo:feature` | Run the feature orchestrator CLI |
+| `pnpm demo:fast` | Start server + watcher concurrently |
+| `pnpm demo:tunnel` | Expose server via cloudflared for Figma access |
+
+### Professional Demo Runbook
+
+**Setup (5 minutes before demo):**
+
+1. Start server and watcher:
+   ```bash
+   pnpm demo:fast
+   ```
+
+2. In a separate terminal, start the tunnel:
+   ```bash
+   pnpm demo:tunnel
+   ```
+   Copy the HTTPS URL.
+
+3. Open Figma, run the plugin, paste the tunnel URL, click Connect.
+
+4. Verify connection by saving a file with `@figma` markers and watching Figma update.
+
+**During Demo:**
+
+1. **Show Code → Design**: Edit a file, save, watch Figma update in real-time.
+
+2. **Show Design → Code**: In Figma, select a node, click "Send Selection" in the plugin.
+   Show `design-overrides.json` updating.
+
+3. **Show Feature Orchestrator**:
+   ```bash
+   pnpm demo:feature --file demo-app/src/App.tsx \
+     --prompt "Change the Card background to success green"
+   ```
+   Show the patch artifact generated.
+
+4. **Show Immediate Apply** (Phase 9B):
+   ```bash
+   POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
+     pnpm demo:feature --file demo-app/src/App.tsx \
+     --prompt "Change the button text to Submit" --apply
+   ```
+   Watch Figma update immediately without waiting for file-save detection.
 
 ---
 
@@ -970,6 +1275,11 @@ aesthetic-function/
 | `pnpm typecheck` | Run TypeScript checks |
 | `pnpm tunnel` | Expose server via cloudflared |
 | `pnpm test:send` | Send test operations |
+| `pnpm demo:server` | Start server with pretty logging |
+| `pnpm demo:watcher` | Start watcher with trace output |
+| `pnpm demo:feature` | Run feature orchestrator CLI |
+| `pnpm demo:fast` | Start server + watcher concurrently |
+| `pnpm demo:tunnel` | Expose server for Figma access |
 | `pnpm --filter @aesthetic-function/watcher ast:report <file>` | Run AST diff report |
 | `pnpm --filter @aesthetic-function/watcher feasibility:report <file>` | Run feasibility analysis |
 

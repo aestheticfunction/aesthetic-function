@@ -1,13 +1,13 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
-exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored report for demo-app/src/App.tsx 1`] = `
+exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored report for App.fixture.tsx 1`] = `
 {
   "anchors": [
     {
       "componentKey": "LoginButton",
       "componentLoc": {
-        "endLine": 44,
-        "startLine": 27,
+        "endLine": 42,
+        "startLine": 25,
       },
       "componentName": "LoginButton",
       "extracted": {
@@ -24,9 +24,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 4,
-                  "endLine": 42,
+                  "endLine": 40,
                   "startColumn": 5,
-                  "startLine": 40,
+                  "startLine": 38,
                 },
                 "value": "Sign In",
               },
@@ -38,9 +38,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 34,
-                  "endLine": 31,
+                  "endLine": 29,
                   "startColumn": 8,
-                  "startLine": 31,
+                  "startLine": 29,
                 },
                 "value": "#3B82F6",
               },
@@ -51,15 +51,15 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
           "Sign In",
         ],
       },
-      "markerLine": 25,
+      "markerLine": 23,
       "nodeName": "LoginButton",
       "notes": [],
     },
     {
       "componentKey": "LoginButton",
       "componentLoc": {
-        "endLine": 44,
-        "startLine": 27,
+        "endLine": 42,
+        "startLine": 25,
       },
       "componentName": "LoginButton",
       "extracted": {
@@ -76,9 +76,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 4,
-                  "endLine": 42,
+                  "endLine": 40,
                   "startColumn": 5,
-                  "startLine": 40,
+                  "startLine": 38,
                 },
                 "value": "Sign In",
               },
@@ -90,9 +90,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 34,
-                  "endLine": 31,
+                  "endLine": 29,
                   "startColumn": 8,
-                  "startLine": 31,
+                  "startLine": 29,
                 },
                 "value": "#3B82F6",
               },
@@ -103,15 +103,15 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
           "Sign In",
         ],
       },
-      "markerLine": 26,
+      "markerLine": 24,
       "nodeName": "LoginButton::hover",
       "notes": [],
     },
     {
       "componentKey": "TestBox",
       "componentLoc": {
-        "endLine": 62,
-        "startLine": 51,
+        "endLine": 60,
+        "startLine": 49,
       },
       "componentName": "TestBox",
       "extracted": {
@@ -126,9 +126,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
               "confidence": "high",
               "loc": {
                 "endColumn": 19,
-                "endLine": 56,
+                "endLine": 54,
                 "startColumn": 8,
-                "startLine": 56,
+                "startLine": 54,
               },
               "value": 100,
             },
@@ -136,9 +136,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
               "confidence": "high",
               "loc": {
                 "endColumn": 18,
-                "endLine": 55,
+                "endLine": 53,
                 "startColumn": 8,
-                "startLine": 55,
+                "startLine": 53,
               },
               "value": 100,
             },
@@ -150,9 +150,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 34,
-                  "endLine": 57,
+                  "endLine": 55,
                   "startColumn": 8,
-                  "startLine": 57,
+                  "startLine": 55,
                 },
                 "value": "#FF0000",
               },
@@ -160,15 +160,15 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
           },
         },
       },
-      "markerLine": 50,
+      "markerLine": 48,
       "nodeName": "TestBox",
       "notes": [],
     },
     {
       "componentKey": "WelcomeHeading",
       "componentLoc": {
-        "endLine": 71,
-        "startLine": 69,
+        "endLine": 69,
+        "startLine": 67,
       },
       "componentName": "WelcomeHeading",
       "extracted": {
@@ -182,9 +182,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
                 "confidence": "high",
                 "loc": {
                   "endColumn": 32,
-                  "endLine": 70,
+                  "endLine": 68,
                   "startColumn": 13,
-                  "startLine": 70,
+                  "startLine": 68,
                 },
                 "value": "Welcome to the Demo",
               },
@@ -196,16 +196,16 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable anchored rep
           "Welcome to the Demo",
         ],
       },
-      "markerLine": 68,
+      "markerLine": 66,
       "nodeName": "WelcomeText",
       "notes": [],
     },
   ],
-  "filePath": "demo-app/src/App.tsx",
+  "filePath": "fixtures/App.fixture.tsx",
 }
 `;
 
-exports[`parseIntentFromReactAst - Snapshot > should produce stable output for demo-app/src/App.tsx 1`] = `
+exports[`parseIntentFromReactAst - Snapshot > should produce stable output for App.fixture.tsx 1`] = `
 {
   "components": [
     {
@@ -216,9 +216,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 34,
-            "endLine": 31,
+            "endLine": 29,
             "startColumn": 8,
-            "startLine": 31,
+            "startLine": 29,
           },
           "styleProp": "backgroundColor",
           "value": "#3B82F6",
@@ -227,9 +227,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 22,
-            "endLine": 32,
+            "endLine": 30,
             "startColumn": 8,
-            "startLine": 32,
+            "startLine": 30,
           },
           "styleProp": "color",
           "value": "white",
@@ -238,9 +238,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 28,
-            "endLine": 33,
+            "endLine": 31,
             "startColumn": 8,
-            "startLine": 33,
+            "startLine": 31,
           },
           "styleProp": "padding",
           "value": "12px 24px",
@@ -249,9 +249,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 27,
-            "endLine": 34,
+            "endLine": 32,
             "startColumn": 8,
-            "startLine": 34,
+            "startLine": 32,
           },
           "styleProp": "borderRadius",
           "value": "8px",
@@ -260,9 +260,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 22,
-            "endLine": 35,
+            "endLine": 33,
             "startColumn": 8,
-            "startLine": 35,
+            "startLine": 33,
           },
           "styleProp": "border",
           "value": "none",
@@ -271,9 +271,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 24,
-            "endLine": 36,
+            "endLine": 34,
             "startColumn": 8,
-            "startLine": 36,
+            "startLine": 34,
           },
           "styleProp": "fontSize",
           "value": "16px",
@@ -282,9 +282,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 23,
-            "endLine": 37,
+            "endLine": 35,
             "startColumn": 8,
-            "startLine": 37,
+            "startLine": 35,
           },
           "styleProp": "fontWeight",
           "value": 600,
@@ -293,9 +293,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "button",
           "loc": {
             "endColumn": 25,
-            "endLine": 38,
+            "endLine": 36,
             "startColumn": 8,
-            "startLine": 38,
+            "startLine": 36,
           },
           "styleProp": "cursor",
           "value": "pointer",
@@ -307,16 +307,16 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
         {
           "loc": {
             "endColumn": 4,
-            "endLine": 42,
+            "endLine": 40,
             "startColumn": 5,
-            "startLine": 40,
+            "startLine": 38,
           },
           "text": "Sign In",
         },
       ],
       "loc": {
-        "endLine": 44,
-        "startLine": 27,
+        "endLine": 42,
+        "startLine": 25,
       },
       "semantics": {
         "booleans": {},
@@ -328,9 +328,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
               "confidence": "high",
               "loc": {
                 "endColumn": 4,
-                "endLine": 42,
+                "endLine": 40,
                 "startColumn": 5,
-                "startLine": 40,
+                "startLine": 38,
               },
               "value": "Sign In",
             },
@@ -342,9 +342,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
               "confidence": "high",
               "loc": {
                 "endColumn": 34,
-                "endLine": 31,
+                "endLine": 29,
                 "startColumn": 8,
-                "startLine": 31,
+                "startLine": 29,
               },
               "value": "#3B82F6",
             },
@@ -360,9 +360,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 18,
-            "endLine": 55,
+            "endLine": 53,
             "startColumn": 8,
-            "startLine": 55,
+            "startLine": 53,
           },
           "styleProp": "width",
           "value": 100,
@@ -371,9 +371,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 19,
-            "endLine": 56,
+            "endLine": 54,
             "startColumn": 8,
-            "startLine": 56,
+            "startLine": 54,
           },
           "styleProp": "height",
           "value": 100,
@@ -382,9 +382,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 34,
-            "endLine": 57,
+            "endLine": 55,
             "startColumn": 8,
-            "startLine": 57,
+            "startLine": 55,
           },
           "styleProp": "backgroundColor",
           "value": "#FF0000",
@@ -393,9 +393,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 23,
-            "endLine": 58,
+            "endLine": 56,
             "startColumn": 8,
-            "startLine": 58,
+            "startLine": 56,
           },
           "styleProp": "borderRadius",
           "value": 8,
@@ -405,8 +405,8 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       "jsxPropLiterals": [],
       "jsxTextLiterals": [],
       "loc": {
-        "endLine": 62,
-        "startLine": 51,
+        "endLine": 60,
+        "startLine": 49,
       },
       "semantics": {
         "booleans": {},
@@ -416,9 +416,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
             "confidence": "high",
             "loc": {
               "endColumn": 19,
-              "endLine": 56,
+              "endLine": 54,
               "startColumn": 8,
-              "startLine": 56,
+              "startLine": 54,
             },
             "value": 100,
           },
@@ -426,9 +426,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
             "confidence": "high",
             "loc": {
               "endColumn": 18,
-              "endLine": 55,
+              "endLine": 53,
               "startColumn": 8,
-              "startLine": 55,
+              "startLine": 53,
             },
             "value": 100,
           },
@@ -440,9 +440,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
               "confidence": "high",
               "loc": {
                 "endColumn": 34,
-                "endLine": 57,
+                "endLine": 55,
                 "startColumn": 8,
-                "startLine": 57,
+                "startLine": 55,
               },
               "value": "#FF0000",
             },
@@ -460,16 +460,16 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
         {
           "loc": {
             "endColumn": 32,
-            "endLine": 70,
+            "endLine": 68,
             "startColumn": 13,
-            "startLine": 70,
+            "startLine": 68,
           },
           "text": "Welcome to the Demo",
         },
       ],
       "loc": {
-        "endLine": 71,
-        "startLine": 69,
+        "endLine": 69,
+        "startLine": 67,
       },
       "semantics": {
         "booleans": {},
@@ -481,9 +481,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
               "confidence": "high",
               "loc": {
                 "endColumn": 32,
-                "endLine": 70,
+                "endLine": 68,
                 "startColumn": 13,
-                "startLine": 70,
+                "startLine": 68,
               },
               "value": "Welcome to the Demo",
             },
@@ -500,9 +500,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 29,
-            "endLine": 79,
+            "endLine": 77,
             "startColumn": 18,
-            "startLine": 79,
+            "startLine": 77,
           },
           "styleProp": "padding",
           "value": 40,
@@ -511,9 +511,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 66,
-            "endLine": 79,
+            "endLine": 77,
             "startColumn": 31,
-            "startLine": 79,
+            "startLine": 77,
           },
           "styleProp": "fontFamily",
           "value": "system-ui, sans-serif",
@@ -522,9 +522,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 35,
-            "endLine": 81,
+            "endLine": 79,
             "startColumn": 20,
-            "startLine": 81,
+            "startLine": 79,
           },
           "styleProp": "display",
           "value": "flex",
@@ -533,9 +533,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 44,
-            "endLine": 81,
+            "endLine": 79,
             "startColumn": 37,
-            "startLine": 81,
+            "startLine": 79,
           },
           "styleProp": "gap",
           "value": 20,
@@ -544,9 +544,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
           "element": "div",
           "loc": {
             "endColumn": 59,
-            "endLine": 81,
+            "endLine": 79,
             "startColumn": 46,
-            "startLine": 81,
+            "startLine": 79,
           },
           "styleProp": "marginTop",
           "value": 20,
@@ -556,8 +556,8 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       "jsxPropLiterals": [],
       "jsxTextLiterals": [],
       "loc": {
-        "endLine": 87,
-        "startLine": 77,
+        "endLine": 85,
+        "startLine": 75,
       },
       "semantics": {
         "booleans": {},
@@ -566,9 +566,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
             "confidence": "high",
             "loc": {
               "endColumn": 35,
-              "endLine": 81,
+              "endLine": 79,
               "startColumn": 20,
-              "startLine": 81,
+              "startLine": 79,
             },
             "value": "flex",
           },
@@ -578,9 +578,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
             "confidence": "high",
             "loc": {
               "endColumn": 44,
-              "endLine": 81,
+              "endLine": 79,
               "startColumn": 37,
-              "startLine": 81,
+              "startLine": 79,
             },
             "value": 20,
           },
@@ -588,9 +588,9 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
             "confidence": "high",
             "loc": {
               "endColumn": 29,
-              "endLine": 79,
+              "endLine": 77,
               "startColumn": 18,
-              "startLine": 79,
+              "startLine": 77,
             },
             "value": 40,
           },
@@ -600,6 +600,6 @@ exports[`parseIntentFromReactAst - Snapshot > should produce stable output for d
       },
     },
   ],
-  "filePath": "demo-app/src/App.tsx",
+  "filePath": "fixtures/App.fixture.tsx",
 }
 `;

@@ -302,6 +302,39 @@ wss.on('connection', (ws: WebSocket, req: IncomingMessage) => {
       const msg = JSON.parse(data.toString());
       console.log(`[Server] Received from plugin:`, msg.type);
       
+      // Handle OPERATION_RESULT from plugin (Phase 9C observability)
+      if (msg.type === 'OPERATION_RESULT' && msg.payload) {
+        const { originRequestId, success, error, createdNodeIds } = msg.payload as {
+          originRequestId: string;
+          success: boolean;
+          error?: string;
+          createdNodeIds?: Record<string, string>;
+        };
+        
+        if (success) {
+          const createdCount = createdNodeIds ? Object.keys(createdNodeIds).length : 0;
+          console.log(`[Server] ✓ OPERATION_RESULT success for requestId=${originRequestId}${createdCount > 0 ? ` (created ${createdCount} node(s))` : ''}`);
+        } else {
+          // Log failure prominently for debugging
+          console.error(`[Server] ✗ OPERATION_RESULT failed for requestId=${originRequestId}`);
+          if (error) {
+            console.error(`[Server]   Error: ${error}`);
+          }
+          // Log to audit if enabled
+          if (isAuditLogEnabled()) {
+            const timestamp = new Date().toISOString();
+            logBroadcast({
+              requestId: `result-${originRequestId}`,
+              messageType: 'OPERATION_RESULT_FAILED',
+              source: 'plugin',
+              operations: [],
+              timestamp,
+              clientsNotified: 0,
+            });
+          }
+        }
+      }
+      
       // Handle DESIGN_CHANGE from plugin via WebSocket
       if (msg.type === 'DESIGN_CHANGE' && msg.payload) {
         const requestId = msg.requestId ?? `design-${Date.now()}`;

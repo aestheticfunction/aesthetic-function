@@ -49,6 +49,9 @@ import {
   getMaterializeOn,
 } from './materialize/index.js';
 import {
+  shouldSuppressWatcherEmit,
+} from './orchestrator/postApplyEmit.js';
+import {
   loadComponentMap,
   resolveFromMap,
   createIdQuery,
@@ -519,6 +522,13 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
   const absolutePath = resolve(filePath);
   const relativePath = relative(process.cwd(), absolutePath);
   const repoRoot = process.cwd();
+
+  // Phase 9B: Check if this file was recently emitted by the Feature Orchestrator.
+  // If so, suppress to avoid duplicate sends.
+  if (shouldSuppressWatcherEmit(relativePath)) {
+    console.log(`[Watcher] Suppressed: ${relativePath} (recently emitted by Feature Orchestrator)`);
+    return;
+  }
 
   console.log(`[Watcher] Processing: ${relativePath}`);
 
