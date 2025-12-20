@@ -384,6 +384,90 @@ function printAdapterSummary(adapterResult: FileAdapterResult): void {
 }
 
 /**
+ * Print canonical semantics summary (Phase 10E).
+ *
+ * READ-ONLY: Shows design-system-agnostic semantic tokens normalized from
+ * adapter and generic JSX semantics.
+ */
+function printCanonicalSummary(adapterResult: FileAdapterResult): void {
+  printHeader('CANONICAL SEMANTICS (Phase 10E)');
+
+  const summary = adapterResult.canonicalSummary;
+  if (!summary || (summary.totalCanonicalFields === 0 && summary.totalRawFields === 0)) {
+    console.log('  (no semantic fields to normalize)');
+    return;
+  }
+
+  // Print per-component canonical semantics
+  for (const comp of adapterResult.components) {
+    const canonical = comp.canonicalSemantics;
+    const notes = comp.canonicalNotes ?? [];
+
+    // Skip if no canonical data
+    if (!canonical?.colors && !canonical?.spacing && !canonical?.radius && !canonical?.typography) {
+      continue;
+    }
+
+    console.log(`  ${comp.componentName}:`);
+
+    // Color semantics
+    if (canonical.colors?.fill) {
+      const fill = canonical.colors.fill;
+      console.log(`    fill: ${fill.value} (confidence=${fill.confidence}, source=${fill.source})`);
+      if (fill.rawValue && fill.rawValue !== fill.value) {
+        console.log(`      raw: ${fill.rawValue}`);
+      }
+    }
+
+    // Spacing semantics
+    if (canonical.spacing) {
+      if (canonical.spacing.gap) {
+        const gap = canonical.spacing.gap;
+        console.log(`    gap: ${gap.value} (confidence=${gap.confidence}, source=${gap.source})`);
+      }
+      if (canonical.spacing.padding) {
+        const padding = canonical.spacing.padding;
+        console.log(`    padding: ${padding.value} (confidence=${padding.confidence}, source=${padding.source})`);
+      }
+      if (canonical.spacing.margin) {
+        const margin = canonical.spacing.margin;
+        console.log(`    margin: ${margin.value} (confidence=${margin.confidence}, source=${margin.source})`);
+      }
+    }
+
+    // Radius semantics
+    if (canonical.radius?.borderRadius) {
+      const radius = canonical.radius.borderRadius;
+      console.log(`    borderRadius: ${radius.value} (confidence=${radius.confidence}, source=${radius.source})`);
+    }
+
+    // Typography semantics
+    if (canonical.typography) {
+      if (canonical.typography.fontSize) {
+        const fontSize = canonical.typography.fontSize;
+        console.log(`    fontSize: ${fontSize.value} (confidence=${fontSize.confidence}, source=${fontSize.source})`);
+      }
+      if (canonical.typography.fontWeight) {
+        const fontWeight = canonical.typography.fontWeight;
+        console.log(`    fontWeight: ${fontWeight.value} (confidence=${fontWeight.confidence}, source=${fontWeight.source})`);
+      }
+    }
+
+    // Print notes for this component
+    if (notes.length > 0) {
+      console.log('    Notes:');
+      for (const note of notes) {
+        console.log(`      ⚠ ${note.type}: ${note.detail}`);
+      }
+    }
+  }
+
+  // Print file-level summary
+  console.log();
+  console.log(`  Summary: ${summary.totalCanonicalFields} canonical fields, ${summary.totalRawFields} raw fields, ${summary.totalNotes} notes`);
+}
+
+/**
  * Print component map suggestions (Phase 10C).
  *
  * READ-ONLY: This section shows suggestions for component-map.json entries
@@ -527,6 +611,7 @@ async function main(): Promise<void> {
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
   printAdapterSummary(adapterResult);
+  printCanonicalSummary(adapterResult);
   printSuggestionsSummary(suggestionResult);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);

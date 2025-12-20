@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10C)
+## What Works Today (Phase 10E)
 
 | Feature | Status |
 |---------|--------|
@@ -110,6 +110,14 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Safe apply mode (behind env flags) | ✅ |
 | Never overwrites existing nodeIds | ✅ |
 | Atomic file writes | ✅ |
+| **Canonical Token Layer (Phase 10E)** | |
+| Design-system-agnostic token vocabulary | ✅ |
+| Vuetify → canonical color mapping | ✅ |
+| AntD → canonical color mapping | ✅ |
+| Hex → canonical via design tokens | ✅ |
+| Spacing normalization (T-shirt sizes) | ✅ |
+| Extensible hint mapper registry | ✅ |
+| CLI canonical semantics output | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -193,6 +201,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 10B** | Ant Design Adapter (Read-Only Semantic Extraction) | ✅ |
 | **Phase 10C** | Component Map Bootstrap Suggestions (Read-Only) | ✅ |
 | **Phase 10D** | Component Map Bootstrap Artifacts (CLI + Apply Mode) | ✅ |
+| **Phase 10E** | Canonical Token Layer + Cross-Adapter Normalization | ✅ |
 
 ### Not Implemented Yet
 
@@ -202,7 +211,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), and bootstrap artifacts with safe apply mode (Phase 10D). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), and canonical token layer for cross-adapter normalization (Phase 10E). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -1211,6 +1220,151 @@ Even in apply mode, these fields are **never** auto-filled:
 | Existing component, new variants | Add variant keys only |
 | Existing component, different name | Mark as "manual decision required" |
 | Existing nodeIds | **Never overwritten** |
+
+---
+
+### Canonical Token Layer (Phase 10E)
+
+Phase 10E introduces a **design-system-agnostic semantic token layer** that normalizes adapter-specific values (Vuetify, Ant Design) and generic JSX values into portable canonical tokens.
+
+#### Why It Exists
+
+- **Cross-adapter portability**: Same canonical tokens regardless of UI library
+- **Figma mapping consistency**: Canonical tokens → consistent Figma component mappings
+- **Future MCP negotiation**: Standard vocabulary for AI-driven design token exchange
+- **Observability**: Clear audit trail showing raw values → canonical tokens
+
+#### Canonical Token Vocabulary
+
+The canonical layer uses a hierarchical token naming convention:
+
+```
+color.primary      ← Vuetify "primary", AntD type="primary", hex #3B82F6
+color.danger       ← Vuetify "error", AntD danger={true}
+color.success      ← Vuetify "success", hex #10B981
+color.warning      ← Vuetify "warning", hex #F59E0B
+color.neutral.100  ← AntD type="default"
+
+space.none         ← 0px
+space.xs           ← 1-4px
+space.sm           ← 5-8px
+space.md           ← 9-16px
+space.lg           ← 17-24px
+space.xl           ← 25-32px
+space.2xl          ← 33-48px
+space.3xl          ← 49px+
+```
+
+#### How Normalization Works
+
+```
+┌──────────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│  Adapter Semantics   │────▶│  Canonical Layer    │────▶│ Normalized Output│
+│  (antd:primary)      │     │  (normalize.ts)     │     │ (color.primary)  │
+└──────────────────────┘     └─────────────────────┘     └──────────────────┘
+         ▲                            │
+         │                            │ Hint Mappers
+┌──────────────────────┐              │ (per-adapter)
+│  Generic JSX         │              ▼
+│  (#3B82F6)           │────▶ ┌───────────────────┐
+└──────────────────────┘      │ Design Token Match│
+                              │ (designTokens.ts) │
+                              └───────────────────┘
+```
+
+1. **Adapter hints** → Look up in adapter-specific hint mapper
+2. **Hex colors** → Check design tokens for known values
+3. **Unknown values** → Preserved as raw + note generated
+
+#### CLI Output
+
+The `ast:report` command now shows canonical semantics:
+
+```
+============================================================
+CANONICAL SEMANTICS (Phase 10E)
+============================================================
+  LoginButton:
+    fill: color.primary (confidence=high, source=vuetify)
+      raw: #1976D2
+  DisabledButton:
+    fill: color.danger (confidence=high, source=vuetify)
+      raw: #FF5252
+  RegularButton:
+    fill: color.primary (confidence=high, source=generic-jsx)
+      raw: #3B82F6
+
+  Summary: 7 canonical fields, 0 raw fields, 0 notes
+```
+
+#### Normalization Notes
+
+When values can't be mapped to canonical tokens, notes explain why:
+
+| Note Type | Meaning |
+|-----------|---------|
+| `unmapped_color_hex` | Hex color not in design tokens |
+| `unmapped_adapter_hint` | Adapter hint has no canonical mapping |
+| `ambiguous_mapping` | Multiple possible canonical tokens |
+| `raw_value_preserved` | Value kept as-is (informational) |
+
+#### Extensibility: Custom Hint Mappers
+
+Future adapters can register custom hint mappings:
+
+```typescript
+import { registerCanonicalHintMapper } from './tokens/canonical/index.js';
+
+// Register MUI hint mapper
+registerCanonicalHintMapper('mui', (hint: string) => {
+  if (hint === 'mui:primary') return 'color.primary';
+  if (hint === 'mui:error') return 'color.danger';
+  return null;
+});
+```
+
+#### Supported Mappings
+
+**Vuetify → Canonical:**
+
+| Vuetify | Canonical |
+|---------|-----------|
+| `primary` | `color.primary` |
+| `secondary` | `color.secondary` |
+| `success` | `color.success` |
+| `error` | `color.danger` |
+| `warning` | `color.warning` |
+| `info` | `color.info` |
+| `red`, `blue`, etc. | `color.red`, `color.blue`, etc. |
+
+**Ant Design → Canonical:**
+
+| AntD | Canonical |
+|------|-----------|
+| `antd:primary` | `color.primary` |
+| `antd:danger` | `color.danger` |
+| `antd:default` | `color.neutral.100` |
+| `antd:link` | `color.primary` |
+
+**Design Token Hex → Canonical:**
+
+| Hex | Token Name | Canonical |
+|-----|------------|-----------|
+| `#3B82F6` | `Primary/Blue500` | `color.primary` |
+| `#10B981` | `Success/Green500` | `color.success` |
+| `#EF4444` | `Error/Red500` | `color.danger` |
+| `#F59E0B` | `Warning/Yellow500` | `color.warning` |
+
+#### Scope & Constraints
+
+Phase 10E is **read-only** and does not:
+- Modify JSX/TSX source files
+- Write markers or overrides
+- Emit Figma operations
+- Change watcher sync behavior
+- Affect server/plugin/protocol
+
+---
 
 ### Color Mapping
 

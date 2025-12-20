@@ -67,13 +67,20 @@ import { computeComponentKey } from './types.js';
 import { extractMarkers, type MarkerData } from '../parse/parseIntentFromReact.js';
 
 // Adapter imports (Phase 10A)
-import type { AdapterContext } from '../adapters/types.js';
+import type { AdapterContext, AdapterResult } from '../adapters/types.js';
 import type { AdapterExtractionResult, AdapterContribution } from '../adapters/registry.js';
 import {
   runAdapters,
   mergeWithAdapterSemantics,
   initializeDefaultAdapters,
 } from '../adapters/index.js';
+
+// Canonical normalization imports (Phase 10E)
+import {
+  normalizeToCanonical,
+  type CanonicalSemantics,
+  type NormalizationNote,
+} from '../tokens/canonical/index.js';
 
 // =============================================================================
 // HEX COLOR REGEX
@@ -725,6 +732,16 @@ export interface ComponentAdapterResult {
   mergedSemantics: ComponentSemanticIntent;
   /** Adapter contributions for logging/CLI */
   contributions: AdapterContribution[];
+  /**
+   * Canonical semantics normalized from merged semantics (Phase 10E).
+   * This is the design-system-agnostic representation.
+   */
+  canonicalSemantics?: CanonicalSemantics;
+  /**
+   * Notes from canonical normalization (Phase 10E).
+   * Contains info about unmapped values, ambiguous mappings, etc.
+   */
+  canonicalNotes?: NormalizationNote[];
 }
 
 /**
@@ -737,6 +754,17 @@ export interface FileAdapterResult {
   components: ComponentAdapterResult[];
   /** Total adapter contributions */
   totalContributions: number;
+  /**
+   * Summary of canonical normalization across the file (Phase 10E).
+   */
+  canonicalSummary?: {
+    /** Total canonical fields set across all components */
+    totalCanonicalFields: number;
+    /** Total raw (unmapped) fields across all components */
+    totalRawFields: number;
+    /** Total normalization notes */
+    totalNotes: number;
+  };
 }
 
 /**
@@ -773,6 +801,11 @@ export function runAdaptersOnFile(
 
   const results: ComponentAdapterResult[] = [];
 
+  // Track canonical summary across file
+  let totalCanonicalFields = 0;
+  let totalRawFields = 0;
+  let totalNotes = 0;
+
   for (let i = 0; i < report.components.length; i++) {
     const component = report.components[i];
     const bounds = componentBounds[i];
@@ -793,11 +826,34 @@ export function runAdaptersOnFile(
     // Merge adapter semantics with generic JSX semantics
     const mergedSemantics = mergeWithAdapterSemantics(component.semantics, adapterResult);
 
+    // === Phase 10E: Canonical Normalization ===
+    // Build AdapterResult array for normalizer from the extraction result
+    // We use the combined adapter semantics plus each contribution's metadata
+    const adapterResults: AdapterResult[] = adapterResult.contributions.map((contrib) => ({
+      semantics: adapterResult.semantics,
+      provenance: contrib.provenance,
+      frameworkMetadata: contrib.frameworkMetadata,
+    }));
+
+    // Normalize to canonical semantics
+    const normalizationResult = normalizeToCanonical(mergedSemantics, {
+      adapters: adapterResults,
+    });
+
+    // Update file-level canonical summary
+    if (normalizationResult.canonical.meta) {
+      totalCanonicalFields += normalizationResult.canonical.meta.canonicalFieldCount;
+      totalRawFields += normalizationResult.canonical.meta.rawFieldCount;
+    }
+    totalNotes += normalizationResult.notes.length;
+
     results.push({
       componentName: component.componentName,
       hasAdapterMatch: adapterResult.hasAdapterMatch,
       mergedSemantics,
       contributions: adapterResult.contributions,
+      canonicalSemantics: normalizationResult.canonical,
+      canonicalNotes: normalizationResult.notes,
     });
   }
 
@@ -805,6 +861,11 @@ export function runAdaptersOnFile(
     filePath,
     components: results,
     totalContributions: results.reduce((sum, r) => sum + r.contributions.length, 0),
+    canonicalSummary: {
+      totalCanonicalFields,
+      totalRawFields,
+      totalNotes,
+    },
   };
 }
 
