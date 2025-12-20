@@ -221,6 +221,34 @@ describe('isAntdComponent', () => {
     const imports = { Button: './components/Button' };
     expect(isAntdComponent('Button', imports)).toBe(false);
   });
+
+  it('should detect multiple AntD import patterns in the same file', () => {
+    // Simulates a file with mixed imports:
+    // import { Button } from 'antd';
+    // import Input from 'antd/es/input';
+    // import { Card } from '@other/lib';
+    const mixedImports = {
+      Button: 'antd',
+      Input: 'antd/es/input',
+      Select: 'antd/es/select',
+      Card: '@other/ui-lib',
+      LocalButton: './components/Button',
+    };
+
+    // Components from 'antd' main package
+    expect(isAntdComponent('Button', mixedImports)).toBe(true);
+
+    // Components from 'antd/es/*' subpackage
+    expect(isAntdComponent('Input', mixedImports)).toBe(true);
+    expect(isAntdComponent('Select', mixedImports)).toBe(true);
+
+    // Components from other libraries should NOT match
+    expect(isAntdComponent('Card', mixedImports)).toBe(false);
+    expect(isAntdComponent('LocalButton', mixedImports)).toBe(false);
+
+    // Components not in the import map should NOT match
+    expect(isAntdComponent('Tag', mixedImports)).toBe(false);
+  });
 });
 
 // =============================================================================

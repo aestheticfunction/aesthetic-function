@@ -253,3 +253,34 @@ function LocalButton(props: { children: React.ReactNode; type?: string }) {
 export function NotAntdButton() {
   return <LocalButton type="primary">Local Button</LocalButton>;
 }
+
+// =============================================================================
+// MIXED IMPORT PATTERN FIXTURES (for testing antd + antd/es/*)
+// =============================================================================
+
+/**
+ * This fixture demonstrates that both import patterns work:
+ * - Named import from 'antd' (the Button imported at top)
+ * - Default import from 'antd/es/*' (simulated via import map)
+ *
+ * IMPORTANT: The actual test uses a custom import map to simulate
+ * both patterns. This fixture just provides the JSX structure.
+ * See antd.test.ts for the mixed import detection tests.
+ */
+
+/**
+ * Component using Button from main 'antd' import.
+ */
+export function MixedImportMainPackage() {
+  return <Button type="primary">From antd package</Button>;
+}
+
+/**
+ * Component demonstrating antd/es/* pattern would work.
+ * In tests, we use a custom import map like: { EsButton: 'antd/es/button' }
+ */
+export function MixedImportEsPattern() {
+  // This uses the Button from the top import, but tests can override
+  // the import map to simulate antd/es/button detection
+  return <Button type="dashed">From antd/es pattern</Button>;
+}

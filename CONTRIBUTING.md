@@ -174,3 +174,22 @@ For manual testing and demos:
 - Comment **why** a transformation exists
 
 See `.github/instructions/aesthetic-function.instructions.md` for detailed guidelines.
+
+---
+
+## Semantic Adapter Priority Convention
+
+Adapters are executed in priority order (lower numbers run first). To ensure deterministic behavior across adapters, follow these priority ranges:
+
+| Range | Purpose | Examples |
+|-------|---------|----------|
+| 1–49 | Reserved for core/generic adapters | (none currently) |
+| 50–59 | UI library semantic adapters | Vuetify=50, Ant Design=51 |
+| 60–69 | Future UI libraries | MUI=60, Chakra=61, etc. |
+| 70–99 | Reserved for custom/project-specific adapters | — |
+| 100+ | Fallback/catch-all adapters | — |
+
+**Rules:**
+- Each adapter MUST have a unique, deterministic priority
+- New UI library adapters should use the next available number in 50–59 (or 60–69 when full)
+- Do not change existing priorities without updating all documentation

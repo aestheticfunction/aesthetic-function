@@ -25,7 +25,12 @@ import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractMarkers } from '../parse/parseIntentFromReact.js';
 import { loadDesignOverrides } from '../reconcile/loadDesignOverrides.js';
+import { loadComponentMap } from '../reconcile/componentMap.js';
 import { parseIntentFromReactAst, anchorMarkersToAst, runAdaptersOnFile } from './parseIntentFromReactAst.js';
+import {
+  generateSuggestions,
+  type SuggestionResult,
+} from '../adapters/suggestions/componentMapSuggestions.js';
 import type { AnchoredAstReport, Anchor } from './types.js';
 import type { DesignOverrides, DesignOverride } from '../reconcile/types.js';
 import type { FileAdapterResult } from './parseIntentFromReactAst.js';
@@ -391,6 +396,61 @@ function printAdapterSummary(adapterResult: FileAdapterResult): void {
   console.log(`  Total adapter contributions: ${adapterResult.totalContributions}`);
 }
 
+/**
+ * Print component map suggestions (Phase 10C).
+ *
+ * READ-ONLY: This section shows suggestions for component-map.json entries
+ * but does NOT write any files. Users must manually add entries if desired.
+ */
+function printSuggestionsSummary(suggestionResult: SuggestionResult): void {
+  printHeader('COMPONENT MAP SUGGESTIONS (READ-ONLY)');
+
+  console.log('  NOTE: These suggestions are READ-ONLY. To use them, manually');
+  console.log('  add entries to component-map.json or use Figma plugin "Send Selection".');
+  console.log();
+
+  if (suggestionResult.suggestions.length === 0) {
+    console.log('  (no suggestions - no components with stable keys found)');
+    return;
+  }
+
+  // Print new suggestions first
+  const newSuggestions = suggestionResult.suggestions.filter((s) => !s.existsInMap);
+  if (newSuggestions.length > 0) {
+    console.log('  NEW (not in component-map.json):');
+    for (const s of newSuggestions) {
+      console.log(`    ${s.componentKey}`);
+      console.log(`      → Suggested name: "${s.figmaNameSuggestion}"`);
+      if (s.variantStatesSuggested.length > 0) {
+        console.log(`      → Variants: [${s.variantStatesSuggested.join(', ')}]`);
+      }
+      console.log(`      → Source: ${s.source}${s.adapterId ? ` (${s.adapterId})` : ''}`);
+      console.log(`      → Reason: ${s.reason}`);
+    }
+    console.log();
+  }
+
+  // Print update suggestions
+  const updateSuggestions = suggestionResult.suggestions.filter((s) => s.existsInMap);
+  if (updateSuggestions.length > 0) {
+    console.log('  EXISTING (already in component-map.json):');
+    for (const s of updateSuggestions) {
+      console.log(`    ${s.componentKey}`);
+      console.log(`      → Current: "${s.currentFigmaName}"`);
+      if (s.currentFigmaName !== s.figmaNameSuggestion) {
+        console.log(`      → Suggested: "${s.figmaNameSuggestion}" (differs)`);
+      }
+      if (s.variantStatesSuggested.length > 0) {
+        console.log(`      → Detected variants: [${s.variantStatesSuggested.join(', ')}]`);
+      }
+    }
+    console.log();
+  }
+
+  // Summary
+  console.log(`  Summary: ${suggestionResult.newCount} new, ${suggestionResult.updateCount} existing, ${suggestionResult.skippedCount} skipped`);
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -437,6 +497,16 @@ async function main(): Promise<void> {
   // Load overrides
   const overrides = await loadDesignOverrides();
 
+  // Load component map (Phase 10C)
+  const componentMap = await loadComponentMap();
+
+  // Generate component map suggestions (Phase 10C - READ-ONLY)
+  const suggestionResult = generateSuggestions(
+    anchoredReport,
+    adapterResult,
+    componentMap
+  );
+
   // Build marker lookup
   const markerByNode = new Map<string, MarkerSummaryEntry>();
   for (const m of markerSummary) {
@@ -461,12 +531,13 @@ async function main(): Promise<void> {
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
   printAdapterSummary(adapterResult);
+  printSuggestionsSummary(suggestionResult);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);
 
   console.log();
-  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches`);
+  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches, ${suggestionResult.newCount} new suggestions`);
 }
 
 main().catch((err) => {

@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10B)
+## What Works Today (Phase 10C)
 
 | Feature | Status |
 |---------|--------|
@@ -99,6 +99,12 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | AntD Button, Input, Card, Tag extraction | ✅ |
 | Semantic hints (antd:primary, antd:danger) | ✅ |
 | Registry extensibility proof | ✅ |
+| **Component Map Suggestions (Phase 10C)** | |
+| AST-based suggestion derivation | ✅ |
+| Adapter-augmented Figma name hints | ✅ |
+| Variant state detection (disabled, hover, pressed) | ✅ |
+| CLI output (read-only, no file writes) | ✅ |
+| Existing map entry detection | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -180,6 +186,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 9D** | Test Stability & CI Guardrails | ✅ |
 | **Phase 10A** | Semantic Adapter Architecture + Vuetify Adapter | ✅ |
 | **Phase 10B** | Ant Design Adapter (Read-Only Semantic Extraction) | ✅ |
+| **Phase 10C** | Component Map Bootstrap Suggestions (Read-Only) | ✅ |
 
 ### Not Implemented Yet
 
@@ -189,7 +196,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), and Ant Design adapter proving registry extensibility (Phase 10B). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), and read-only component map suggestions for bootstrapping new projects (Phase 10C). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -970,9 +977,9 @@ The ops-hash comparison prevents suppression of genuinely different changes that
 
 ---
 
-## Semantic Adapter Architecture (Phase 10A/10B)
+## Semantic Adapter Architecture (Phase 10A/10B/10C)
 
-Phase 10A introduces a generic adapter system for extracting semantic intent from framework-specific UI components. Phase 10B adds the Ant Design adapter, proving the registry is framework-agnostic. This allows the system to understand Vuetify, Ant Design, MUI, Chakra, and other UI frameworks without contaminating the core AST analysis pipeline.
+Phase 10A introduces a generic adapter system for extracting semantic intent from framework-specific UI components. Phase 10B adds the Ant Design adapter, proving the registry is framework-agnostic. Phase 10C adds read-only component map bootstrap suggestions, helping users bootstrap `component-map.json` for new projects. This allows the system to understand Vuetify, Ant Design, MUI, Chakra, and other UI frameworks without contaminating the core AST analysis pipeline.
 
 ### Architecture Overview
 
@@ -998,6 +1005,16 @@ Phase 10A introduces a generic adapter system for extracting semantic intent fro
 │                    └────────────────┼────────────────┘           │
 │                                     ▼                             │
 │                            Merged Semantics                       │
+│                                     │                             │
+│                                     ▼                             │
+│                        ┌─────────────────────┐                   │
+│                        │ Suggestion Generator│  (Phase 10C)      │
+│                        │   (READ-ONLY)       │                   │
+│                        └─────────────────────┘                   │
+│                                     │                             │
+│                                     ▼                             │
+│                      Component Map Suggestions                    │
+│                        (CLI output only)                          │
 │                                                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -1037,6 +1054,44 @@ The Ant Design adapter uses **import-based detection** - components are only rec
 - Uses **semantic hints** (`antd:primary`) instead of hex colors
 - Detection via **import source**, not tag name
 - PascalCase component names (Button, not v-btn)
+
+### Component Map Suggestions (Phase 10C)
+
+Phase 10C adds **read-only** suggestions for bootstrapping `component-map.json`. When analyzing a file, the system derives suggested entries based on AST anchors and adapter semantics.
+
+**Key Characteristics:**
+- **READ-ONLY**: Suggestions are printed to CLI only, no files are written
+- **No Figma node IDs**: Code-only analysis, users must map to Figma manually
+- **Variant detection**: Suggests variant states based on semantic analysis (disabled, hover, pressed)
+- **Adapter-aware naming**: Uses framework metadata for better Figma name suggestions
+
+**Example CLI Output:**
+```
+=== COMPONENT MAP SUGGESTIONS (READ-ONLY) ===
+  NOTE: These suggestions are READ-ONLY. To use them, manually
+  add entries to component-map.json or use Figma plugin "Send Selection".
+
+  NEW (not in component-map.json):
+    components/LoginButton
+      → Suggested name: "Ant Design Button"
+      → Variants: [hover, pressed, disabled]
+      → Source: combined (antd)
+      → Reason: Ant Design adapter: Button
+
+    components/InfoCard
+      → Suggested name: "Ant Design Card"
+      → Variants: []
+      → Source: combined (antd)
+      → Reason: Ant Design adapter: Card
+
+  Summary: 2 new, 0 existing, 0 skipped
+```
+
+**Suggestion Sources:**
+| Source | Description |
+|--------|-------------|
+| `ast-anchor` | Derived from AST analysis only, no adapter match |
+| `combined` | AST anchor + adapter semantics |
 
 ### Color Mapping
 
