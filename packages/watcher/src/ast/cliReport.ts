@@ -25,9 +25,10 @@ import { resolve, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { extractMarkers } from '../parse/parseIntentFromReact.js';
 import { loadDesignOverrides } from '../reconcile/loadDesignOverrides.js';
-import { parseIntentFromReactAst, anchorMarkersToAst } from './parseIntentFromReactAst.js';
+import { parseIntentFromReactAst, anchorMarkersToAst, runAdaptersOnFile } from './parseIntentFromReactAst.js';
 import type { AnchoredAstReport, Anchor } from './types.js';
 import type { DesignOverrides, DesignOverride } from '../reconcile/types.js';
+import type { FileAdapterResult } from './parseIntentFromReactAst.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -331,6 +332,65 @@ function printDiffSection(
   }
 }
 
+/**
+ * Print adapter extraction results (Phase 10A).
+ */
+function printAdapterSummary(adapterResult: FileAdapterResult): void {
+  printHeader('ADAPTER SEMANTICS (Phase 10A)');
+
+  if (adapterResult.totalContributions === 0) {
+    console.log('  (no adapter matches)');
+    return;
+  }
+
+  for (const comp of adapterResult.components) {
+    if (!comp.hasAdapterMatch) continue;
+
+    console.log(`  ${comp.componentName}`);
+
+    for (const contrib of comp.contributions) {
+      console.log(`    [${contrib.displayName}] ${contrib.provenance.reason ?? 'extracted'}`);
+
+      // Show fields set by this adapter
+      for (const field of contrib.fieldsSet) {
+        console.log(`      → ${field}`);
+      }
+
+      // Show framework metadata if available
+      if (contrib.frameworkMetadata) {
+        const meta = contrib.frameworkMetadata;
+        const metaParts: string[] = [];
+        if (meta.component) metaParts.push(`component=${meta.component}`);
+        if (meta.vuetifyColor) metaParts.push(`vuetifyColor=${meta.vuetifyColor}`);
+        if (meta.variant) metaParts.push(`variant=${meta.variant}`);
+        if (meta.size) metaParts.push(`size=${meta.size}`);
+        if (meta.elevation) metaParts.push(`elevation=${meta.elevation}`);
+        if (metaParts.length > 0) {
+          console.log(`      metadata: { ${metaParts.join(', ')} }`);
+        }
+      }
+    }
+
+    // Show merged semantics for this component
+    const sem = comp.mergedSemantics;
+    const textContent = sem.text?.content?.map((c) => c.value).join(', ');
+    const fills = sem.visual?.fills?.map((f) => f.value).join(', ');
+
+    if (textContent) {
+      console.log(`      text: "${textContent}"`);
+    }
+    if (fills) {
+      console.log(`      fills: ${fills}`);
+    }
+    if (sem.booleans?.disabled !== undefined) {
+      console.log(`      disabled: ${sem.booleans.disabled.value}`);
+    }
+  }
+
+  console.log();
+  console.log(`  Total adapter contributions: ${adapterResult.totalContributions}`);
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -371,6 +431,9 @@ async function main(): Promise<void> {
   const astReport = parseIntentFromReactAst(code, relativePath);
   const anchoredReport = anchorMarkersToAst(code, relativePath, astReport);
 
+  // Run adapters (Phase 10A)
+  const adapterResult = runAdaptersOnFile(code, relativePath, astReport);
+
   // Load overrides
   const overrides = await loadDesignOverrides();
 
@@ -397,6 +460,7 @@ async function main(): Promise<void> {
   // Print sections
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
+  printAdapterSummary(adapterResult);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);

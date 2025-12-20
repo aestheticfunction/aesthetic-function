@@ -66,6 +66,15 @@ import type {
 import { computeComponentKey } from './types.js';
 import { extractMarkers, type MarkerData } from '../parse/parseIntentFromReact.js';
 
+// Adapter imports (Phase 10A)
+import type { AdapterContext } from '../adapters/types.js';
+import type { AdapterExtractionResult, AdapterContribution } from '../adapters/registry.js';
+import {
+  runAdapters,
+  mergeWithAdapterSemantics,
+  initializeDefaultAdapters,
+} from '../adapters/index.js';
+
 // =============================================================================
 // HEX COLOR REGEX
 // =============================================================================
@@ -699,3 +708,161 @@ export function anchorMarkersToAst(
 // =============================================================================
 
 export { extractMarkers };
+
+// =============================================================================
+// ADAPTER INTEGRATION (Phase 10A)
+// =============================================================================
+
+/**
+ * Result of running adapters on a component.
+ */
+export interface ComponentAdapterResult {
+  /** Component name */
+  componentName: string;
+  /** Whether any adapter matched JSX elements in this component */
+  hasAdapterMatch: boolean;
+  /** Merged semantics (generic JSX + adapters) */
+  mergedSemantics: ComponentSemanticIntent;
+  /** Adapter contributions for logging/CLI */
+  contributions: AdapterContribution[];
+}
+
+/**
+ * Result of running adapters on an entire file.
+ */
+export interface FileAdapterResult {
+  /** File path */
+  filePath: string;
+  /** Results for each component */
+  components: ComponentAdapterResult[];
+  /** Total adapter contributions */
+  totalContributions: number;
+}
+
+/**
+ * Run semantic adapters on a parsed AST report.
+ *
+ * This is a SEPARATE function from parseIntentFromReactAst to keep
+ * adapter logic cleanly isolated. Call this after parsing if you want
+ * adapter-augmented semantics.
+ *
+ * @param code - Source code (for re-traversal)
+ * @param filePath - File path
+ * @param astReport - Pre-parsed AST report (optional, will parse if not provided)
+ * @returns FileAdapterResult with merged semantics
+ */
+export function runAdaptersOnFile(
+  code: string,
+  filePath: string,
+  astReport?: AstIntentReport
+): FileAdapterResult {
+  // Initialize adapters if not already done
+  initializeDefaultAdapters();
+
+  // Parse if not provided
+  const report = astReport ?? parseIntentFromReactAst(code, filePath);
+
+  // Re-parse to get the AST for adapter traversal
+  const ast = parse(code, {
+    sourceType: 'module',
+    plugins: ['typescript', 'jsx'],
+  });
+
+  // Collect component bounds (same as in parseIntentFromReactAst)
+  const componentBounds = collectComponents(ast);
+
+  const results: ComponentAdapterResult[] = [];
+
+  for (let i = 0; i < report.components.length; i++) {
+    const component = report.components[i];
+    const bounds = componentBounds[i];
+
+    if (!bounds) {
+      results.push({
+        componentName: component.componentName,
+        hasAdapterMatch: false,
+        mergedSemantics: component.semantics,
+        contributions: [],
+      });
+      continue;
+    }
+
+    // Run adapters on all JSX elements within this component
+    const adapterResult = runAdaptersOnComponent(bounds.node, filePath, component.componentName);
+
+    // Merge adapter semantics with generic JSX semantics
+    const mergedSemantics = mergeWithAdapterSemantics(component.semantics, adapterResult);
+
+    results.push({
+      componentName: component.componentName,
+      hasAdapterMatch: adapterResult.hasAdapterMatch,
+      mergedSemantics,
+      contributions: adapterResult.contributions,
+    });
+  }
+
+  return {
+    filePath,
+    components: results,
+    totalContributions: results.reduce((sum, r) => sum + r.contributions.length, 0),
+  };
+}
+
+/**
+ * Run adapters on all JSX elements within a single component.
+ */
+function runAdaptersOnComponent(
+  componentNode: t.Node,
+  filePath: string,
+  componentName: string
+): AdapterExtractionResult {
+  const allContributions: AdapterContribution[] = [];
+  let combinedSemantics: Partial<ComponentSemanticIntent> = {};
+
+  const ctx: AdapterContext = {
+    filePath,
+    componentName,
+  };
+
+  // Traverse the component looking for JSX elements
+  traverse(
+    { type: 'File', program: { type: 'Program', body: [componentNode as t.Statement], directives: [], sourceType: 'module' } } as t.File,
+    {
+      JSXElement(path) {
+        const node = path.node;
+
+        // Run all registered adapters on this element
+        const result = runAdapters(node, ctx);
+
+        if (result.hasAdapterMatch) {
+          allContributions.push(...result.contributions);
+
+          // Merge semantics from this element
+          combinedSemantics = mergePartialSemantics(combinedSemantics, result.semantics);
+        }
+      },
+    }
+  );
+
+  return {
+    semantics: combinedSemantics,
+    contributions: allContributions,
+    hasAdapterMatch: allContributions.length > 0,
+  };
+}
+
+/**
+ * Merge two partial semantic intents.
+ */
+function mergePartialSemantics(
+  base: Partial<ComponentSemanticIntent>,
+  overlay: Partial<ComponentSemanticIntent>
+): Partial<ComponentSemanticIntent> {
+  return {
+    text: overlay.text ? { ...base.text, ...overlay.text } : base.text,
+    booleans: overlay.booleans ? { ...base.booleans, ...overlay.booleans } : base.booleans,
+    layout: overlay.layout ? { ...base.layout, ...overlay.layout } : base.layout,
+    flex: overlay.flex ? { ...base.flex, ...overlay.flex } : base.flex,
+    visual: overlay.visual ? { ...base.visual, ...overlay.visual } : base.visual,
+  };
+}

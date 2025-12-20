@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 9D)
+## What Works Today (Phase 10A)
 
 | Feature | Status |
 |---------|--------|
@@ -87,6 +87,13 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Deterministic test fixtures | ✅ |
 | CI guardrails for demo-app isolation | ✅ |
 | CONTRIBUTING.md test policy | ✅ |
+| **Semantic Adapter Architecture (Phase 10A)** | |
+| Generic SemanticAdapter interface | ✅ |
+| Adapter registry with priority ordering | ✅ |
+| Vuetify adapter (v-btn, v-card, v-text-field, v-chip) | ✅ |
+| Confidence-based prop extraction | ✅ |
+| Adapter/JSX semantics merging | ✅ |
+| Fixture-based adapter tests | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -166,6 +173,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 9B** | Orchestrator "Apply → Re-emit Ops" (Immediate Figma Refresh) | ✅ |
 | **Phase 9C** | Production Hardening, Observability & Demo DX | ✅ |
 | **Phase 9D** | Test Stability & CI Guardrails | ✅ |
+| **Phase 10A** | Semantic Adapter Architecture + Vuetify Adapter | ✅ |
 
 ### Not Implemented Yet
 
@@ -175,7 +183,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), and production hardening with test stability guardrails (Phase 9C/9D). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), and framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -953,6 +961,120 @@ The enhanced suppression system logs decisions:
 ```
 
 The ops-hash comparison prevents suppression of genuinely different changes that happen within the TTL window.
+
+---
+
+## Semantic Adapter Architecture (Phase 10A)
+
+Phase 10A introduces a generic adapter system for extracting semantic intent from framework-specific UI components. This allows the system to understand Vuetify, Ant Design, MUI, Chakra, and other UI frameworks without contaminating the core AST analysis pipeline.
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     AST Analysis Pipeline                        │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                   │
+│  JSX Source ─→ Babel Parse ─→ Generic Extraction                 │
+│                                     │                             │
+│                                     ▼                             │
+│                            ┌────────────────┐                    │
+│                            │ Adapter Registry│                    │
+│                            └────────────────┘                    │
+│                                     │                             │
+│                    ┌────────────────┼────────────────┐           │
+│                    ▼                ▼                ▼           │
+│              ┌──────────┐    ┌──────────┐    ┌──────────┐       │
+│              │ Vuetify  │    │  Antd    │    │   MUI    │       │
+│              │ Adapter  │    │ Adapter  │    │ Adapter  │       │
+│              └──────────┘    └──────────┘    └──────────┘       │
+│                    │                │                │           │
+│                    └────────────────┼────────────────┘           │
+│                                     ▼                             │
+│                            Merged Semantics                       │
+│                                                                   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Supported Frameworks (Phase 10A)
+
+| Framework | Components | Status |
+|-----------|-----------|--------|
+| **Vuetify** | v-btn, v-card, v-text-field, v-chip | ✅ |
+| Ant Design | - | Planned |
+| MUI | - | Planned |
+| Chakra UI | - | Planned |
+
+### Vuetify Adapter
+
+The Vuetify adapter extracts semantics from Vuetify's `v-*` components:
+
+| Component | Extracted Semantics |
+|-----------|---------------------|
+| `v-btn` | color → fills, disabled, size, variant |
+| `v-card` | width, height, title, subtitle, elevation |
+| `v-text-field` | label → placeholder, disabled |
+| `v-chip` | color → fills, variant |
+
+### Color Mapping
+
+Vuetify semantic colors are mapped to hex values:
+
+| Vuetify Color | Hex Value |
+|---------------|-----------|
+| `primary` | #1976D2 |
+| `success` | #4CAF50 |
+| `error` | #FF5252 |
+| `warning` | #FB8C00 |
+| `info` | #2196F3 |
+
+### Confidence Levels
+
+| Prop Type | Confidence | Example |
+|-----------|------------|---------|
+| String literal | `high` | `color="primary"` |
+| Static template | `high` | `` color={`primary`} `` |
+| Boolean shorthand | `high` | `disabled` |
+| Variable/expression | `low` | `color={buttonColor}` |
+
+### SemanticAdapter Interface
+
+Custom adapters implement this interface:
+
+```typescript
+interface SemanticAdapter {
+  readonly id: string;           // e.g., 'vuetify'
+  readonly displayName: string;  // e.g., 'Vuetify'
+  readonly priority?: number;    // Lower = runs earlier
+
+  supports(node: JSXElement, ctx: AdapterContext): boolean;
+  extract(node: JSXElement, ctx: AdapterContext): AdapterResult;
+}
+```
+
+### Merge Rules
+
+When adapter semantics are merged with generic JSX semantics:
+
+1. **Adapter wins** for fields it explicitly sets
+2. **Generic JSX preserved** for fields adapter doesn't set
+3. **No erasure** - adapters cannot remove existing values
+4. **Provenance tracked** - each value knows its source
+
+### CLI Output
+
+The `pnpm ast:report` command now includes adapter semantics:
+
+```
+=== ADAPTER SEMANTICS (Phase 10A) ===
+Components with adapter matches: 3
+
+  LoginButton
+    Adapter: Vuetify
+    Fields: visual.fills, booleans.disabled
+    Confidence: high
+    Metadata: { component: 'v-btn', vuetifyColor: 'primary' }
+```
 
 ---
 
