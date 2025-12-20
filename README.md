@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10F)
+## What Works Today (Phase 10G)
 
 | Feature | Status |
 |---------|--------|
@@ -125,6 +125,13 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Radius/typography token resolution | ✅ |
 | Coverage report with gap detection | ✅ |
 | CLI resolution + coverage output | ✅ |
+| **Resolution Policy + Project Coverage (Phase 10G)** | |
+| Policy strategies (token-first, token-only, hex-allowed) | ✅ |
+| Project-level coverage aggregation | ✅ |
+| `canonical:coverage` CLI command | ✅ |
+| Policy violations detection | ✅ |
+| Strict mode for CI gates | ✅ |
+| JSON output for automation | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -1498,6 +1505,104 @@ interface CoverageReport {
 #### Scope & Constraints
 
 Phase 10F is **read-only** and does not:
+- Modify JSX/TSX source files
+- Write markers or overrides
+- Emit Figma operations
+- Change watcher sync behavior
+- Affect server/plugin/protocol
+
+---
+
+### Resolution Policy + Project Coverage (Phase 10G)
+
+Phase 10G adds **policy controls** and **project-level coverage reporting** for canonical resolution.
+
+#### Why It Exists
+
+- **Policy flexibility**: Different teams have different strictness requirements
+- **CI integration**: Optional strict mode fails builds on policy violations
+- **Project visibility**: Aggregate coverage across all source files
+- **Actionable gaps**: See which canonical tokens need attention
+
+#### CLI Command
+
+```bash
+# Scan a directory for TSX files
+pnpm --filter @aesthetic-function/watcher canonical:coverage src
+
+# JSON output for automation
+pnpm --filter @aesthetic-function/watcher canonical:coverage src --json
+
+# Strict mode (fails CI if violations exist)
+CANONICAL_STRICT=true pnpm --filter @aesthetic-function/watcher canonical:coverage src
+```
+
+#### Environment Variables
+
+| Variable | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `CANONICAL_STRICT` | `true`, `false` | `false` | Enable strict mode (violations fail CI) |
+| `CANONICAL_COLOR_STRATEGY` | `token-first`, `hex-allowed`, `token-only` | `token-first` | Color resolution policy |
+| `CANONICAL_SPACING_SCALE` | `8pt`, `token-only`, `custom` | `8pt` | Spacing scale policy |
+| `CANONICAL_RADIUS_SCALE` | `default`, `token-only`, `custom` | `default` | Radius scale policy |
+| `CANONICAL_TYPOGRAPHY_SCALE` | `default`, `token-only`, `custom` | `default` | Typography scale policy |
+
+#### Policy Strategies
+
+**Color Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `token-first` | Prefer tokens, allow raw hex passthrough (default) |
+| `hex-allowed` | Same as token-first, no violations for hex |
+| `token-only` | Raw hex values are policy violations |
+
+**Other Strategies:**
+
+| Strategy | Behavior |
+|----------|----------|
+| `8pt` / `default` | Use default scales (default) |
+| `token-only` | Only canonical tokens allowed, raw values are violations |
+| `custom` | Use custom scale from config (future) |
+
+#### CLI Output
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│           PROJECT CANONICAL COVERAGE (Phase 10G)                │
+├─────────────────────────────────────────────────────────────────┤
+│ Files scanned:    3                                             │
+│ Components:       47                                            │
+│ Canonical fields: 11                                            │
+│ Resolved:         10                                            │
+│ Unresolved:       1                                             │
+│ Coverage:         91%                                           │
+├─────────────────────────────────────────────────────────────────┤
+│ Policy:           color=token-first, spacing=8pt, ...           │
+├─────────────────────────────────────────────────────────────────┤
+│ Top Gaps:                                                       │
+│   color.info (colors): 1 file(s)                                │
+├─────────────────────────────────────────────────────────────────┤
+│ ℹ️  CI: strict mode disabled (violations are informational)     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+#### CI Gate (Optional)
+
+To enable strict mode in CI, add to your CI config:
+
+```yaml
+# Example GitHub Actions
+- name: Check canonical coverage
+  run: |
+    CANONICAL_STRICT=true pnpm --filter @aesthetic-function/watcher canonical:coverage src
+```
+
+This will fail the build if any policy violations exist.
+
+#### Scope & Constraints
+
+Phase 10G is **read-only** and does not:
 - Modify JSX/TSX source files
 - Write markers or overrides
 - Emit Figma operations

@@ -38,6 +38,11 @@ import {
   resolveCanonicalSemantics,
   buildCoverageReport,
 } from '../canonicalResolver/index.js';
+import {
+  getResolutionPolicyFromEnv,
+  applyPolicyToResolution,
+  formatPolicy,
+} from '../canonicalResolverPolicy/index.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -472,18 +477,25 @@ function printCanonicalSummary(adapterResult: FileAdapterResult): void {
 }
 
 /**
- * Print canonical resolution and coverage report (Phase 10F).
+ * Print canonical resolution and coverage report (Phase 10F + 10G policy).
  *
  * READ-ONLY: This section shows how canonical tokens resolve to concrete
  * design system values (hex colors, pixel values) and coverage statistics.
+ * Also shows policy mode and any violations (Phase 10G).
  */
 function printResolutionSummary(adapterResult: FileAdapterResult): void {
-  printHeader('CANONICAL RESOLUTION (Phase 10F)');
+  printHeader('CANONICAL RESOLUTION (Phase 10F/10G)');
+
+  // Get policy from environment
+  const policy = getResolutionPolicyFromEnv();
+  console.log(`  Policy: ${formatPolicy(policy)}`);
+  console.log();
 
   // Track totals across all components
   let totalResolved = 0;
   let totalUnresolved = 0;
   let hasAnyResolution = false;
+  const allViolations: Array<{ component: string; canonical: string; reason: string }> = [];
 
   for (const comp of adapterResult.components) {
     const canonical = comp.canonicalSemantics;
@@ -559,6 +571,18 @@ function printResolutionSummary(adapterResult: FileAdapterResult): void {
     const coverage = buildCoverageReport(resolution);
     totalResolved += coverage.totals.resolved;
     totalUnresolved += coverage.totals.unresolved;
+
+    // Apply policy and collect violations (Phase 10G)
+    const policyResult = applyPolicyToResolution(resolution, policy, {
+      componentKey: comp.componentName,
+    });
+    for (const v of policyResult.violations) {
+      allViolations.push({
+        component: comp.componentName,
+        canonical: v.canonical,
+        reason: v.reason,
+      });
+    }
   }
 
   if (!hasAnyResolution) {
@@ -571,6 +595,22 @@ function printResolutionSummary(adapterResult: FileAdapterResult): void {
   const total = totalResolved + totalUnresolved;
   const percent = total > 0 ? Math.round((totalResolved / total) * 100) : 100;
   console.log(`  Coverage: ${totalResolved}/${total} resolved (${percent}%)`);
+
+  // Print violations if strict mode or any exist
+  if (allViolations.length > 0) {
+    console.log();
+    console.log(`  Policy Violations (${allViolations.length}):`);
+    for (const v of allViolations.slice(0, 5)) {
+      console.log(`    [${v.component}] ${v.canonical}: ${v.reason}`);
+    }
+    if (allViolations.length > 5) {
+      console.log(`    ... and ${allViolations.length - 5} more`);
+    }
+    if (policy.strict) {
+      console.log();
+      console.log('  ⛔ strict mode: these violations would fail CI');
+    }
+  }
 }
 
 /**
