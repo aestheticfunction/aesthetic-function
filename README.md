@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10E)
+## What Works Today (Phase 10F)
 
 | Feature | Status |
 |---------|--------|
@@ -118,6 +118,13 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Spacing normalization (T-shirt sizes) | ✅ |
 | Extensible hint mapper registry | ✅ |
 | CLI canonical semantics output | ✅ |
+| **Canonical Resolver + Coverage (Phase 10F)** | |
+| Canonical → design system value resolution | ✅ |
+| Color token → hex resolution | ✅ |
+| Spacing token → pixel resolution | ✅ |
+| Radius/typography token resolution | ✅ |
+| Coverage report with gap detection | ✅ |
+| CLI resolution + coverage output | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -1358,6 +1365,139 @@ registerCanonicalHintMapper('mui', (hint: string) => {
 #### Scope & Constraints
 
 Phase 10E is **read-only** and does not:
+- Modify JSX/TSX source files
+- Write markers or overrides
+- Emit Figma operations
+- Change watcher sync behavior
+- Affect server/plugin/protocol
+
+---
+
+### Canonical Resolver + Coverage Report (Phase 10F)
+
+Phase 10F builds on the canonical layer (10E) by **resolving canonical tokens to concrete design system values** (hex colors, pixel measurements) and producing a **deterministic coverage report**.
+
+#### Why It Exists
+
+- **Bridge canonical → concrete**: Convert abstract tokens to actual values for Figma operations
+- **Coverage visibility**: See exactly which canonical tokens resolve and which have gaps
+- **Adapter-agnostic**: Same resolution logic for Vuetify, AntD, and generic JSX
+- **Deterministic**: Same canonical input always produces same resolution output
+
+#### How Resolution Works
+
+```
+┌──────────────────────┐     ┌─────────────────────┐     ┌──────────────────┐
+│  Canonical Semantics │────▶│  Canonical Resolver │────▶│  Resolved Values │
+│  (color.primary)     │     │  (resolve.ts)       │     │  (#3B82F6)       │
+└──────────────────────┘     └─────────────────────┘     └──────────────────┘
+                                       │
+                                       ▼
+                              ┌──────────────────┐
+                              │ Coverage Report  │
+                              │ (totals, gaps)   │
+                              └──────────────────┘
+```
+
+1. **Color resolution**: Canonical token → design token name → hex value
+2. **Spacing resolution**: Canonical token → pixel value (8-point grid)
+3. **Radius resolution**: Canonical token → pixel value
+4. **Typography resolution**: Canonical token → fontSize/fontWeight values
+
+#### CLI Output
+
+The `ast:report` command now includes resolution and coverage:
+
+```
+============================================================
+CANONICAL RESOLUTION (Phase 10F)
+============================================================
+  LoginButton:
+    fill: color.primary → #3B82F6
+  DisabledButton:
+    fill: color.danger → #EF4444
+  CardComponent:
+    padding: space.lg → 24px
+    borderRadius: radius.md → 8px
+
+  Coverage: 4/4 resolved (100%)
+```
+
+When tokens cannot be resolved, notes explain why:
+
+```
+  UnknownComponent:
+    fill: color.custom → (unresolved)
+      ⚠ Canonical token "color.custom" not mapped to design system
+    gap: space.weird → (unresolved)
+      ⚠ Spacing token "space.weird" not found in scale
+
+  Coverage: 0/2 resolved (0%)
+```
+
+#### Resolution Scales
+
+**Spacing Scale (8-point grid):**
+
+| Canonical | Pixels |
+|-----------|--------|
+| `space.none` | 0 |
+| `space.xs` | 4 |
+| `space.sm` | 8 |
+| `space.md` | 16 |
+| `space.lg` | 24 |
+| `space.xl` | 32 |
+| `space.2xl` | 48 |
+| `space.3xl` | 64 |
+
+**Radius Scale:**
+
+| Canonical | Pixels |
+|-----------|--------|
+| `radius.none` | 0 |
+| `radius.sm` | 4 |
+| `radius.md` | 8 |
+| `radius.lg` | 16 |
+| `radius.full` | 9999 |
+
+**Typography Scale:**
+
+| Canonical | Value |
+|-----------|-------|
+| `text.size.xs` | 12px |
+| `text.size.sm` | 14px |
+| `text.size.md` | 16px |
+| `text.size.lg` | 18px |
+| `text.size.xl` | 20px |
+| `text.size.2xl` | 24px |
+| `text.weight.light` | 300 |
+| `text.weight.normal` | 400 |
+| `text.weight.medium` | 500 |
+| `text.weight.semibold` | 600 |
+| `text.weight.bold` | 700 |
+
+#### Coverage Report Structure
+
+```typescript
+interface CoverageReport {
+  totals: {
+    canonicalFields: number;  // Total fields analyzed
+    resolved: number;         // Successfully resolved
+    unresolved: number;       // Gaps (not resolved)
+  };
+  byCategory: {
+    colors: CategoryCoverage;
+    spacing: CategoryCoverage;
+    radius: CategoryCoverage;
+    typography: CategoryCoverage;
+  };
+  gaps: CoverageGap[];  // List of unresolved tokens with notes
+}
+```
+
+#### Scope & Constraints
+
+Phase 10F is **read-only** and does not:
 - Modify JSX/TSX source files
 - Write markers or overrides
 - Emit Figma operations

@@ -34,6 +34,10 @@ import {
 import type { AnchoredAstReport, Anchor } from './types.js';
 import type { DesignOverrides, DesignOverride } from '../reconcile/types.js';
 import type { FileAdapterResult } from './parseIntentFromReactAst.js';
+import {
+  resolveCanonicalSemantics,
+  buildCoverageReport,
+} from '../canonicalResolver/index.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -468,6 +472,108 @@ function printCanonicalSummary(adapterResult: FileAdapterResult): void {
 }
 
 /**
+ * Print canonical resolution and coverage report (Phase 10F).
+ *
+ * READ-ONLY: This section shows how canonical tokens resolve to concrete
+ * design system values (hex colors, pixel values) and coverage statistics.
+ */
+function printResolutionSummary(adapterResult: FileAdapterResult): void {
+  printHeader('CANONICAL RESOLUTION (Phase 10F)');
+
+  // Track totals across all components
+  let totalResolved = 0;
+  let totalUnresolved = 0;
+  let hasAnyResolution = false;
+
+  for (const comp of adapterResult.components) {
+    const canonical = comp.canonicalSemantics;
+
+    // Skip if no canonical data
+    if (!canonical) {
+      continue;
+    }
+
+    // Resolve canonical semantics
+    const resolution = resolveCanonicalSemantics(canonical);
+
+    // Check if there's any resolution data
+    const hasData = Object.keys(resolution.colors).length > 0 ||
+      Object.keys(resolution.spacing).length > 0 ||
+      Object.keys(resolution.radius).length > 0 ||
+      Object.keys(resolution.typography).length > 0;
+
+    if (!hasData) {
+      continue;
+    }
+
+    hasAnyResolution = true;
+    console.log(`  ${comp.componentName}:`);
+
+    // Print resolved colors
+    for (const [field, value] of Object.entries(resolution.colors)) {
+      const status = value.resolved !== undefined ? `→ ${value.resolved}` : '→ (unresolved)';
+      console.log(`    ${field}: ${value.canonical} ${status}`);
+      if (value.note) {
+        console.log(`      ⚠ ${value.note}`);
+      }
+    }
+
+    // Print resolved spacing
+    for (const [field, value] of Object.entries(resolution.spacing)) {
+      const status = value.resolved !== undefined ? `→ ${value.resolved}px` : '→ (unresolved)';
+      console.log(`    ${field}: ${value.canonical} ${status}`);
+      if (value.note) {
+        console.log(`      ⚠ ${value.note}`);
+      }
+    }
+
+    // Print resolved radius
+    for (const [field, value] of Object.entries(resolution.radius)) {
+      const status = value.resolved !== undefined ? `→ ${value.resolved}px` : '→ (unresolved)';
+      console.log(`    ${field}: ${value.canonical} ${status}`);
+      if (value.note) {
+        console.log(`      ⚠ ${value.note}`);
+      }
+    }
+
+    // Print resolved typography
+    for (const [field, value] of Object.entries(resolution.typography)) {
+      let status = '→ (unresolved)';
+      if (value.resolved !== undefined) {
+        const parts: string[] = [];
+        if (value.resolved.fontSize !== undefined) {
+          parts.push(`fontSize: ${value.resolved.fontSize}px`);
+        }
+        if (value.resolved.fontWeight !== undefined) {
+          parts.push(`fontWeight: ${value.resolved.fontWeight}`);
+        }
+        status = `→ { ${parts.join(', ')} }`;
+      }
+      console.log(`    ${field}: ${value.canonical} ${status}`);
+      if (value.note) {
+        console.log(`      ⚠ ${value.note}`);
+      }
+    }
+
+    // Build coverage report for this component
+    const coverage = buildCoverageReport(resolution);
+    totalResolved += coverage.totals.resolved;
+    totalUnresolved += coverage.totals.unresolved;
+  }
+
+  if (!hasAnyResolution) {
+    console.log('  (no canonical tokens to resolve)');
+    return;
+  }
+
+  // Print overall coverage
+  console.log();
+  const total = totalResolved + totalUnresolved;
+  const percent = total > 0 ? Math.round((totalResolved / total) * 100) : 100;
+  console.log(`  Coverage: ${totalResolved}/${total} resolved (${percent}%)`);
+}
+
+/**
  * Print component map suggestions (Phase 10C).
  *
  * READ-ONLY: This section shows suggestions for component-map.json entries
@@ -612,6 +718,7 @@ async function main(): Promise<void> {
   printAnchoredSummary(anchoredReport);
   printAdapterSummary(adapterResult);
   printCanonicalSummary(adapterResult);
+  printResolutionSummary(adapterResult);
   printSuggestionsSummary(suggestionResult);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
