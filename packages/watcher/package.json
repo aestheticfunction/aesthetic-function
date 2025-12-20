@@ -23,6 +23,7 @@
     "test:analyze": "vitest run src/analyze",
     "ast:report": "tsx src/ast/cliReport.ts",
     "ast:write-feasibility": "tsx src/ast/cliWriteFeasibility.ts",
+    "map:bootstrap": "tsx src/bootstrap/cliBootstrap.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"

@@ -105,6 +105,11 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Explicit-only variant states (markers/overrides) | ✅ |
 | CLI output (read-only, no file writes) | ✅ |
 | Existing map entry detection | ✅ |
+| **Component Map Bootstrap (Phase 10D)** | |
+| Bootstrap artifact generation | ✅ |
+| Safe apply mode (behind env flags) | ✅ |
+| Never overwrites existing nodeIds | ✅ |
+| Atomic file writes | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -187,6 +192,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 10A** | Semantic Adapter Architecture + Vuetify Adapter | ✅ |
 | **Phase 10B** | Ant Design Adapter (Read-Only Semantic Extraction) | ✅ |
 | **Phase 10C** | Component Map Bootstrap Suggestions (Read-Only) | ✅ |
+| **Phase 10D** | Component Map Bootstrap Artifacts (CLI + Apply Mode) | ✅ |
 
 ### Not Implemented Yet
 
@@ -196,7 +202,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), and read-only component map suggestions for bootstrapping new projects (Phase 10C). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), and bootstrap artifacts with safe apply mode (Phase 10D). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -1095,6 +1101,116 @@ Phase 10C adds **read-only** suggestions for bootstrapping `component-map.json`.
 |--------|-------------|
 | `ast-anchor` | Derived from AST analysis only, no adapter match |
 | `combined` | AST anchor + adapter semantics |
+
+### Component Map Bootstrap Artifacts (Phase 10D)
+
+Phase 10D adds a **safe, review-first workflow** to bootstrap `component-map.json` from Phase 10C suggestions. It generates deterministic, auditable artifacts that humans can review before applying.
+
+#### Why It Exists
+
+- **Safe by default**: Generates review artifacts only, never auto-writes `component-map.json`
+- **Deterministic**: Same inputs produce identical outputs (testable, auditable)
+- **Explicit-only**: Respects Phase 10C rule — variant states from markers/overrides only
+- **Never overwrites node IDs**: Existing Figma mappings are always preserved
+
+#### How to Run
+
+```bash
+pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+```
+
+**Output:**
+1. Writes artifact to: `design-materializations/<file>.component-map-bootstrap.json`
+2. Prints terminal summary with counts and manual fields
+
+#### Artifact Format
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2025-12-20T12:00:00.000Z",
+  "file": "demo-app/src/App.tsx",
+  "policy": {
+    "variantStates": "explicit-only",
+    "writes": "artifact-only"
+  },
+  "proposed": [
+    {
+      "componentKey": "auth/LoginButton",
+      "figmaNameSuggestion": "Login Button",
+      "variantStatesSuggested": ["hover"],
+      "status": "new",
+      "diff": {
+        "before": null,
+        "after": {
+          "version": 2,
+          "components": {
+            "auth/LoginButton": {
+              "figma": {
+                "name": "Login Button",
+                "componentSetNodeId": null,
+                "variants": {
+                  "base": { "nodeId": null },
+                  "hover": { "nodeId": null }
+                }
+              }
+            }
+          }
+        }
+      },
+      "manualFields": [
+        "figma.componentSetNodeId",
+        "figma.variants.base.nodeId",
+        "figma.variants.hover.nodeId"
+      ],
+      "reason": "AST anchor: LoginButton + Ant Design adapter"
+    }
+  ],
+  "skipped": []
+}
+```
+
+#### How to Use the Artifact
+
+1. **Review proposed entries** in the artifact JSON
+2. **Copy entries** you want into `component-map.json`
+3. **Fill in node IDs** manually using Figma plugin "Send Selection"
+4. The `manualFields` array tells you exactly what needs filling
+
+#### Enable Apply Mode (Advanced)
+
+To let the CLI merge entries into `component-map.json`:
+
+```bash
+# Dry run (shows what would change, doesn't modify)
+MAP_BOOTSTRAP_MODE=apply pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+
+# Actually apply (creates scaffolding, never fills node IDs)
+MAP_BOOTSTRAP_MODE=apply MAP_BOOTSTRAP_DRY_RUN=false pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+```
+
+**Environment Variables:**
+| Variable | Values | Default | Description |
+|----------|--------|---------|-------------|
+| `MAP_BOOTSTRAP_MODE` | `artifact` \| `apply` | `artifact` | What to write |
+| `MAP_BOOTSTRAP_DRY_RUN` | `true` \| `false` | `true` | Prevent actual writes |
+
+#### What's Never Auto-Filled
+
+Even in apply mode, these fields are **never** auto-filled:
+- `figma.componentSetNodeId` — Requires Figma plugin
+- `figma.variants.*.nodeId` — Requires Figma plugin
+- Existing node IDs are **never overwritten**
+
+#### Merge Rules
+
+| Scenario | Behavior |
+|----------|----------|
+| New component | Add entry with null nodeIds |
+| Existing component, same config | Skip (already present) |
+| Existing component, new variants | Add variant keys only |
+| Existing component, different name | Mark as "manual decision required" |
+| Existing nodeIds | **Never overwritten** |
 
 ### Color Mapping
 
