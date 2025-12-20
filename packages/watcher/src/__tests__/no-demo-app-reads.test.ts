@@ -1,0 +1,193 @@
+/**
+ * @aesthetic-function/watcher - __tests__/no-demo-app-reads.test.ts
+ *
+ * CI GUARDRAIL: Ensures test files never read from demo-app/.
+ *
+ * This test scans all test files in the watcher package and fails if any:
+ * - Use readFileSync/readFile to read from demo-app/
+ * - Import from demo-app/
+ *
+ * ALLOWED:
+ * - Using 'demo-app' as a path string in test data (e.g., 'demo-app/src/App.tsx')
+ * - Reading from __fixtures__/ directories
+ *
+ * See CONTRIBUTING.md for the full test stability policy.
+ */
+
+import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+/**
+ * Recursively find all test files in a directory.
+ */
+function findTestFiles(dir: string): string[] {
+  const results: string[] = [];
+
+  try {
+    const entries = readdirSync(dir);
+
+    for (const entry of entries) {
+      const fullPath = join(dir, entry);
+
+      // Skip node_modules and __snapshots__
+      if (entry === 'node_modules' || entry === '__snapshots__') {
+        continue;
+      }
+
+      const stat = statSync(fullPath);
+
+      if (stat.isDirectory()) {
+        results.push(...findTestFiles(fullPath));
+      } else if (entry.endsWith('.test.ts') || entry.endsWith('.test.tsx')) {
+        results.push(fullPath);
+      }
+    }
+  } catch {
+    // Directory doesn't exist or can't be read
+  }
+
+  return results;
+}
+
+/**
+ * Check if a test file has dangerous demo-app reads.
+ *
+ * Returns an array of violation descriptions.
+ */
+function checkForDemoAppReads(filePath: string): string[] {
+  const violations: string[] = [];
+  const content = readFileSync(filePath, 'utf-8');
+  const lines = content.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNum = i + 1;
+
+    // Pattern 1: readFileSync/readFile with demo-app path
+    // Matches: readFileSync('demo-app/...' or readFileSync("demo-app/...
+    // Also matches: readFileSync(join(..., 'demo-app', ...
+    if (
+      (line.includes('readFileSync') || line.includes('readFile(')) &&
+      line.includes('demo-app')
+    ) {
+      // Skip if it's a comment
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+        continue;
+      }
+
+      // Skip if demo-app is in a string that's clearly test data (not a file read)
+      // e.g., getPatchArtifactPath('demo-app/src/App.tsx', ...)
+      if (!line.includes('readFileSync') && !line.match(/readFile\s*\(/)) {
+        continue;
+      }
+
+      violations.push(`Line ${lineNum}: Possible readFile from demo-app: ${line.trim()}`);
+    }
+
+    // Pattern 2: Import from demo-app
+    // Matches: import ... from '...demo-app...'
+    if (line.includes('import') && line.includes('demo-app')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+        continue;
+      }
+
+      violations.push(`Line ${lineNum}: Import from demo-app: ${line.trim()}`);
+    }
+
+    // Pattern 3: Dynamic import of demo-app
+    if (line.includes('import(') && line.includes('demo-app')) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+        continue;
+      }
+
+      violations.push(`Line ${lineNum}: Dynamic import from demo-app: ${line.trim()}`);
+    }
+  }
+
+  return violations;
+}
+
+describe('CI Guardrail: No Demo-App Reads in Tests', () => {
+  it('should not have any test files that read from demo-app/', () => {
+    // Find the watcher src directory
+    const srcDir = join(__dirname, '..');
+    const testFiles = findTestFiles(srcDir);
+
+    // Exclude this test file itself
+    const thisFile = __filename;
+    const filesToCheck = testFiles.filter((f) => f !== thisFile);
+
+    const allViolations: { file: string; violations: string[] }[] = [];
+
+    for (const testFile of filesToCheck) {
+      const violations = checkForDemoAppReads(testFile);
+      if (violations.length > 0) {
+        // Get relative path for cleaner output
+        const relativePath = testFile.replace(srcDir, 'src');
+        allViolations.push({ file: relativePath, violations });
+      }
+    }
+
+    if (allViolations.length > 0) {
+      const report = allViolations
+        .map(({ file, violations }) => {
+          return `\n${file}:\n  ${violations.join('\n  ')}`;
+        })
+        .join('\n');
+
+      expect.fail(
+        `Found test files that read from demo-app/.\n` +
+          `This breaks test stability - use fixtures instead.\n` +
+          `See CONTRIBUTING.md for the test stability policy.\n` +
+          `\nViolations:${report}`
+      );
+    }
+
+    // If we get here, no violations found
+    expect(allViolations).toHaveLength(0);
+  });
+
+  it('should have at least one fixture file', () => {
+    const fixturesDir = join(__dirname, '..', '__fixtures__');
+
+    let hasFixtures = false;
+    try {
+      const entries = readdirSync(fixturesDir);
+      hasFixtures = entries.some((e) => e.includes('.fixture.'));
+    } catch {
+      // Directory doesn't exist
+    }
+
+    expect(hasFixtures).toBe(true);
+  });
+
+  it('should use fixtures/App.fixture.tsx path for stable snapshots', () => {
+    // Check that the parseIntentFromReactAst test uses the normalized fixture path
+    const astTestPath = join(
+      __dirname,
+      '..',
+      'ast',
+      '__tests__',
+      'parseIntentFromReactAst.test.ts'
+    );
+
+    const content = readFileSync(astTestPath, 'utf-8');
+
+    // Should have the FIXTURE_PATH constant
+    expect(content).toContain("const FIXTURE_PATH = 'fixtures/App.fixture.tsx'");
+
+    // Should have the readAppFixture helper
+    expect(content).toContain('function readAppFixture()');
+
+    // Should NOT have readDemoApp function
+    expect(content).not.toContain('function readDemoApp()');
+  });
+});

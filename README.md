@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 9C)
+## What Works Today (Phase 9D)
 
 | Feature | Status |
 |---------|--------|
@@ -83,6 +83,10 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | OPERATION_RESULT failure logging | ✅ |
 | Demo scripts (demo:server, demo:watcher, etc.) | ✅ |
 | TRACE/TRACE_JSON/TRACE_VERBOSE env vars | ✅ |
+| **Test Stability (Phase 9D)** | |
+| Deterministic test fixtures | ✅ |
+| CI guardrails for demo-app isolation | ✅ |
+| CONTRIBUTING.md test policy | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -161,6 +165,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 9A** | Feature Orchestrator (Prompt → Code → Figma) | ✅ |
 | **Phase 9B** | Orchestrator "Apply → Re-emit Ops" (Immediate Figma Refresh) | ✅ |
 | **Phase 9C** | Production Hardening, Observability & Demo DX | ✅ |
+| **Phase 9D** | Test Stability & CI Guardrails | ✅ |
 
 ### Not Implemented Yet
 
@@ -170,7 +175,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), and the Feature Orchestrator with immediate Figma refresh (Phase 9A/9B). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), and production hardening with test stability guardrails (Phase 9C/9D). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
