@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10A)
+## What Works Today (Phase 10B)
 
 | Feature | Status |
 |---------|--------|
@@ -94,6 +94,11 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Confidence-based prop extraction | ✅ |
 | Adapter/JSX semantics merging | ✅ |
 | Fixture-based adapter tests | ✅ |
+| **Ant Design Adapter (Phase 10B)** | |
+| Import-based component detection | ✅ |
+| AntD Button, Input, Card, Tag extraction | ✅ |
+| Semantic hints (antd:primary, antd:danger) | ✅ |
+| Registry extensibility proof | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -174,6 +179,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 9C** | Production Hardening, Observability & Demo DX | ✅ |
 | **Phase 9D** | Test Stability & CI Guardrails | ✅ |
 | **Phase 10A** | Semantic Adapter Architecture + Vuetify Adapter | ✅ |
+| **Phase 10B** | Ant Design Adapter (Read-Only Semantic Extraction) | ✅ |
 
 ### Not Implemented Yet
 
@@ -183,7 +189,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), and framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), and Ant Design adapter proving registry extensibility (Phase 10B). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -964,9 +970,9 @@ The ops-hash comparison prevents suppression of genuinely different changes that
 
 ---
 
-## Semantic Adapter Architecture (Phase 10A)
+## Semantic Adapter Architecture (Phase 10A/10B)
 
-Phase 10A introduces a generic adapter system for extracting semantic intent from framework-specific UI components. This allows the system to understand Vuetify, Ant Design, MUI, Chakra, and other UI frameworks without contaminating the core AST analysis pipeline.
+Phase 10A introduces a generic adapter system for extracting semantic intent from framework-specific UI components. Phase 10B adds the Ant Design adapter, proving the registry is framework-agnostic. This allows the system to understand Vuetify, Ant Design, MUI, Chakra, and other UI frameworks without contaminating the core AST analysis pipeline.
 
 ### Architecture Overview
 
@@ -996,14 +1002,14 @@ Phase 10A introduces a generic adapter system for extracting semantic intent fro
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Supported Frameworks (Phase 10A)
+### Supported Frameworks (Phase 10A/10B)
 
-| Framework | Components | Status |
-|-----------|-----------|--------|
-| **Vuetify** | v-btn, v-card, v-text-field, v-chip | ✅ |
-| Ant Design | - | Planned |
-| MUI | - | Planned |
-| Chakra UI | - | Planned |
+| Framework | Components | Detection | Status |
+|-----------|-----------|-----------|--------|
+| **Vuetify** | v-btn, v-card, v-text-field, v-chip | Tag name (`v-*`) | ✅ |
+| **Ant Design** | Button, Input, Card, Tag | Import source (`antd`) | ✅ |
+| MUI | - | - | Planned |
+| Chakra UI | - | - | Planned |
 
 ### Vuetify Adapter
 
@@ -1015,6 +1021,22 @@ The Vuetify adapter extracts semantics from Vuetify's `v-*` components:
 | `v-card` | width, height, title, subtitle, elevation |
 | `v-text-field` | label → placeholder, disabled |
 | `v-chip` | color → fills, variant |
+
+### Ant Design Adapter (Phase 10B)
+
+The Ant Design adapter uses **import-based detection** - components are only recognized if imported from `antd` or `antd/es/*`. This proves the adapter system is framework-agnostic.
+
+| Component | Extracted Semantics |
+|-----------|---------------------|
+| `Button` | type → fills (antd:primary, etc.), danger, disabled, children |
+| `Input` | placeholder, disabled |
+| `Card` | title |
+| `Tag` | color → fills (antd:color:green, etc.), children |
+
+**Key Differences from Vuetify:**
+- Uses **semantic hints** (`antd:primary`) instead of hex colors
+- Detection via **import source**, not tag name
+- PascalCase component names (Button, not v-btn)
 
 ### Color Mapping
 

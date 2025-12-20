@@ -1,7 +1,7 @@
 /**
  * @aesthetic-function/watcher - adapters/index.ts
  *
- * Semantic Adapter System (Phase 10A).
+ * Semantic Adapter System (Phase 10A/10B).
  *
  * Exports the adapter infrastructure and all registered adapters.
  * Framework adapters are registered on import.
@@ -36,6 +36,7 @@ export type {
 
 // Export adapters
 export { VuetifySemanticAdapter } from './vuetify/index.js';
+export { AntdSemanticAdapter, isAntdComponent } from './antd/index.js';
 
 // =============================================================================
 // DEFAULT ADAPTER REGISTRATION
@@ -43,6 +44,7 @@ export { VuetifySemanticAdapter } from './vuetify/index.js';
 
 import { registerAdapter } from './registry.js';
 import { VuetifySemanticAdapter } from './vuetify/index.js';
+import { AntdSemanticAdapter } from './antd/index.js';
 
 /**
  * Initialize default adapters.
@@ -59,8 +61,10 @@ export function initializeDefaultAdapters(): void {
   // Register Vuetify adapter (Phase 10A)
   registerAdapter(new VuetifySemanticAdapter());
 
+  // Register Ant Design adapter (Phase 10B)
+  registerAdapter(new AntdSemanticAdapter());
+
   // Future adapters will be registered here:
-  // registerAdapter(new AntDesignSemanticAdapter()); // Phase 10B
   // registerAdapter(new MuiSemanticAdapter());       // Phase 10C
   // registerAdapter(new ChakraSemanticAdapter());    // Phase 10D
 }
