@@ -91,6 +91,55 @@ interface ComposeOperationsPayload {
 }
 
 // =============================================================================
+// APPLY PROPERTIES TYPES (Phase 11C)
+// =============================================================================
+
+/**
+ * Property types that can be applied to Figma nodes.
+ */
+type ApplyPropertyType =
+  | 'fill'
+  | 'textColor'
+  | 'padding'
+  | 'gap'
+  | 'width'
+  | 'height'
+  | 'fontSize'
+  | 'fontWeight';
+
+/**
+ * A single property apply operation from Phase 11C.
+ */
+interface ApplyPropertyItem {
+  opId: string;
+  nodeId: string;
+  property: ApplyPropertyType;
+  to: string | number;
+  canonicalSource?: string;
+}
+
+/**
+ * Result of a single property apply operation.
+ */
+interface ApplyPropertyResult {
+  opId: string;
+  success: boolean;
+  nodeId: string;
+  property: ApplyPropertyType;
+  error?: string;
+  unchanged?: boolean;
+}
+
+/**
+ * Payload for APPLY_PROPERTIES message.
+ */
+interface ApplyPropertiesPayload {
+  operations: ApplyPropertyItem[];
+  originRequestId: string;
+  mode: 'dry-run' | 'apply';
+}
+
+// =============================================================================
 // UTILITIES
 // =============================================================================
 
@@ -919,6 +968,351 @@ async function executeComposeOperation(op: ComposeOperationItem): Promise<Compos
   }
 }
 
+// =============================================================================
+// EXECUTE APPLY PROPERTY (Phase 11C)
+// =============================================================================
+
+/**
+ * Execute a single apply property operation.
+ * 
+ * Phase 11C: Applies resolved canonical properties to existing Figma nodes.
+ * Only targets nodes by stable ID - does NOT create new nodes.
+ */
+async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropertyResult> {
+  console.log(`[Plugin] Applying ${op.property}="${op.to}" to node ${op.nodeId}`);
+
+  try {
+    // Find node by ID - MUST exist
+    const node = figma.getNodeById(op.nodeId);
+    if (!node) {
+      return {
+        opId: op.opId,
+        success: false,
+        nodeId: op.nodeId,
+        property: op.property,
+        error: `Node not found: ${op.nodeId}`,
+      };
+    }
+
+    // Apply the property based on type
+    switch (op.property) {
+      case 'fill': {
+        if (!('fills' in node)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} does not support fills`,
+          };
+        }
+
+        const color = hexToRgb(String(op.to));
+        if (!color) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid color value: ${op.to}`,
+          };
+        }
+
+        const newFill: SolidPaint = { type: 'SOLID', color };
+        (node as GeometryMixin).fills = [newFill];
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'textColor': {
+        if (node.type !== 'TEXT') {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} is not a text node`,
+          };
+        }
+
+        const color = hexToRgb(String(op.to));
+        if (!color) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid color value: ${op.to}`,
+          };
+        }
+
+        const newFill: SolidPaint = { type: 'SOLID', color };
+        node.fills = [newFill];
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'padding': {
+        if (!('paddingTop' in node)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} does not support padding (requires Auto Layout)`,
+          };
+        }
+
+        const padding = Number(op.to);
+        if (isNaN(padding)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid padding value: ${op.to}`,
+          };
+        }
+
+        const frameNode = node as FrameNode;
+        frameNode.paddingTop = padding;
+        frameNode.paddingBottom = padding;
+        frameNode.paddingLeft = padding;
+        frameNode.paddingRight = padding;
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'gap': {
+        if (!('itemSpacing' in node)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} does not support gap (requires Auto Layout)`,
+          };
+        }
+
+        const gap = Number(op.to);
+        if (isNaN(gap)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid gap value: ${op.to}`,
+          };
+        }
+
+        (node as FrameNode).itemSpacing = gap;
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'width': {
+        if (!('resize' in node)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} does not support resizing`,
+          };
+        }
+
+        const width = Number(op.to);
+        if (isNaN(width)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid width value: ${op.to}`,
+          };
+        }
+
+        const resizable = node as SceneNode & { resize: (width: number, height: number) => void };
+        resizable.resize(width, resizable.height);
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'height': {
+        if (!('resize' in node)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} does not support resizing`,
+          };
+        }
+
+        const height = Number(op.to);
+        if (isNaN(height)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid height value: ${op.to}`,
+          };
+        }
+
+        const resizable = node as SceneNode & { resize: (width: number, height: number) => void };
+        resizable.resize(resizable.width, height);
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'fontSize': {
+        if (node.type !== 'TEXT') {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} is not a text node`,
+          };
+        }
+
+        const fontSize = Number(op.to);
+        if (isNaN(fontSize)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid fontSize value: ${op.to}`,
+          };
+        }
+
+        // Load font before changing size
+        await figma.loadFontAsync(node.fontName as FontName);
+        node.fontSize = fontSize;
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      case 'fontWeight': {
+        if (node.type !== 'TEXT') {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Node ${op.nodeId} is not a text node`,
+          };
+        }
+
+        const weight = Number(op.to);
+        if (isNaN(weight)) {
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Invalid fontWeight value: ${op.to}`,
+          };
+        }
+
+        // Map weight to font style name
+        const weightMap: Record<number, string> = {
+          100: 'Thin',
+          200: 'ExtraLight',
+          300: 'Light',
+          400: 'Regular',
+          500: 'Medium',
+          600: 'SemiBold',
+          700: 'Bold',
+          800: 'ExtraBold',
+          900: 'Black',
+        };
+
+        const styleName = weightMap[weight] || 'Regular';
+        const currentFont = node.fontName as FontName;
+        const newFont: FontName = { family: currentFont.family, style: styleName };
+
+        try {
+          await figma.loadFontAsync(newFont);
+          node.fontName = newFont;
+        } catch {
+          // If exact weight not available, try Regular
+          return {
+            opId: op.opId,
+            success: false,
+            nodeId: op.nodeId,
+            property: op.property,
+            error: `Font weight ${weight} (${styleName}) not available for ${currentFont.family}`,
+          };
+        }
+        
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: op.nodeId,
+          property: op.property,
+        };
+      }
+
+      default:
+        return {
+          opId: op.opId,
+          success: false,
+          nodeId: op.nodeId,
+          property: op.property,
+          error: `Unknown property type: ${op.property}`,
+        };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Plugin] Apply property failed:`, message);
+    return {
+      opId: op.opId,
+      success: false,
+      nodeId: op.nodeId,
+      property: op.property,
+      error: message,
+    };
+  }
+}
+
 /**
  * Find a variant by its property values.
  */
@@ -1069,6 +1463,51 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
       // Send result back to ui.html
       figma.ui.postMessage({
         type: 'COMPOSE_RESULT',
+        payload: {
+          originRequestId: payload.originRequestId,
+          success: allSuccess,
+          results,
+        },
+      });
+      break;
+    }
+
+    case 'APPLY_PROPERTIES': {
+      // Phase 11C: Handle property application to existing nodes
+      const payload = msg.payload as ApplyPropertiesPayload;
+      const ops = payload && payload.operations;
+
+      if (!ops || !ops.length) {
+        console.warn('[Plugin] APPLY_PROPERTIES with no operations');
+        figma.ui.postMessage({
+          type: 'APPLY_PROPERTIES_RESULT',
+          payload: {
+            originRequestId: payload?.originRequestId ?? 'unknown',
+            success: true,
+            results: [],
+          },
+        });
+        break;
+      }
+
+      console.log(`[Plugin] Executing ${ops.length} apply property operation(s), mode=${payload.mode}`);
+
+      const results: ApplyPropertyResult[] = [];
+      let allSuccess = true;
+
+      for (const op of ops) {
+        const opResult = await executeApplyProperty(op);
+        results.push(opResult);
+        if (!opResult.success) {
+          allSuccess = false;
+        }
+      }
+
+      console.log(`[Plugin] Apply properties complete: ${results.filter(r => r.success).length}/${ops.length} succeeded`);
+
+      // Send result back to ui.html
+      figma.ui.postMessage({
+        type: 'APPLY_PROPERTIES_RESULT',
         payload: {
           originRequestId: payload.originRequestId,
           success: allSuccess,

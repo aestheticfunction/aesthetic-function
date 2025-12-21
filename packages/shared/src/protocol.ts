@@ -301,10 +301,12 @@ export const MessageType = {
   // Server → Figma Plugin
   APPLY_OPERATIONS: 'APPLY_OPERATIONS',
   COMPOSE_OPERATIONS: 'COMPOSE_OPERATIONS',
+  APPLY_PROPERTIES: 'APPLY_PROPERTIES',
 
   // Figma Plugin → Server
   OPERATION_RESULT: 'OPERATION_RESULT',
   COMPOSE_RESULT: 'COMPOSE_RESULT',
+  APPLY_PROPERTIES_RESULT: 'APPLY_PROPERTIES_RESULT',
   PLUGIN_READY: 'PLUGIN_READY',
 
   // Figma Plugin → Server → Watcher (Design → Code)
@@ -443,6 +445,84 @@ export interface ComposeResultPayload {
 export type ComposeResultMessage = BaseMessage<
   typeof MessageType.COMPOSE_RESULT,
   ComposeResultPayload
+>;
+
+// =============================================================================
+// APPLY PROPERTIES (Phase 11C)
+// =============================================================================
+
+/**
+ * Property types that can be applied to Figma nodes.
+ */
+export type ApplyPropertyType =
+  | 'fill'
+  | 'textColor'
+  | 'padding'
+  | 'gap'
+  | 'width'
+  | 'height'
+  | 'fontSize'
+  | 'fontWeight';
+
+/**
+ * A single property apply operation to execute in Figma.
+ */
+export interface ApplyPropertyItem {
+  /** Deterministic operation ID */
+  opId: string;
+  /** Target Figma node ID (must be stable ID from component-map) */
+  nodeId: string;
+  /** Property to apply */
+  property: ApplyPropertyType;
+  /** New value to apply */
+  to: string | number;
+  /** Canonical source token (for audit) */
+  canonicalSource?: string;
+}
+
+/**
+ * Result of a single property apply operation.
+ */
+export interface ApplyPropertyResultItem {
+  opId: string;
+  success: boolean;
+  nodeId: string;
+  property: ApplyPropertyType;
+  /** Error message if failed */
+  error?: string;
+  /** Whether the value was already set (no change needed) */
+  unchanged?: boolean;
+}
+
+/** Command to apply properties to Figma nodes (Server → Plugin) */
+export interface ApplyPropertiesPayload {
+  operations: ApplyPropertyItem[];
+  /** Original request ID for correlation */
+  originRequestId: string;
+  /** Execution mode */
+  mode: 'dry-run' | 'apply';
+}
+
+export type ApplyPropertiesMessage = BaseMessage<
+  typeof MessageType.APPLY_PROPERTIES,
+  ApplyPropertiesPayload
+>;
+
+/** Result of property application (Plugin → Server) */
+export interface ApplyPropertiesResultPayload {
+  /** Original request ID this responds to */
+  originRequestId: string;
+  /** Whether all operations succeeded */
+  success: boolean;
+  /** Per-operation results */
+  results: ApplyPropertyResultItem[];
+  /** Error details if failed */
+  error?: string;
+}
+
+export type ApplyPropertiesResultMessage = BaseMessage<
+  typeof MessageType.APPLY_PROPERTIES_RESULT,
+  ApplyPropertiesResultPayload
 >;
 
 // =============================================================================

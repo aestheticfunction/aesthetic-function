@@ -1,0 +1,266 @@
+/**
+ * @aesthetic-function/watcher - figmaApply/cliApply.ts
+ *
+ * Phase 11C: CLI Entry Point for Figma Property Application.
+ *
+ * USAGE:
+ *   # Preview only (default)
+ *   pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx
+ *
+ *   # Write artifact only
+ *   FIGMA_APPLY_MODE=artifact pnpm figma:apply demo-app/src/App.tsx
+ *
+ *   # Apply for real
+ *   FIGMA_APPLY_ON=true FIGMA_APPLY_MODE=apply FIGMA_APPLY_DRY_RUN=false \
+ *     pnpm figma:apply demo-app/src/App.tsx
+ *
+ * FLAGS:
+ *   --apply    Enable apply mode (still requires FIGMA_APPLY_ON=true, FIGMA_APPLY_DRY_RUN=false)
+ *   --verbose  Show detailed operation list
+ */
+
+import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { loadApplyConfig, canApply, getApplyStatus } from './config.js';
+import { generateApplyOps } from './generateApplyOps.js';
+import {
+  buildApplyArtifact,
+  writeApplyArtifact,
+  formatArtifactSummary,
+  formatOperationDetails,
+  formatViolationDetails,
+} from './artifact.js';
+import type { ApplyInput, ApplyResult, ApplyConfig } from './types.js';
+import type { ComponentMap } from '../reconcile/componentMap.js';
+import type { CanonicalResolution } from '../canonicalResolver/types.js';
+
+// =============================================================================
+// CLI ARGUMENTS
+// =============================================================================
+
+interface CliArgs {
+  sourceFile: string;
+  apply: boolean;
+  verbose: boolean;
+}
+
+function parseArgs(): CliArgs {
+  const args = process.argv.slice(2);
+
+  let sourceFile = '';
+  let apply = false;
+  let verbose = false;
+
+  for (const arg of args) {
+    if (arg === '--apply') {
+      apply = true;
+    } else if (arg === '--verbose' || arg === '-v') {
+      verbose = true;
+    } else if (!arg.startsWith('-')) {
+      sourceFile = arg;
+    }
+  }
+
+  if (!sourceFile) {
+    console.error('Usage: figma:apply <source-file> [--apply] [--verbose]');
+    process.exit(1);
+  }
+
+  return { sourceFile, apply, verbose };
+}
+
+// =============================================================================
+// MOCK DATA LOADERS (Replace with real implementations)
+// =============================================================================
+
+/**
+ * Load component map from disk.
+ */
+async function loadComponentMap(): Promise<ComponentMap> {
+  const mapPath = resolve(process.cwd(), 'component-map.json');
+  try {
+    const content = await readFile(mapPath, 'utf-8');
+    return JSON.parse(content) as ComponentMap;
+  } catch {
+    // Return empty map if not found
+    return { version: 2, components: {} };
+  }
+}
+
+/**
+ * Create mock canonical resolution for demonstration.
+ *
+ * In production, this would come from Phase 10F/10G analysis.
+ */
+function createMockResolution(): CanonicalResolution {
+  return {
+    colors: {
+      'color.primary': {
+        canonical: 'color.primary',
+        resolved: '#3B82F6',
+        confidence: 'high',
+        source: 'mock',
+      },
+    },
+    spacing: {
+      'space.md': {
+        canonical: 'space.md',
+        resolved: 16,
+        confidence: 'high',
+        source: 'mock',
+      },
+    },
+    radius: {},
+    typography: {
+      'text.size.md': {
+        canonical: 'text.size.md',
+        resolved: { fontSize: 16 },
+        confidence: 'high',
+        source: 'mock',
+      },
+    },
+    meta: {
+      resolvedCount: 3,
+      unresolvedCount: 0,
+      notesCount: 0,
+    },
+  };
+}
+
+// =============================================================================
+// SERVER COMMUNICATION
+// =============================================================================
+
+/**
+ * Send apply operations to the server.
+ */
+async function sendApplyToServer(
+  config: ApplyConfig,
+  operations: { opId: string; nodeId: string; property: string; to: string | number }[],
+  requestId: string
+): Promise<{ results: ApplyResult[] }> {
+  const response = await fetch(`${config.serverUrl}/apply-properties`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      operations,
+      mode: config.dryRun ? 'dry-run' : 'apply',
+      requestId,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Server error: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json() as Promise<{ results: ApplyResult[] }>;
+}
+
+// =============================================================================
+// MAIN CLI FUNCTION
+// =============================================================================
+
+async function main(): Promise<void> {
+  const args = parseArgs();
+
+  console.log('=== FIGMA APPLY CLI (Phase 11C) ===');
+  console.log(`Source: ${args.sourceFile}`);
+  console.log('');
+
+  // Load configuration
+  let config = loadApplyConfig();
+
+  // Override mode if --apply flag is passed
+  if (args.apply) {
+    config = { ...config, mode: 'apply' };
+  }
+
+  console.log(`Status: ${getApplyStatus(config)}`);
+  console.log(`Allow: ${config.allow.length > 0 ? config.allow.join(', ') : '(none)'}`);
+  console.log('');
+
+  // Load component map
+  const componentMap = await loadComponentMap();
+  const componentCount = Object.keys(componentMap.components).length;
+  console.log(`Component map: ${componentCount} components`);
+
+  // Create canonical resolution (mock for now)
+  const resolution = createMockResolution();
+
+  // Build input
+  const input: ApplyInput = {
+    resolution,
+    componentMap,
+    sourceFile: args.sourceFile,
+    config,
+  };
+
+  // Generate apply operations
+  const output = generateApplyOps(input);
+
+  console.log('');
+  console.log(`Generated: ${output.operations.length} operations`);
+  console.log(`Violations: ${output.violations.length}`);
+
+  // Build artifact
+  let results: ApplyResult[] | undefined;
+
+  // If apply mode and fully enabled, send to server
+  if (canApply(config) && args.apply) {
+    console.log('');
+    console.log('Sending operations to server...');
+
+    try {
+      const requestId = `apply-${Date.now()}`;
+      const serverResponse = await sendApplyToServer(
+        config,
+        output.operations.map((op) => ({
+          opId: op.opId,
+          nodeId: op.nodeId,
+          property: op.property,
+          to: op.to,
+        })),
+        requestId
+      );
+      results = serverResponse.results;
+      console.log(`Server response: ${results.length} results`);
+    } catch (error) {
+      console.error('Failed to send to server:', error);
+    }
+  }
+
+  // Build and write artifact
+  const artifact = buildApplyArtifact(args.sourceFile, output, config, results);
+  const artifactPath = await writeApplyArtifact(artifact);
+
+  console.log('');
+  console.log(`Artifact written: ${artifactPath}`);
+
+  // Verbose output
+  if (args.verbose) {
+    console.log('');
+    console.log(formatArtifactSummary(artifact));
+
+    if (output.operations.length > 0) {
+      console.log('');
+      console.log(formatOperationDetails(artifact));
+    }
+
+    if (output.violations.length > 0) {
+      console.log('');
+      console.log(formatViolationDetails(artifact));
+    }
+  }
+
+  // Exit with error if violations in strict mode
+  if (output.violations.length > 0) {
+    console.log('');
+    console.log(`⚠️  ${output.violations.length} policy violations detected`);
+  }
+}
+
+// Run CLI
+main().catch((error) => {
+  console.error('Fatal error:', error);
+  process.exit(1);
+});

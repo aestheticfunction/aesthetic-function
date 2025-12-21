@@ -230,6 +230,58 @@ export function logCompose(entry: ComposeLogEntry): void {
 }
 
 /**
+ * Metadata for an apply properties event (Phase 11C).
+ */
+export interface ApplyPropertiesLogEntry {
+  /** Unique request identifier */
+  requestId: string;
+  /** Execution mode */
+  mode: 'dry-run' | 'apply';
+  /** Number of operations */
+  operationCount: number;
+  /** Property types summary */
+  propertyTypes: Record<string, number>;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Whether operations were sent to plugin */
+  sentToPlugin: boolean;
+  /** Plugin client count */
+  pluginClientCount: number;
+}
+
+/**
+ * Log an apply properties event to the audit trail.
+ *
+ * @param entry - The apply properties entry metadata
+ */
+export function logApplyProperties(entry: ApplyPropertiesLogEntry): void {
+  if (!isAuditLogEnabled()) {
+    return;
+  }
+
+  const logEntry = formatApplyPropertiesEntry(entry);
+  queueLogEntry(logEntry);
+}
+
+/**
+ * Format an apply properties entry as markdown.
+ */
+function formatApplyPropertiesEntry(entry: ApplyPropertiesLogEntry): string {
+  const lines: string[] = [
+    `## [${entry.timestamp}] [${entry.requestId}] type=APPLY_PROPERTIES mode=${entry.mode}`,
+    `operations=${entry.operationCount} plugins=${entry.pluginClientCount} sent=${entry.sentToPlugin}`,
+  ];
+
+  // Property type breakdown
+  for (const [propType, count] of Object.entries(entry.propertyTypes)) {
+    lines.push(`- ${propType}: ${count}`);
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Format a compose entry as markdown.
  */
 function formatComposeEntry(entry: ComposeLogEntry): string {

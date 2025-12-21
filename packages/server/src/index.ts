@@ -21,9 +21,11 @@ import {
   type ApplyOperationsPayload,
   type ComposeOperationsPayload,
   type ComposeOperationItem,
+  type ApplyPropertiesPayload,
+  type ApplyPropertyItem,
   MessageType,
 } from '@aesthetic-function/shared';
-import { logBroadcast, logDesignChange, logMapUpdate, logCompose, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
+import { logBroadcast, logDesignChange, logMapUpdate, logCompose, logApplyProperties, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
 import { loadComponentMap, mergeMapUpdate, saveComponentMap, getComponentMapPath } from './componentMap.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -375,6 +377,103 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         console.error('[Server] Error handling compose:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to process compose operations' }));
+      }
+    });
+    return;
+  }
+
+  // Receive APPLY_PROPERTIES from watcher CLI (Phase 11C)
+  if (req.method === 'POST' && url.pathname === '/apply-properties') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body) as {
+          operations: ApplyPropertyItem[];
+          mode: 'dry-run' | 'apply';
+          requestId?: string;
+        };
+
+        const requestId = data.requestId ?? `apply-props-${Date.now()}`;
+        const timestamp = new Date().toISOString();
+        const mode = data.mode ?? 'dry-run';
+
+        console.log(`[Server] APPLY_PROPERTIES: ${data.operations.length} ops, mode=${mode}`);
+
+        // Count operations by property type
+        const propertyTypes: Record<string, number> = {};
+        for (const op of data.operations) {
+          propertyTypes[op.property] = (propertyTypes[op.property] || 0) + 1;
+        }
+
+        // In dry-run mode, just log and return
+        if (mode === 'dry-run') {
+          logApplyProperties({
+            requestId,
+            mode,
+            operationCount: data.operations.length,
+            propertyTypes,
+            timestamp,
+            sentToPlugin: false,
+            pluginClientCount: pluginClients.size,
+          });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            mode,
+            operationCount: data.operations.length,
+            sentToPlugin: false,
+            pluginClientCount: pluginClients.size,
+          }));
+          return;
+        }
+
+        // In apply mode, broadcast to plugin clients
+        const message = createMessage<typeof MessageType.APPLY_PROPERTIES, ApplyPropertiesPayload>(
+          MessageType.APPLY_PROPERTIES,
+          {
+            operations: data.operations,
+            originRequestId: requestId,
+            mode,
+          }
+        );
+        const messageStr = JSON.stringify(message);
+
+        let sent = 0;
+        for (const client of pluginClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr);
+            sent++;
+          }
+        }
+
+        console.log(`[Server] Broadcast APPLY_PROPERTIES to ${sent} plugin client(s)`);
+
+        // Audit log
+        logApplyProperties({
+          requestId,
+          mode,
+          operationCount: data.operations.length,
+          propertyTypes,
+          timestamp,
+          sentToPlugin: sent > 0,
+          pluginClientCount: sent,
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          mode,
+          operationCount: data.operations.length,
+          sentToPlugin: sent > 0,
+          pluginClientCount: sent,
+          requestId,
+        }));
+      } catch (err) {
+        console.error('[Server] Error handling apply-properties:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to process apply properties operations' }));
       }
     });
     return;

@@ -150,6 +150,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Plugin COMPOSE_OPERATIONS handler | ✅ |
 | Full audit trail logging | ✅ |
 | CLI `figma:compose` command | ✅ |
+| **Figma Property Application (Phase 11C)** | |
+| Apply properties to existing Figma nodes | ✅ |
+| Opt-in apply mode (artifact-only default) | ✅ |
+| Feature flags (mode, dry-run, allow-list) | ✅ |
+| Property categories (fill, spacing, typography) | ✅ |
+| Deterministic opId hashing | ✅ |
+| Server /apply-properties endpoint | ✅ |
+| Plugin APPLY_PROPERTIES handler | ✅ |
+| CLI `figma:apply` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -238,6 +247,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 10G** | Resolution Policy + Project-Level Coverage | ✅ |
 | **Phase 11A** | Figma Composition Suggestions (Read-Only) | ✅ |
 | **Phase 11B** | Figma Composition Application (Opt-In, Auditable) | ✅ |
+| **Phase 11C** | Figma Property Application (Opt-In, Scoped, Auditable) | ✅ |
 
 ### Not Implemented Yet
 
@@ -247,7 +257,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), and controlled Figma composition application with opt-in apply mode (Phase 11B). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), and property application to existing Figma nodes with category-scoped allow-lists (Phase 11C). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -1873,6 +1883,183 @@ Fields logged:
 3. **Allow-list** - `FIGMA_COMPOSE_ALLOW` restricts operation types
 4. **Idempotent** - Operations check for existing elements before creating
 5. **Auditable** - Full trail in sync-log.md and compose artifacts
+
+---
+
+## Figma Property Application (Phase 11C)
+
+Phase 11C applies resolved canonical semantics (from Phase 10F/10G) to existing Figma structures. Unlike Phase 11B which creates new Component Sets and variants, this phase **only applies properties** to nodes that already exist.
+
+### Overview
+
+Building on the canonical resolution pipeline:
+
+1. **Property Application** - Apply colors, spacing, and typography to existing nodes
+2. **Explicit Targeting** - Only nodes with stable IDs in component-map.json
+3. **Category Allow-List** - Fine-grained control over property types
+4. **Opt-In Apply Mode** - Artifact-only by default
+5. **Audit Trail** - Full logging of all apply operations
+
+### Property Types
+
+| Property | Category | Figma Operation |
+|----------|----------|-----------------|
+| `fill` | fill | Set background/foreground color |
+| `textColor` | fill | Set text fill color |
+| `padding` | spacing | Set Auto Layout padding |
+| `gap` | spacing | Set Auto Layout item spacing |
+| `width` | spacing | Set node width (if already defined) |
+| `height` | spacing | Set node height (if already defined) |
+| `fontSize` | typography | Set text font size |
+| `fontWeight` | typography | Set text font weight |
+
+### Feature Flags
+
+| Flag | Values | Default | Description |
+|------|--------|---------|-------------|
+| `FIGMA_APPLY_ON` | `true`/`false` | `false` | Master enable switch |
+| `FIGMA_APPLY_MODE` | `artifact`/`apply` | `artifact` | Execution mode |
+| `FIGMA_APPLY_DRY_RUN` | `true`/`false` | `true` | Dry-run mode (apply only) |
+| `FIGMA_APPLY_ALLOW` | comma-separated | (none) | Property category allow-list |
+| `FIGMA_APPLY_SERVER` | URL | `http://localhost:3001` | Server endpoint |
+| `FIGMA_APPLY_MIN_CONFIDENCE` | `low`/`medium`/`high` | `high` | Minimum confidence threshold |
+
+**Allow-list values:** `fill`, `spacing`, `typography`
+
+### CLI Usage
+
+```bash
+# Generate apply artifact (artifact-only, no Figma changes)
+pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx
+
+# Apply properties to Figma (requires full opt-in)
+FIGMA_APPLY_ON=true FIGMA_APPLY_MODE=apply FIGMA_APPLY_DRY_RUN=false \
+  FIGMA_APPLY_ALLOW=fill,spacing \
+  pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx --apply
+
+# Verbose output
+pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx --verbose
+```
+
+### Apply Artifact
+
+Artifacts are written to `design-materializations/` with naming:
+
+```
+<file-path>.figma-apply.json
+```
+
+Example artifact structure:
+
+```json
+{
+  "version": "1.0",
+  "timestamp": "2025-01-15T10:30:00.000Z",
+  "sourceFile": "demo-app/src/App.tsx",
+  "mode": "artifact",
+  "dryRun": true,
+  "operations": [
+    {
+      "opId": "apply-abc123",
+      "nodeId": "CS:btn-123",
+      "componentKey": "Button",
+      "property": "fill",
+      "to": "#3498db",
+      "canonicalSource": "color.primary.500",
+      "confidence": "high",
+      "source": "canonical-resolution",
+      "reason": "Apply resolved color color.primary.500"
+    }
+  ],
+  "violations": [
+    {
+      "type": "property-not-allowed",
+      "componentKey": "Card",
+      "property": "padding",
+      "message": "Property category 'spacing' not in FIGMA_APPLY_ALLOW"
+    }
+  ],
+  "summary": {
+    "totalOperations": 1,
+    "byProperty": { "fill": 1 },
+    "totalViolations": 1,
+    "byViolationType": { "property-not-allowed": 1 }
+  }
+}
+```
+
+### Policy Violations
+
+Operations may be rejected for several reasons:
+
+| Violation Type | Description |
+|----------------|-------------|
+| `missing-node-id` | Node not found in component-map.json |
+| `property-not-allowed` | Property category not in FIGMA_APPLY_ALLOW |
+| `no-canonical-source` | No canonical token for this property |
+| `low-confidence` | Confidence below FIGMA_APPLY_MIN_CONFIDENCE |
+| `value-unchanged` | Current value matches target (idempotency) |
+
+### Server Endpoint
+
+The `/apply-properties` endpoint accepts apply operations:
+
+```bash
+curl -X POST http://localhost:3001/apply-properties \
+  -H "Content-Type: application/json" \
+  -d '{"operations": [...], "mode": "apply"}'
+```
+
+The endpoint:
+1. Validates the request
+2. Logs to sync-log.md via `logApplyProperties()`
+3. In dry-run mode: returns operations without sending to plugin
+4. In apply mode: broadcasts `APPLY_PROPERTIES` to connected plugins
+5. Returns operation results
+
+### Plugin Behavior
+
+When the Figma plugin receives `APPLY_PROPERTIES`:
+
+1. **Locate Node** - Uses `figma.getNodeById()` with the nodeId
+2. **Validate Node Type** - Ensures node supports the property
+3. **Apply Property** - Sets the appropriate property value:
+   - `fill`: Sets fills array with solid color
+   - `textColor`: Sets fills on TextNode
+   - `padding/gap`: Sets Auto Layout properties
+   - `fontSize/fontWeight`: Sets text style properties
+4. **Return Result** - Reports success/failure per operation
+
+The plugin returns `APPLY_PROPERTIES_RESULT` with per-operation status.
+
+### Audit Logging
+
+Apply operations are logged to sync-log.md:
+
+```markdown
+| 2025-01-15T10:30:00.000Z | apply-properties | demo-app/src/App.tsx | apply | 3 ops | fill(2),fontSize(1) |
+```
+
+### Safety Guarantees
+
+1. **Artifact-only by default** - Mode defaults to 'artifact'
+2. **Dry-run by default** - FIGMA_APPLY_DRY_RUN defaults to true
+3. **Master switch** - FIGMA_APPLY_ON must be true for server dispatch
+4. **Category allow-list** - FIGMA_APPLY_ALLOW restricts property types
+5. **Explicit targeting only** - Only nodes in component-map.json
+6. **Confidence threshold** - FIGMA_APPLY_MIN_CONFIDENCE filters low-confidence
+7. **Idempotent** - Repeated runs produce same opIds, no duplicate changes
+8. **Auditable** - Full trail in sync-log.md and apply artifacts
+
+### Differences from Phase 11B
+
+| Aspect | Phase 11B (Compose) | Phase 11C (Apply) |
+|--------|---------------------|-------------------|
+| Purpose | Create new structure | Apply properties to existing |
+| Target | Missing Component Sets/Variants | Existing nodes with stable IDs |
+| Operations | ENSURE_* | Property assignments |
+| Allow-list | Operation types | Property categories |
+| Creates nodes | Yes | No |
 
 ---
 
