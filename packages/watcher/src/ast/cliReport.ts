@@ -43,6 +43,13 @@ import {
   applyPolicyToResolution,
   formatPolicy,
 } from '../canonicalResolverPolicy/index.js';
+import {
+  generateFigmaSuggestions,
+  type FigmaSuggestionResult,
+  type FigmaSuggestionInput,
+} from '../figmaSuggestions/index.js';
+import type { CanonicalSemantics } from '../tokens/canonical/types.js';
+import type { CanonicalResolution, CoverageReport } from '../canonicalResolver/types.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -668,6 +675,105 @@ function printSuggestionsSummary(suggestionResult: SuggestionResult): void {
   console.log(`  Summary: ${suggestionResult.newCount} new, ${suggestionResult.updateCount} existing, ${suggestionResult.skippedCount} skipped`);
 }
 
+/**
+ * Print Figma composition suggestions (Phase 11A).
+ *
+ * READ-ONLY: This section shows actionable Figma composition guidance
+ * based on canonical semantics. No writes, no mutations.
+ */
+function printFigmaSuggestionsSummary(result: FigmaSuggestionResult): void {
+  printHeader('FIGMA COMPOSITION SUGGESTIONS (Phase 11A)');
+
+  if (result.total === 0) {
+    console.log('  (no suggestions generated)');
+    return;
+  }
+
+  // Group suggestions by type for organized output
+  const componentSets = result.suggestions.filter((s) => s.type === 'component-set');
+  const variants = result.suggestions.filter((s) => s.type === 'variant');
+  const properties = result.suggestions.filter((s) => s.type === 'property');
+  const tokenUsage = result.suggestions.filter((s) => s.type === 'token-usage');
+  const coverageGaps = result.suggestions.filter((s) => s.type === 'coverage-gap');
+
+  // NEW COMPONENT SET
+  if (componentSets.length > 0) {
+    console.log('  [NEW COMPONENT SET]');
+    for (const s of componentSets) {
+      console.log(`    - ${s.figmaNameSuggestion} (${s.componentKey})`);
+    }
+    console.log();
+  }
+
+  // VARIANTS
+  if (variants.length > 0) {
+    console.log('  [VARIANTS]');
+    // Group by componentKey for cleaner output
+    const byComponent = new Map<string, string[]>();
+    for (const s of variants) {
+      const states = byComponent.get(s.componentKey) ?? [];
+      const variantState = s.details?.variantState as string | undefined;
+      if (variantState) {
+        states.push(variantState);
+      }
+      byComponent.set(s.componentKey, states);
+    }
+    for (const [componentKey, states] of byComponent) {
+      console.log(`    - ${componentKey}: [${states.join(', ')}]`);
+    }
+    console.log();
+  }
+
+  // TOKEN USAGE
+  if (tokenUsage.length > 0) {
+    console.log('  [TOKEN USAGE]');
+    for (const s of tokenUsage.slice(0, 10)) {
+      const category = s.details?.category as string | undefined;
+      const token = s.details?.canonicalToken as string | undefined;
+      const prop = s.details?.figmaProperty as string | undefined;
+      console.log(`    - ${prop ?? category} → ${token}`);
+    }
+    if (tokenUsage.length > 10) {
+      console.log(`    ... and ${tokenUsage.length - 10} more`);
+    }
+    console.log();
+  }
+
+  // PROPERTIES
+  if (properties.length > 0) {
+    console.log('  [PROPERTIES]');
+    for (const s of properties.slice(0, 10)) {
+      const category = s.details?.category as string | undefined;
+      const token = s.details?.canonicalToken as string | undefined;
+      const prop = s.details?.figmaProperty as string | undefined;
+      console.log(`    - [${s.componentKey}] ${prop ?? category}: ${token}`);
+    }
+    if (properties.length > 10) {
+      console.log(`    ... and ${properties.length - 10} more`);
+    }
+    console.log();
+  }
+
+  // COVERAGE GAPS
+  if (coverageGaps.length > 0) {
+    console.log('  [COVERAGE GAPS]');
+    for (const s of coverageGaps.slice(0, 5)) {
+      const canonical = s.details?.canonical as string | undefined;
+      const category = s.details?.category as string | undefined;
+      console.log(`    - Missing ${category} token for ${canonical ?? 'unknown'}`);
+    }
+    if (coverageGaps.length > 5) {
+      console.log(`    ... and ${coverageGaps.length - 5} more`);
+    }
+    console.log();
+  }
+
+  // Summary by type and source
+  console.log(`  Summary: ${result.total} suggestions`);
+  console.log(`    By type: ${result.countByType['component-set']} component-sets, ${result.countByType.variant} variants, ${result.countByType.property} properties, ${result.countByType['token-usage']} token-usage, ${result.countByType['coverage-gap']} coverage-gaps`);
+  console.log(`    By source: ${result.countBySource.canonical} canonical, ${result.countBySource.adapter} adapter, ${result.countBySource.policy} policy, ${result.countBySource.coverage} coverage`);
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -733,6 +839,92 @@ async function main(): Promise<void> {
     overrides
   );
 
+  // Build data structures for Phase 11A Figma suggestions
+  // 1. Canonical semantics map (componentKey → CanonicalSemantics)
+  const canonicalSemanticsMap = new Map<string, CanonicalSemantics>();
+  // 2. Resolution map (componentKey → CanonicalResolution)
+  const resolutionMap = new Map<string, CanonicalResolution>();
+  // 3. Aggregate coverage report
+  let aggregateCoverage: CoverageReport | undefined;
+
+  const policy = getResolutionPolicyFromEnv();
+  const allPolicyViolations: Array<{
+    canonical: string;
+    category: 'colors' | 'spacing' | 'radius' | 'typography';
+    reason: string;
+    componentKey?: string;
+  }> = [];
+
+  for (const comp of adapterResult.components) {
+    const componentKey = comp.componentName; // Use componentName as key
+    if (!componentKey || !comp.canonicalSemantics) continue;
+
+    // Store canonical semantics
+    canonicalSemanticsMap.set(componentKey, comp.canonicalSemantics);
+
+    // Resolve and store resolution
+    const resolution = resolveCanonicalSemantics(comp.canonicalSemantics);
+    resolutionMap.set(componentKey, resolution);
+
+    // Build coverage (use last one as aggregate, or merge if needed)
+    aggregateCoverage = buildCoverageReport(resolution);
+
+    // Collect policy violations
+    const policyResult = applyPolicyToResolution(resolution, policy, {
+      componentKey,
+    });
+    for (const v of policyResult.violations) {
+      allPolicyViolations.push({
+        canonical: v.canonical,
+        category: v.category,
+        reason: v.reason,
+        componentKey: v.componentKey,
+      });
+    }
+  }
+
+  // 4. Explicit variant states from markers and overrides
+  const explicitVariantStates = new Map<string, string[]>();
+
+  // From markers: @figma state=X
+  for (const marker of markers) {
+    if (marker.state) {
+      const componentKey = marker.node;
+      const states = explicitVariantStates.get(componentKey) ?? [];
+      if (!states.includes(marker.state)) {
+        states.push(marker.state);
+      }
+      explicitVariantStates.set(componentKey, states);
+    }
+  }
+
+  // From overrides: keys with ::state pattern
+  if (overrides) {
+    for (const key of Object.keys(overrides)) {
+      if (key.includes('::')) {
+        const [componentKey, state] = key.split('::');
+        const states = explicitVariantStates.get(componentKey) ?? [];
+        if (!states.includes(state)) {
+          states.push(state);
+        }
+        explicitVariantStates.set(componentKey, states);
+      }
+    }
+  }
+
+  // Generate Figma composition suggestions (Phase 11A - READ-ONLY)
+  const figmaSuggestionInput: FigmaSuggestionInput = {
+    anchoredReport,
+    adapterResult,
+    canonicalSemantics: canonicalSemanticsMap,
+    canonicalResolution: resolutionMap,
+    coverageReport: aggregateCoverage,
+    policyViolations: allPolicyViolations,
+    componentMap: componentMap ?? { version: 2, components: {} },
+    explicitVariantStates,
+  };
+  const figmaSuggestionResult = generateFigmaSuggestions(figmaSuggestionInput);
+
   // Build marker lookup
   const markerByNode = new Map<string, MarkerSummaryEntry>();
   for (const m of markerSummary) {
@@ -760,6 +952,7 @@ async function main(): Promise<void> {
   printCanonicalSummary(adapterResult);
   printResolutionSummary(adapterResult);
   printSuggestionsSummary(suggestionResult);
+  printFigmaSuggestionsSummary(figmaSuggestionResult);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);

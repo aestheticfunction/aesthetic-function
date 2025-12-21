@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 10G)
+## What Works Today (Phase 11A)
 
 | Feature | Status |
 |---------|--------|
@@ -132,6 +132,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Policy violations detection | ✅ |
 | Strict mode for CI gates | ✅ |
 | JSON output for automation | ✅ |
+| **Figma Composition Suggestions (Phase 11A)** | |
+| Read-only Figma composition guidance | ✅ |
+| Component Set suggestions (missing from map) | ✅ |
+| Explicit-only variant suggestions (markers/overrides) | ✅ |
+| Property suggestions (Fill, Auto Layout, Corner Radius) | ✅ |
+| Token usage suggestions | ✅ |
+| Coverage gap suggestions | ✅ |
+| Deterministic, sorted output | ✅ |
+| CLI integration (`ast:report` output) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -216,6 +225,9 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 10C** | Component Map Bootstrap Suggestions (Read-Only) | ✅ |
 | **Phase 10D** | Component Map Bootstrap Artifacts (CLI + Apply Mode) | ✅ |
 | **Phase 10E** | Canonical Token Layer + Cross-Adapter Normalization | ✅ |
+| **Phase 10F** | Canonical Resolver + Coverage Reporting | ✅ |
+| **Phase 10G** | Resolution Policy + Project-Level Coverage | ✅ |
+| **Phase 11A** | Figma Composition Suggestions (Read-Only) | ✅ |
 
 ### Not Implemented Yet
 
@@ -225,7 +237,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), and canonical token layer for cross-adapter normalization (Phase 10E). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), and read-only Figma composition suggestions (Phase 11A). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -1608,6 +1620,103 @@ Phase 10G is **read-only** and does not:
 - Emit Figma operations
 - Change watcher sync behavior
 - Affect server/plugin/protocol
+
+---
+
+### Figma Composition Suggestions (Phase 11A)
+
+Phase 11A adds **read-only Figma composition guidance** that translates canonical design semantics into actionable suggestions for Figma.
+
+This phase answers: **"Given what the code semantically expresses, what should exist in Figma?"**
+
+It does NOT create anything—only describes it deterministically.
+
+#### Suggestion Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `component-set` | Suggest creating a new Component Set | "Create LoginButton for componentKey auth/LoginButton" |
+| `variant` | Suggest adding a variant (explicit-only) | "Component Set LoginButton should include variant hover" |
+| `property` | Suggest Figma property mapping | "Component uses color.primary → map to Fill style" |
+| `token-usage` | Suggest using design token | "Use token color.primary instead of hard-coded #3B82F6" |
+| `coverage-gap` | Highlight missing coverage | "No spacing token resolved for space.xl" |
+
+#### Suggestion Rules
+
+**Component Set Suggestions**
+- Component has canonical semantics
+- Component NOT in component-map.json
+- → Suggest creating a Component Set
+
+**Variant Suggestions (Explicit Only)**
+- ONLY from `@figma state=X` markers
+- ONLY from `design-overrides.json ::state` keys
+- NEVER inferred from disabled booleans or hover styles
+
+**Property Suggestions**
+- From canonical semantics:
+  - color → Fill property
+  - spacing → Auto Layout Gap/Padding
+  - radius → Corner Radius
+  - typography → Text Style
+
+**Token Usage Suggestions**
+- When canonical tokens resolve cleanly with high confidence
+- Suggests using token instead of hard-coded values
+
+**Coverage Gap Suggestions**
+- From Phase 10F/10G gaps
+- From policy violations
+
+#### CLI Output
+
+The `ast:report` command now includes Figma composition suggestions:
+
+```
+============================================================
+FIGMA COMPOSITION SUGGESTIONS (Phase 11A)
+============================================================
+  [NEW COMPONENT SET]
+    - Login Button (LoginButton)
+
+  [VARIANTS]
+    - LoginButton: [hover, disabled]
+
+  [TOKEN USAGE]
+    - Fill → color.primary
+    - Auto Layout → space.md
+
+  [PROPERTIES]
+    - [LoginButton] Fill: color.primary
+    - [Container] Auto Layout Gap: space.lg
+
+  [COVERAGE GAPS]
+    - Missing typography token for text.size.3xl
+
+  Summary: 8 suggestions
+    By type: 1 component-sets, 2 variants, 2 properties, 2 token-usage, 1 coverage-gaps
+    By source: 7 canonical, 0 adapter, 1 policy, 0 coverage
+```
+
+#### Suggestion Sources
+
+| Source | Description |
+|--------|-------------|
+| `canonical` | From canonical semantic normalization (Phase 10E) |
+| `adapter` | From framework adapter semantics (Phase 10A) |
+| `policy` | From resolution policy analysis (Phase 10G) |
+| `coverage` | From coverage gap detection (Phase 10F) |
+
+#### Scope & Constraints
+
+Phase 11A is **read-only** and does NOT:
+- Modify TSX/JSX source files
+- Write markers or overrides
+- Modify component-map.json
+- Emit Figma operations
+- Call materializers
+- Change orchestrator behavior
+- Change canonical normalization or resolution logic
 
 ---
 
