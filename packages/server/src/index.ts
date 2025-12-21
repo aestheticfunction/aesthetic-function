@@ -19,9 +19,11 @@ import {
   createMessage,
   type FigmaOperation,
   type ApplyOperationsPayload,
+  type ComposeOperationsPayload,
+  type ComposeOperationItem,
   MessageType,
 } from '@aesthetic-function/shared';
-import { logBroadcast, logDesignChange, logMapUpdate, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
+import { logBroadcast, logDesignChange, logMapUpdate, logCompose, isAuditLogEnabled, flushAuditLog } from './auditLog.js';
 import { loadComponentMap, mergeMapUpdate, saveComponentMap, getComponentMapPath } from './componentMap.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
@@ -276,6 +278,103 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
         console.error('[Server] Error handling map-update:', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Failed to update component map' }));
+      }
+    });
+    return;
+  }
+
+  // Receive COMPOSE_OPERATIONS from watcher CLI (Phase 11B)
+  if (req.method === 'POST' && url.pathname === '/compose') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const data = JSON.parse(body) as {
+          operations: ComposeOperationItem[];
+          mode: 'dry-run' | 'apply';
+          requestId?: string;
+        };
+
+        const requestId = data.requestId ?? `compose-${Date.now()}`;
+        const timestamp = new Date().toISOString();
+        const mode = data.mode ?? 'dry-run';
+
+        console.log(`[Server] COMPOSE_OPERATIONS: ${data.operations.length} ops, mode=${mode}`);
+
+        // Count operations by type
+        const operationTypes: Record<string, number> = {};
+        for (const op of data.operations) {
+          operationTypes[op.type] = (operationTypes[op.type] || 0) + 1;
+        }
+
+        // In dry-run mode, just log and return
+        if (mode === 'dry-run') {
+          logCompose({
+            requestId,
+            mode,
+            operationCount: data.operations.length,
+            operationTypes,
+            timestamp,
+            sentToPlugin: false,
+            pluginClientCount: pluginClients.size,
+          });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: true,
+            mode,
+            operationCount: data.operations.length,
+            sentToPlugin: false,
+            pluginClientCount: pluginClients.size,
+          }));
+          return;
+        }
+
+        // In apply mode, broadcast to plugin clients
+        const message = createMessage<typeof MessageType.COMPOSE_OPERATIONS, ComposeOperationsPayload>(
+          MessageType.COMPOSE_OPERATIONS,
+          {
+            operations: data.operations,
+            originRequestId: requestId,
+            mode,
+          }
+        );
+        const messageStr = JSON.stringify(message);
+
+        let sent = 0;
+        for (const client of pluginClients) {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(messageStr);
+            sent++;
+          }
+        }
+
+        console.log(`[Server] Broadcast COMPOSE_OPERATIONS to ${sent} plugin client(s)`);
+
+        // Audit log
+        logCompose({
+          requestId,
+          mode,
+          operationCount: data.operations.length,
+          operationTypes,
+          timestamp,
+          sentToPlugin: sent > 0,
+          pluginClientCount: sent,
+        });
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          mode,
+          operationCount: data.operations.length,
+          sentToPlugin: sent > 0,
+          pluginClientCount: sent,
+          requestId,
+        }));
+      } catch (err) {
+        console.error('[Server] Error handling compose:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Failed to process compose operations' }));
       }
     });
     return;

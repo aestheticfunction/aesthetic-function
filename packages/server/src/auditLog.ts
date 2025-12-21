@@ -196,6 +196,58 @@ export function logMapUpdate(entry: MapUpdateLogEntry): void {
 }
 
 /**
+ * Metadata for a compose operations event (Phase 11B).
+ */
+export interface ComposeLogEntry {
+  /** Unique request identifier */
+  requestId: string;
+  /** Execution mode */
+  mode: 'dry-run' | 'apply';
+  /** Number of operations */
+  operationCount: number;
+  /** Operation types summary */
+  operationTypes: Record<string, number>;
+  /** ISO timestamp */
+  timestamp: string;
+  /** Whether operations were sent to plugin */
+  sentToPlugin: boolean;
+  /** Plugin client count */
+  pluginClientCount: number;
+}
+
+/**
+ * Log a compose operations event to the audit trail.
+ *
+ * @param entry - The compose entry metadata
+ */
+export function logCompose(entry: ComposeLogEntry): void {
+  if (!isAuditLogEnabled()) {
+    return;
+  }
+
+  const logEntry = formatComposeEntry(entry);
+  queueLogEntry(logEntry);
+}
+
+/**
+ * Format a compose entry as markdown.
+ */
+function formatComposeEntry(entry: ComposeLogEntry): string {
+  const lines: string[] = [
+    `## [${entry.timestamp}] [${entry.requestId}] type=COMPOSE_OPERATIONS mode=${entry.mode}`,
+    `operations=${entry.operationCount} plugins=${entry.pluginClientCount} sent=${entry.sentToPlugin}`,
+  ];
+
+  // Operation type breakdown
+  for (const [opType, count] of Object.entries(entry.operationTypes)) {
+    lines.push(`- ${opType}: ${count}`);
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+/**
  * Format a map update entry as markdown.
  */
 function formatMapUpdateEntry(entry: MapUpdateLogEntry): string {

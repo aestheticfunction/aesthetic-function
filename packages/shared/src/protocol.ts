@@ -300,9 +300,11 @@ export const MessageType = {
 
   // Server → Figma Plugin
   APPLY_OPERATIONS: 'APPLY_OPERATIONS',
+  COMPOSE_OPERATIONS: 'COMPOSE_OPERATIONS',
 
   // Figma Plugin → Server
   OPERATION_RESULT: 'OPERATION_RESULT',
+  COMPOSE_RESULT: 'COMPOSE_RESULT',
   PLUGIN_READY: 'PLUGIN_READY',
 
   // Figma Plugin → Server → Watcher (Design → Code)
@@ -370,6 +372,77 @@ export interface ApplyOperationsPayload {
 export type ApplyOperationsMessage = BaseMessage<
   typeof MessageType.APPLY_OPERATIONS,
   ApplyOperationsPayload
+>;
+
+// =============================================================================
+// COMPOSE OPERATIONS (Phase 11B)
+// =============================================================================
+
+import type { ComposeOpType } from './compose.js';
+
+/**
+ * A single compose operation to apply in Figma.
+ */
+export interface ComposeOperationItem {
+  /** Deterministic hash of operation parameters */
+  opId: string;
+  /** Type of operation */
+  type: ComposeOpType;
+  /** Source component key */
+  componentKey: string;
+  /** Target Figma name */
+  figmaName: string;
+  /** Operation-specific payload */
+  payload: Record<string, unknown>;
+  /** Human-readable reason for the operation */
+  reason: string;
+  /** Source of the operation (e.g., 'figma-suggestions') */
+  source: string;
+}
+
+/**
+ * Result of a single compose operation.
+ */
+export interface ComposeOperationResultItem {
+  opId: string;
+  success: boolean;
+  /** Created/found node ID if applicable */
+  nodeId?: string;
+  /** Error message if failed */
+  error?: string;
+  /** Whether the node already existed */
+  existed?: boolean;
+}
+
+/** Command to apply compose operations (Server → Plugin) */
+export interface ComposeOperationsPayload {
+  operations: ComposeOperationItem[];
+  /** Original request ID for correlation */
+  originRequestId: string;
+  /** Execution mode */
+  mode: 'dry-run' | 'apply';
+}
+
+export type ComposeOperationsMessage = BaseMessage<
+  typeof MessageType.COMPOSE_OPERATIONS,
+  ComposeOperationsPayload
+>;
+
+/** Result of compose operations (Plugin → Server) */
+export interface ComposeResultPayload {
+  /** Original request ID this responds to */
+  originRequestId: string;
+  /** Whether all operations succeeded */
+  success: boolean;
+  /** Per-operation results */
+  results: ComposeOperationResultItem[];
+  /** Error details if failed */
+  error?: string;
+}
+
+export type ComposeResultMessage = BaseMessage<
+  typeof MessageType.COMPOSE_RESULT,
+  ComposeResultPayload
 >;
 
 // =============================================================================
@@ -497,7 +570,9 @@ export type ProtocolMessage =
   | IntentModelMessage
   | FigmaOperationsMessage
   | ApplyOperationsMessage
+  | ComposeOperationsMessage
   | OperationResultMessage
+  | ComposeResultMessage
   | PluginReadyMessage
   | DesignChangeMessage
   | PingMessage

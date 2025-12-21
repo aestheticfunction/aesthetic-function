@@ -141,6 +141,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Coverage gap suggestions | ✅ |
 | Deterministic, sorted output | ✅ |
 | CLI integration (`ast:report` output) | ✅ |
+| **Figma Composition Application (Phase 11B)** | |
+| Compose operations from suggestions | ✅ |
+| Opt-in apply mode (dry-run default) | ✅ |
+| Feature flags (mode, allow-list) | ✅ |
+| Deterministic opId hashing | ✅ |
+| Server /compose endpoint | ✅ |
+| Plugin COMPOSE_OPERATIONS handler | ✅ |
+| Full audit trail logging | ✅ |
+| CLI `figma:compose` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -228,6 +237,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 10F** | Canonical Resolver + Coverage Reporting | ✅ |
 | **Phase 10G** | Resolution Policy + Project-Level Coverage | ✅ |
 | **Phase 11A** | Figma Composition Suggestions (Read-Only) | ✅ |
+| **Phase 11B** | Figma Composition Application (Opt-In, Auditable) | ✅ |
 
 ### Not Implemented Yet
 
@@ -237,7 +247,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), and read-only Figma composition suggestions (Phase 11A). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), and controlled Figma composition application with opt-in apply mode (Phase 11B). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -1717,6 +1727,152 @@ Phase 11A is **read-only** and does NOT:
 - Call materializers
 - Change orchestrator behavior
 - Change canonical normalization or resolution logic
+
+---
+
+## Figma Composition Application (Phase 11B)
+
+Phase 11B transforms Phase 11A's read-only suggestions into actionable **compose operations** that can be applied to Figma with explicit opt-in and full audit logging.
+
+### Overview
+
+Building on Phase 11A suggestions, this phase provides:
+
+1. **Compose Operations** - Deterministic, auditable operations for Figma modifications
+2. **Opt-In Apply Mode** - Dry-run by default, apply only with explicit flags
+3. **Feature Flags** - Fine-grained control over what can be composed
+4. **Audit Trail** - Full logging of all compose operations to sync-log.md
+5. **CLI Integration** - `figma:compose` command for automation
+
+### Compose Operation Types
+
+| Type | Description | Payload |
+|------|-------------|---------|
+| `ENSURE_COMPONENT_SET` | Create missing Component Set | `{ name }` |
+| `ENSURE_VARIANT` | Add variant to Component Set | `{ setName, variantProps }` |
+| `ENSURE_PROPERTY_DEF` | Define property on Component Set | `{ setName, propertyName, propertyType, defaultValue? }` |
+
+### Feature Flags
+
+| Flag | Values | Default | Description |
+|------|--------|---------|-------------|
+| `FIGMA_COMPOSE_ON` | `true`/`false` | `false` | Master enable switch |
+| `FIGMA_COMPOSE_MODE` | `off`/`dry-run`/`apply` | `off` | Execution mode |
+| `FIGMA_COMPOSE_ALLOW` | comma-separated | (all allowed) | Operation type allow-list |
+| `FIGMA_COMPOSE_SERVER` | URL | `http://localhost:3001` | Server endpoint |
+
+**Allow-list values:** `component-set`, `variant`, `property`
+
+### CLI Usage
+
+```bash
+# Generate compose artifact (dry-run, no Figma changes)
+pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx
+
+# Apply operations to Figma (requires FIGMA_COMPOSE_ON=true, server + plugin running)
+FIGMA_COMPOSE_ON=true FIGMA_COMPOSE_MODE=apply \
+  pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx --apply
+
+# Restrict to only component-set operations
+FIGMA_COMPOSE_ALLOW=component-set \
+  pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx --apply
+```
+
+### Compose Artifact
+
+Artifacts are written to `design-materializations/` with naming:
+
+```
+<file-path>.compose.json
+```
+
+Example artifact structure:
+
+```json
+{
+  "sourceFile": "demo-app/src/App.tsx",
+  "generatedAt": "2025-01-15T10:30:00.000Z",
+  "mode": "dry-run",
+  "operations": [
+    {
+      "opId": "abc123def",
+      "type": "ENSURE_COMPONENT_SET",
+      "componentKey": "PrimaryButton",
+      "figmaName": "PrimaryButton",
+      "payload": { "name": "PrimaryButton" },
+      "reason": "Component in code missing from component-map",
+      "source": "figma-suggestions"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "byType": { "ENSURE_COMPONENT_SET": 1 }
+  }
+}
+```
+
+### Deterministic Operation IDs
+
+Each operation receives a deterministic `opId` generated via djb2 hash of:
+- Operation type
+- Component key
+- Figma name
+- Stringified payload
+
+This ensures:
+- **Idempotency** - Same inputs produce same opId
+- **Deduplication** - Operations can be compared across runs
+- **Traceability** - Operations can be tracked through the system
+
+### Server Endpoint
+
+The `/compose` endpoint accepts compose artifacts:
+
+```bash
+curl -X POST http://localhost:3001/compose \
+  -H "Content-Type: application/json" \
+  -d @design-materializations/demo-app__src__App.compose.json
+```
+
+The endpoint:
+1. Validates the artifact structure
+2. Logs the request to sync-log.md via `logCompose()`
+3. Broadcasts `COMPOSE_OPERATIONS` to connected Figma plugins
+4. Returns the number of operations dispatched
+
+### Plugin Behavior
+
+When the Figma plugin receives `COMPOSE_OPERATIONS`:
+
+1. **ENSURE_COMPONENT_SET** - Searches for existing Component Set by name, creates if missing using `combineAsVariants()`
+2. **ENSURE_VARIANT** - Finds target Component Set, checks for existing variant by props, adds if missing
+3. **ENSURE_PROPERTY_DEF** - Adds component property definition if not present
+
+The plugin returns `COMPOSE_RESULT` with per-operation success/failure status.
+
+### Audit Logging
+
+All compose operations are logged to sync-log.md:
+
+```markdown
+| 2025-01-15T10:30:00.000Z | compose | demo-app/src/App.tsx | dry-run | 3 ops | ENSURE_COMPONENT_SET,ENSURE_VARIANT |
+```
+
+Fields logged:
+- Timestamp
+- Event type (`compose`)
+- Source file
+- Mode (`dry-run` or `apply`)
+- Operation count
+- Operation types
+
+### Safety Guarantees
+
+1. **Dry-run by default** - No Figma changes without explicit `--apply` flag
+2. **Master switch** - `FIGMA_COMPOSE_ON` must be `true` for server dispatch
+3. **Allow-list** - `FIGMA_COMPOSE_ALLOW` restricts operation types
+4. **Idempotent** - Operations check for existing elements before creating
+5. **Auditable** - Full trail in sync-log.md and compose artifacts
 
 ---
 

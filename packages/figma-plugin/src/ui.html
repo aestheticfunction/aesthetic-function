@@ -244,6 +244,27 @@
               }
             }
           }
+        } else if (msg.type === 'COMPOSE_RESULT') {
+          // Phase 11B: Handle COMPOSE_RESULT from code.ts
+          var pl = msg.payload || {};
+          var results = pl.results || [];
+          var successCount = results.filter(function(r) { return r.success; }).length;
+          var failCount = results.length - successCount;
+          
+          if (pl.success) {
+            log('✓ Compose: ' + successCount + ' operation(s) completed');
+          } else {
+            log('⚠ Compose: ' + successCount + ' succeeded, ' + failCount + ' failed');
+            for (var i = 0; i < results.length; i++) {
+              var r = results[i];
+              if (!r.success) {
+                log('  ✗ ' + r.opId + ': ' + (r.error || 'unknown error'));
+              }
+            }
+          }
+          
+          // Send result back to server if connected
+          sendComposeResult(pl);
         } else if (msg.type !== 'PONG') {
           log('From plugin: ' + msg.type);
         }
@@ -332,6 +353,10 @@
       if (data.type === 'APPLY_OPERATIONS' && payload.operations) {
         forwardOperations(payload.operations, payload.originRequestId || data.requestId);
       }
+      // Phase 11B: Handle COMPOSE_OPERATIONS message from server
+      else if (data.type === 'COMPOSE_OPERATIONS' && payload.operations) {
+        forwardComposeOperations(payload.operations, payload.originRequestId, payload.mode);
+      }
       // Handle legacy/direct operations array (from polling)
       else if (Array.isArray(data.operations) && data.operations.length > 0) {
         forwardOperations(data.operations, data.requestId);
@@ -339,6 +364,44 @@
       // Connected message
       else if (data.type === 'CONNECTED') {
         log('Server version: ' + (payload.version || 'unknown'));
+      }
+    }
+
+    /**
+     * Forward COMPOSE_OPERATIONS to code.ts sandbox (Phase 11B)
+     */
+    function forwardComposeOperations(operations, requestId, mode) {
+      log('Forwarding ' + operations.length + ' compose operation(s) to plugin...');
+      parent.postMessage({
+        pluginMessage: {
+          type: 'COMPOSE_OPERATIONS',
+          payload: { operations: operations, originRequestId: requestId, mode: mode }
+        }
+      }, '*');
+    }
+
+    /**
+     * Send COMPOSE_RESULT back to server (Phase 11B)
+     */
+    async function sendComposeResult(payload) {
+      if (!currentServerUrl) {
+        return; // Silently skip if not connected
+      }
+      
+      try {
+        // If WebSocket is available, send via WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'COMPOSE_RESULT',
+            requestId: payload.originRequestId,
+            timestamp: new Date().toISOString(),
+            payload: payload
+          }));
+          log('Sent COMPOSE_RESULT via WebSocket');
+        }
+        // Otherwise just log (HTTP result endpoint not implemented)
+      } catch (e) {
+        console.warn('Error sending COMPOSE_RESULT:', e.message);
       }
     }
 

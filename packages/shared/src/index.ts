@@ -6,3 +6,4 @@
  */
 
 export * from './protocol.js';
+export * from './compose.js';

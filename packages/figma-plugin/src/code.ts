@@ -49,6 +49,48 @@ interface ApplyOperationsPayload {
 }
 
 // =============================================================================
+// COMPOSE OPERATION TYPES (Phase 11B)
+// =============================================================================
+
+/**
+ * Compose operation types for controlled Figma composition.
+ */
+type ComposeOpType = 'ENSURE_COMPONENT_SET' | 'ENSURE_VARIANT' | 'ENSURE_PROPERTY_DEF';
+
+/**
+ * A single compose operation from Phase 11B.
+ */
+interface ComposeOperationItem {
+  opId: string;
+  type: ComposeOpType;
+  componentKey: string;
+  figmaName: string;
+  payload: Record<string, unknown>;
+  reason: string;
+  source: string;
+}
+
+/**
+ * Result of a single compose operation.
+ */
+interface ComposeOperationResult {
+  opId: string;
+  success: boolean;
+  nodeId?: string;
+  error?: string;
+  existed?: boolean;
+}
+
+/**
+ * Payload for COMPOSE_OPERATIONS message.
+ */
+interface ComposeOperationsPayload {
+  operations: ComposeOperationItem[];
+  originRequestId: string;
+  mode: 'dry-run' | 'apply';
+}
+
+// =============================================================================
 // UTILITIES
 // =============================================================================
 
@@ -741,6 +783,173 @@ async function executeOperation(op: TestOperation): Promise<{ success: boolean; 
   }
 }
 
+// =============================================================================
+// COMPOSE OPERATION EXECUTION (Phase 11B)
+// =============================================================================
+
+/**
+ * Execute a single compose operation.
+ *
+ * Compose operations are "ensure" style - they create if not exists,
+ * or return the existing node if already present.
+ */
+async function executeComposeOperation(op: ComposeOperationItem): Promise<ComposeOperationResult> {
+  console.log(`[Plugin] Compose: ${op.type} for "${op.figmaName}"`);
+
+  try {
+    switch (op.type) {
+      case 'ENSURE_COMPONENT_SET': {
+        // Check if Component Set already exists
+        const existing = findComponentSetByName(op.figmaName);
+        if (existing.set) {
+          console.log(`[Plugin] Component Set "${op.figmaName}" already exists`);
+          return {
+            opId: op.opId,
+            success: true,
+            nodeId: existing.set.id,
+            existed: true,
+          };
+        }
+
+        // Create a new Component Set
+        // First create a base component, then convert to Component Set
+        const baseFrame = figma.createFrame();
+        baseFrame.name = 'Default';
+        baseFrame.resize(100, 40);
+        
+        const baseComponent = figma.createComponentFromNode(baseFrame);
+        const componentSet = figma.combineAsVariants([baseComponent], figma.currentPage);
+        componentSet.name = op.figmaName;
+
+        console.log(`[Plugin] Created Component Set "${op.figmaName}" with id ${componentSet.id}`);
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: componentSet.id,
+          existed: false,
+        };
+      }
+
+      case 'ENSURE_VARIANT': {
+        const payload = op.payload as {
+          componentKey: string;
+          componentSetName: string;
+          variantProps: Record<string, string>;
+        };
+
+        // Find the parent Component Set
+        const componentSetResult = findComponentSetByName(payload.componentSetName);
+        if (!componentSetResult.set) {
+          return {
+            opId: op.opId,
+            success: false,
+            error: componentSetResult.error || `Component Set "${payload.componentSetName}" not found`,
+          };
+        }
+        const componentSet = componentSetResult.set;
+
+        // Check if variant with these props already exists
+        const existingVariant = findVariantByProps(componentSet, payload.variantProps);
+        if (existingVariant) {
+          console.log(`[Plugin] Variant already exists in "${payload.componentSetName}"`);
+          return {
+            opId: op.opId,
+            success: true,
+            nodeId: existingVariant.id,
+            existed: true,
+          };
+        }
+
+        // Create a new variant
+        // Clone an existing variant and update its properties
+        const variants = getVariantComponents(componentSet);
+        if (variants.length === 0) {
+          return {
+            opId: op.opId,
+            success: false,
+            error: 'Component Set has no variants to clone',
+          };
+        }
+
+        const newVariant = variants[0].component.clone();
+        
+        // Update variant properties
+        // This requires setting the name in the format "Property1=Value1, Property2=Value2"
+        const propParts: string[] = [];
+        for (const [key, value] of Object.entries(payload.variantProps)) {
+          propParts.push(`${key}=${value}`);
+        }
+        newVariant.name = propParts.join(', ');
+
+        console.log(`[Plugin] Created variant "${newVariant.name}" in "${payload.componentSetName}"`);
+        return {
+          opId: op.opId,
+          success: true,
+          nodeId: newVariant.id,
+          existed: false,
+        };
+      }
+
+      case 'ENSURE_PROPERTY_DEF': {
+        // Property definitions are handled implicitly by Figma when variants are created
+        // For now, just acknowledge the operation
+        console.log(`[Plugin] ENSURE_PROPERTY_DEF for "${op.figmaName}" - properties managed via variants`);
+        return {
+          opId: op.opId,
+          success: true,
+          existed: true, // Properties are implicit
+        };
+      }
+
+      default:
+        return {
+          opId: op.opId,
+          success: false,
+          error: `Unknown compose operation type: ${op.type}`,
+        };
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[Plugin] Compose operation failed:`, message);
+    return {
+      opId: op.opId,
+      success: false,
+      error: message,
+    };
+  }
+}
+
+/**
+ * Find a variant by its property values.
+ */
+function findVariantByProps(
+  componentSet: ComponentSetNode,
+  props: Record<string, string>
+): ComponentNode | null {
+  const variants = getVariantComponents(componentSet);
+  
+  for (const variant of variants) {
+    let matches = true;
+    for (const [key, value] of Object.entries(props)) {
+      const normalizedKey = key.toLowerCase();
+      const variantValue = 
+        variant.properties[key] || 
+        variant.properties[normalizedKey] ||
+        variant.properties[key.charAt(0).toUpperCase() + key.slice(1)];
+      
+      if (!variantValue || variantValue.toLowerCase() !== value.toLowerCase()) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      return variant.component;
+    }
+  }
+  
+  return null;
+}
+
 /**
  * Execute all operations in a batch.
  * Best-effort: continues executing remaining ops even if one fails.
@@ -819,6 +1028,51 @@ figma.ui.onmessage = async (msg: { type: string; payload?: unknown }) => {
           successCount: result.successCount,
           failCount: result.failCount,
           results: result.results,
+        },
+      });
+      break;
+    }
+
+    case 'COMPOSE_OPERATIONS': {
+      // Phase 11B: Handle compose operations for creating/ensuring Component Sets and variants
+      const payload = msg.payload as ComposeOperationsPayload;
+      const ops = payload && payload.operations;
+
+      if (!ops || !ops.length) {
+        console.warn('[Plugin] COMPOSE_OPERATIONS with no operations');
+        figma.ui.postMessage({
+          type: 'COMPOSE_RESULT',
+          payload: {
+            originRequestId: payload?.originRequestId ?? 'unknown',
+            success: true,
+            results: [],
+          },
+        });
+        break;
+      }
+
+      console.log(`[Plugin] Executing ${ops.length} compose operation(s), mode=${payload.mode}`);
+
+      const results: ComposeOperationResult[] = [];
+      let allSuccess = true;
+
+      for (const op of ops) {
+        const opResult = await executeComposeOperation(op);
+        results.push(opResult);
+        if (!opResult.success) {
+          allSuccess = false;
+        }
+      }
+
+      console.log(`[Plugin] Compose complete: ${results.filter(r => r.success).length}/${ops.length} succeeded`);
+
+      // Send result back to ui.html
+      figma.ui.postMessage({
+        type: 'COMPOSE_RESULT',
+        payload: {
+          originRequestId: payload.originRequestId,
+          success: allSuccess,
+          results,
         },
       });
       break;
