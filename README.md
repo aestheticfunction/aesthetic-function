@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 11A)
+## What Works Today (Phase 11C)
 
 | Feature | Status |
 |---------|--------|
