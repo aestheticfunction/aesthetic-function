@@ -77,3 +77,7 @@ export {
   formatOperationDetails,
   formatViolationDetails,
 } from './artifact.js';
+
+// CLI utilities (for testing)
+export type { ServerApplyResponse } from './cliApply.js';
+export { validateServerResponse } from './cliApply.js';

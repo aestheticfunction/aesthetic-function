@@ -141,13 +141,52 @@ function createMockResolution(): CanonicalResolution {
 // =============================================================================
 
 /**
+ * Server response shape for apply operations.
+ */
+export interface ServerApplyResponse {
+  results?: ApplyResult[];
+  error?: string;
+}
+
+/**
+ * Validate server response and extract results array.
+ *
+ * Throws descriptive errors for invalid responses.
+ *
+ * @param json - Raw JSON response from server
+ * @returns Validated results array
+ * @throws Error if response is invalid
+ */
+export function validateServerResponse(json: unknown): ApplyResult[] {
+  // Validate response shape
+  if (!json || typeof json !== 'object') {
+    throw new Error('Server returned invalid response (not an object)');
+  }
+
+  const response = json as ServerApplyResponse;
+
+  if (response.error) {
+    throw new Error(`Server error: ${response.error}`);
+  }
+
+  if (!Array.isArray(response.results)) {
+    throw new Error('Server returned invalid response (missing results array)');
+  }
+
+  return response.results;
+}
+
+/**
  * Send apply operations to the server.
+ *
+ * Returns results array on success, or throws on failure.
+ * Validates response shape before returning.
  */
 async function sendApplyToServer(
   config: ApplyConfig,
   operations: { opId: string; nodeId: string; property: string; to: string | number }[],
   requestId: string
-): Promise<{ results: ApplyResult[] }> {
+): Promise<ApplyResult[]> {
   const response = await fetch(`${config.serverUrl}/apply-properties`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -162,7 +201,8 @@ async function sendApplyToServer(
     throw new Error(`Server error: ${response.status} ${response.statusText}`);
   }
 
-  return response.json() as Promise<{ results: ApplyResult[] }>;
+  const json: unknown = await response.json();
+  return validateServerResponse(json);
 }
 
 // =============================================================================
@@ -289,6 +329,7 @@ async function main(): Promise<void> {
 
   // Build artifact
   let results: ApplyResult[] | undefined;
+  let sendFailed = false;
 
   // If apply mode and fully enabled, send to server
   if (canApply(config) && args.apply) {
@@ -297,7 +338,7 @@ async function main(): Promise<void> {
 
     try {
       const requestId = `apply-${Date.now()}`;
-      const serverResponse = await sendApplyToServer(
+      results = await sendApplyToServer(
         config,
         output.operations.map((op) => ({
           opId: op.opId,
@@ -307,10 +348,17 @@ async function main(): Promise<void> {
         })),
         requestId
       );
-      results = serverResponse.results;
-      console.log(`Server response: ${results.length} results`);
+
+      // Log results summary with safe access
+      const successCount = results.filter((r) => r.success).length;
+      const failCount = results.length - successCount;
+      console.log(`Server response: ${results.length} results (${successCount} succeeded, ${failCount} failed)`);
     } catch (error) {
-      console.error('Failed to send to server:', error);
+      sendFailed = true;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('');
+      console.error(`❌ Failed to send to server: ${errorMessage}`);
+      console.error('   Check that the server is running (pnpm --filter @aesthetic-function/server dev)');
     }
   }
 
@@ -337,6 +385,13 @@ async function main(): Promise<void> {
     }
   }
 
+  // Exit with error if send failed
+  if (sendFailed) {
+    console.log('');
+    console.log('❌ Apply failed: could not send operations to server');
+    process.exit(1);
+  }
+
   // Exit with error if violations in strict mode
   if (output.violations.length > 0) {
     console.log('');
@@ -344,8 +399,16 @@ async function main(): Promise<void> {
   }
 }
 
-// Run CLI
-main().catch((error) => {
-  console.error('Fatal error:', error);
-  process.exit(1);
-});
+// Run CLI only when executed directly (not when imported as module)
+// Check if this module is being run directly by looking at the import.meta.url
+const isDirectExecution =
+  typeof process !== 'undefined' &&
+  process.argv[1] &&
+  import.meta.url.endsWith(process.argv[1].replace(/^.*[/\\]/, ''));
+
+if (isDirectExecution) {
+  main().catch((error) => {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  });
+}
