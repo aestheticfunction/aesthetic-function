@@ -68,6 +68,7 @@ export {
 export {
   DEFAULT_ARTIFACT_DIR,
   getRepoRoot,
+  normalizeSourcePath,
   generateArtifactName,
   getArtifactPath,
   buildApplyArtifact,

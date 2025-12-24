@@ -16,7 +16,7 @@
 
 import { writeFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, relative } from 'node:path';
 import type {
   ApplyArtifact,
   ApplyOutput,
@@ -60,6 +60,67 @@ export function getRepoRoot(startDir: string = process.cwd()): string {
   return process.cwd();
 }
 
+/**
+ * Normalize a source file path to be repo-relative.
+ *
+ * Handles:
+ * - Relative paths (../../demo-app/src/App.tsx)
+ * - Absolute paths (/Users/.../demo-app/src/App.tsx)
+ * - Already repo-relative paths (demo-app/src/App.tsx)
+ *
+ * Resolution order:
+ * 1. If absolute, make it relative to repo root
+ * 2. If relative with ../, resolve against cwd then make relative to repo
+ * 3. If simple relative (no ../), prefer repo-root interpretation if file exists there
+ * 4. Otherwise resolve against cwd
+ *
+ * @param inputPath - Raw input path from CLI or caller
+ * @param repoRoot - Optional override for repo root (for testing)
+ * @returns Repo-relative path (e.g., 'demo-app/src/App.tsx')
+ */
+export function normalizeSourcePath(
+  inputPath: string,
+  repoRoot?: string
+): string {
+  const root = repoRoot ?? getRepoRoot();
+
+  // If already absolute, make it relative to repo root
+  if (inputPath.startsWith('/')) {
+    if (inputPath.startsWith(root + '/') || inputPath === root) {
+      const repoRelative = relative(root, inputPath);
+      return repoRelative.replace(/\\/g, '/').replace(/^\.\//, '');
+    }
+    // Path is absolute but not under repo root - use as-is
+    return inputPath.replace(/\\/g, '/');
+  }
+
+  // If path has parent references (../), resolve against cwd first
+  if (inputPath.startsWith('../') || inputPath.startsWith('./')) {
+    const absolutePath = resolve(process.cwd(), inputPath);
+    if (absolutePath.startsWith(root + '/')) {
+      return relative(root, absolutePath).replace(/\\/g, '/');
+    }
+    // Strip parent references and use as-is
+    return inputPath.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '').replace(/\\/g, '/');
+  }
+
+  // Simple relative path (like 'demo-app/src/App.tsx')
+  // Check if it exists at repo root first
+  const repoRootPath = join(root, inputPath);
+  if (existsSync(repoRootPath)) {
+    return inputPath.replace(/\\/g, '/');
+  }
+
+  // Otherwise resolve against cwd and make relative to repo
+  const absolutePath = resolve(process.cwd(), inputPath);
+  if (absolutePath.startsWith(root + '/')) {
+    return relative(root, absolutePath).replace(/\\/g, '/');
+  }
+
+  // Fallback: use input as-is
+  return inputPath.replace(/\\/g, '/');
+}
+
 // =============================================================================
 // ARTIFACT DIRECTORY
 // =============================================================================
@@ -76,12 +137,18 @@ export const DEFAULT_ARTIFACT_DIR = 'design-materializations';
 /**
  * Generate artifact filename from source file path.
  *
+ * IMPORTANT: Input should be a normalized repo-relative path.
+ * Use normalizeSourcePath() before calling this function.
+ *
  * Converts path separators to double underscores for flat file structure.
  * Example: "demo-app/src/App.tsx" → "demo-app__src__App.figma-apply.json"
  */
 export function generateArtifactName(sourceFile: string): string {
   // Remove leading ./ or / if present
   let normalized = sourceFile.replace(/^\.?\//, '');
+
+  // Remove any parent directory references (should not happen with normalized input)
+  normalized = normalized.replace(/\.\.\/|\.\.__/g, '');
 
   // Remove file extension
   normalized = normalized.replace(/\.(tsx?|jsx?)$/, '');
@@ -98,7 +165,10 @@ export function generateArtifactName(sourceFile: string): string {
  * Always resolves to repo-root/design-materializations/,
  * regardless of current working directory.
  *
- * @param sourceFile - Source file path for artifact naming
+ * Normalizes the source path to ensure consistent artifact naming
+ * regardless of how the path was specified (relative, absolute, etc.).
+ *
+ * @param sourceFile - Source file path (will be normalized)
  * @param repoRoot - Optional override for repo root (for testing)
  * @returns Absolute path to the artifact file
  */
@@ -107,7 +177,8 @@ export function getArtifactPath(
   repoRoot?: string
 ): string {
   const root = repoRoot ?? getRepoRoot();
-  const filename = generateArtifactName(sourceFile);
+  const normalizedSource = normalizeSourcePath(sourceFile, root);
+  const filename = generateArtifactName(normalizedSource);
   return join(root, DEFAULT_ARTIFACT_DIR, filename);
 }
 
@@ -117,17 +188,28 @@ export function getArtifactPath(
 
 /**
  * Build an ApplyArtifact from ApplyOutput.
+ *
+ * Normalizes the source file path to ensure consistent artifact naming
+ * regardless of working directory or input path format.
+ *
+ * @param sourceFile - Source file path (will be normalized to repo-relative)
+ * @param output - Apply output with operations and violations
+ * @param config - Apply configuration
+ * @param results - Optional execution results
+ * @param repoRoot - Optional override for repo root (for testing)
  */
 export function buildApplyArtifact(
   sourceFile: string,
   output: ApplyOutput,
   config: ApplyConfig,
-  results?: ApplyResult[]
+  results?: ApplyResult[],
+  repoRoot?: string
 ): ApplyArtifact {
+  const normalizedSource = normalizeSourcePath(sourceFile, repoRoot);
   return {
     version: '1.0',
     timestamp: new Date().toISOString(),
-    sourceFile,
+    sourceFile: normalizedSource,
     mode: config.mode,
     dryRun: config.dryRun,
     operations: output.operations,

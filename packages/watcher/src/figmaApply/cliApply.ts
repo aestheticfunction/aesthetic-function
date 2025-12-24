@@ -20,8 +20,9 @@
  */
 
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadApplyConfig, canApply, getApplyStatus } from './config.js';
+import { loadApplyConfig, canApply } from './config.js';
 import { generateApplyOps } from './generateApplyOps.js';
 import {
   buildApplyArtifact,
@@ -29,7 +30,10 @@ import {
   formatArtifactSummary,
   formatOperationDetails,
   formatViolationDetails,
+  getRepoRoot,
+  normalizeSourcePath,
 } from './artifact.js';
+import { hasStableNodeId } from './applyPolicy.js';
 import type { ApplyInput, ApplyResult, ApplyConfig } from './types.js';
 import type { ComponentMap } from '../reconcile/componentMap.js';
 import type { CanonicalResolution } from '../canonicalResolver/types.js';
@@ -75,15 +79,20 @@ function parseArgs(): CliArgs {
 
 /**
  * Load component map from disk.
+ * Looks in repo root for component-map.json.
  */
-async function loadComponentMap(): Promise<ComponentMap> {
-  const mapPath = resolve(process.cwd(), 'component-map.json');
+async function loadComponentMap(): Promise<{ map: ComponentMap; found: boolean }> {
+  const repoRoot = getRepoRoot();
+  const mapPath = resolve(repoRoot, 'component-map.json');
   try {
+    if (!existsSync(mapPath)) {
+      return { map: { version: 2, components: {} }, found: false };
+    }
     const content = await readFile(mapPath, 'utf-8');
-    return JSON.parse(content) as ComponentMap;
+    return { map: JSON.parse(content) as ComponentMap, found: true };
   } catch {
-    // Return empty map if not found
-    return { version: 2, components: {} };
+    // Return empty map if parsing fails
+    return { map: { version: 2, components: {} }, found: false };
   }
 }
 
@@ -157,14 +166,91 @@ async function sendApplyToServer(
 }
 
 // =============================================================================
+// PRECONDITION HELPERS
+// =============================================================================
+
+/**
+ * Count components with stable Figma nodeIds.
+ */
+function countMappedComponents(componentMap: ComponentMap): number {
+  let count = 0;
+  for (const key of Object.keys(componentMap.components)) {
+    if (hasStableNodeId(componentMap, key)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * Print preconditions summary to help users understand apply requirements.
+ */
+function printPreconditions(
+  config: ApplyConfig,
+  componentMapFound: boolean,
+  totalComponents: number,
+  mappedComponents: number
+): void {
+  console.log('=== APPLY PRECONDITIONS ===');
+
+  // Component map status
+  if (!componentMapFound) {
+    console.log('❌ Component Map: NOT FOUND');
+    console.log('   → Create component-map.json using "Send Selection" in Figma plugin');
+  } else if (totalComponents === 0) {
+    console.log('❌ Component Map: EMPTY (0 components)');
+    console.log('   → Use "Send Selection" in Figma plugin to map components');
+  } else if (mappedComponents === 0) {
+    console.log('⚠️  Component Map: No components have Figma nodeIds');
+    console.log('   → Apply ops require mapped nodeIds from "Send Selection"');
+  } else {
+    console.log(`✓  Component Map: ${mappedComponents}/${totalComponents} components with nodeIds`);
+  }
+
+  // Feature flag status
+  if (!config.enabled) {
+    console.log('ℹ️  Mode: ARTIFACT-ONLY (FIGMA_APPLY_ON=false)');
+    console.log('   → Set FIGMA_APPLY_ON=true to enable Figma updates');
+  } else if (config.mode === 'artifact') {
+    console.log('ℹ️  Mode: ARTIFACT-ONLY (FIGMA_APPLY_MODE=artifact)');
+    console.log('   → Set FIGMA_APPLY_MODE=apply to enable Figma updates');
+  } else if (config.dryRun) {
+    console.log('ℹ️  Mode: DRY-RUN (FIGMA_APPLY_DRY_RUN=true)');
+    console.log('   → Set FIGMA_APPLY_DRY_RUN=false to apply changes');
+  } else {
+    console.log('✓  Mode: APPLY ENABLED');
+  }
+
+  // Allow list status
+  if (config.allow.length === 0) {
+    console.log('⚠️  Allow: NONE (no property categories allowed)');
+    console.log('   → Set FIGMA_APPLY_ALLOW=fill,spacing,typography');
+  } else {
+    console.log(`✓  Allow: ${config.allow.join(', ')}`);
+  }
+
+  // Summary of whether ops will be generated
+  const canGenerate = mappedComponents > 0 && config.allow.length > 0;
+  console.log('');
+  if (canGenerate) {
+    console.log('→ Operations will be generated for components with nodeIds');
+  } else {
+    console.log('→ No operations will be generated (missing preconditions above)');
+  }
+}
+
+// =============================================================================
 // MAIN CLI FUNCTION
 // =============================================================================
 
 async function main(): Promise<void> {
   const args = parseArgs();
 
+  // Normalize source path for consistent artifact naming
+  const normalizedSource = normalizeSourcePath(args.sourceFile);
+
   console.log('=== FIGMA APPLY CLI (Phase 11C) ===');
-  console.log(`Source: ${args.sourceFile}`);
+  console.log(`Source: ${normalizedSource}`);
   console.log('');
 
   // Load configuration
@@ -175,30 +261,29 @@ async function main(): Promise<void> {
     config = { ...config, mode: 'apply' };
   }
 
-  console.log(`Status: ${getApplyStatus(config)}`);
-  console.log(`Allow: ${config.allow.length > 0 ? config.allow.join(', ') : '(none)'}`);
-  console.log('');
-
   // Load component map
-  const componentMap = await loadComponentMap();
-  const componentCount = Object.keys(componentMap.components).length;
-  console.log(`Component map: ${componentCount} components`);
+  const { map: componentMap, found: componentMapFound } = await loadComponentMap();
+  const totalComponents = Object.keys(componentMap.components).length;
+  const mappedComponents = countMappedComponents(componentMap);
+
+  // Print preconditions summary
+  printPreconditions(config, componentMapFound, totalComponents, mappedComponents);
+  console.log('');
 
   // Create canonical resolution (mock for now)
   const resolution = createMockResolution();
 
-  // Build input
+  // Build input using normalized source path
   const input: ApplyInput = {
     resolution,
     componentMap,
-    sourceFile: args.sourceFile,
+    sourceFile: normalizedSource,
     config,
   };
 
   // Generate apply operations
   const output = generateApplyOps(input);
 
-  console.log('');
   console.log(`Generated: ${output.operations.length} operations`);
   console.log(`Violations: ${output.violations.length}`);
 
