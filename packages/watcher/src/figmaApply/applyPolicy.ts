@@ -56,10 +56,17 @@ export function hasStableNodeId(
 /**
  * Get the primary nodeId for a component.
  *
- * Preference order:
- * 1. Component Set node ID
- * 2. 'base' variant node ID
- * 3. First available variant node ID
+ * IMPORTANT: For apply operations, we should target VARIANT nodeIds,
+ * not the Component Set nodeId. Component Sets are containers for
+ * variants and should not receive visual/layout/text properties.
+ *
+ * Preference order (for apply):
+ * 1. 'base' or 'default' variant node ID
+ * 2. First available variant node ID
+ * 3. Returns undefined if only Component Set ID exists (to prevent
+ *    accidental application to the set)
+ *
+ * @deprecated Use getVariantNodeId for explicit variant targeting
  */
 export function getPrimaryNodeId(
   componentMap: ComponentMap,
@@ -68,25 +75,86 @@ export function getPrimaryNodeId(
   const entry = componentMap.components[componentKey];
   if (!entry) return undefined;
 
-  // Prefer Component Set node ID
-  if (entry.figma.componentSetNodeId) {
-    return entry.figma.componentSetNodeId;
-  }
-
-  // Check for 'base' variant
+  // Check for 'base' or 'default' variant first
   if (entry.figma.variants?.base?.nodeId) {
     return entry.figma.variants.base.nodeId;
+  }
+  if (entry.figma.variants?.default?.nodeId) {
+    return entry.figma.variants.default.nodeId;
   }
 
   // Fall back to first available variant
   const variants = entry.figma.variants;
-  if (!variants) return undefined;
-
-  for (const variant of Object.values(variants)) {
-    if (variant.nodeId) return variant.nodeId;
+  if (variants) {
+    for (const variant of Object.values(variants)) {
+      if (variant.nodeId) return variant.nodeId;
+    }
   }
 
+  // DO NOT fall back to Component Set nodeId for apply operations
+  // This would cause properties to be applied to the wrong node
   return undefined;
+}
+
+/**
+ * Get the nodeId for a specific variant state.
+ *
+ * @param componentMap - The component map
+ * @param componentKey - The component key (may include ::state suffix)
+ * @param state - Optional explicit state override
+ * @returns Object with nodeId, state, and whether it came from a variant
+ */
+export function getVariantNodeId(
+  componentMap: ComponentMap,
+  componentKey: string,
+  state?: string
+): { nodeId: string | undefined; state: string; fromVariant: boolean } {
+  // Parse componentKey for embedded state (e.g., "LoginButton::hover")
+  const [baseKey, embeddedState] = componentKey.includes('::')
+    ? componentKey.split('::')
+    : [componentKey, undefined];
+
+  const targetState = state ?? embeddedState ?? 'base';
+  const entry = componentMap.components[baseKey] ?? componentMap.components[componentKey];
+
+  if (!entry) {
+    return { nodeId: undefined, state: targetState, fromVariant: false };
+  }
+
+  // Try to get the specific variant nodeId
+  const variants = entry.figma.variants;
+  if (variants) {
+    // Try exact state match
+    if (variants[targetState]?.nodeId) {
+      return { nodeId: variants[targetState].nodeId, state: targetState, fromVariant: true };
+    }
+
+    // Try 'default' as fallback for 'base'
+    if (targetState === 'base' && variants['default']?.nodeId) {
+      return { nodeId: variants['default'].nodeId, state: 'default', fromVariant: true };
+    }
+
+    // Try 'base' as fallback for 'default'
+    if (targetState === 'default' && variants['base']?.nodeId) {
+      return { nodeId: variants['base'].nodeId, state: 'base', fromVariant: true };
+    }
+  }
+
+  // If no variant found, DO NOT fall back to Component Set
+  // Return undefined to trigger a violation
+  return { nodeId: undefined, state: targetState, fromVariant: false };
+}
+
+/**
+ * Check if a component has a variant nodeId for a given state.
+ */
+export function hasVariantNodeId(
+  componentMap: ComponentMap,
+  componentKey: string,
+  state?: string
+): boolean {
+  const result = getVariantNodeId(componentMap, componentKey, state);
+  return result.nodeId !== undefined && result.fromVariant;
 }
 
 /**

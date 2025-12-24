@@ -8,6 +8,8 @@ import { describe, it, expect } from 'vitest';
 import {
   hasStableNodeId,
   getPrimaryNodeId,
+  getVariantNodeId,
+  hasVariantNodeId,
   getAllNodeIds,
   validateApplyOp,
   isNodeIdInMap,
@@ -101,8 +103,10 @@ describe('hasStableNodeId', () => {
 describe('getPrimaryNodeId', () => {
   const componentMap = createMockComponentMap();
 
-  it('returns componentSetNodeId when available', () => {
-    expect(getPrimaryNodeId(componentMap, 'Button')).toBe('CS:123');
+  it('returns base variant nodeId when available (prefers variant over Component Set)', () => {
+    // Phase 11C.1: getPrimaryNodeId now prefers variant nodeIds over Component Set
+    // This prevents accidentally applying properties to the Component Set container
+    expect(getPrimaryNodeId(componentMap, 'Button')).toBe('NODE:base-123');
   });
 
   it('returns first variant nodeId when no componentSetNodeId', () => {
@@ -115,6 +119,76 @@ describe('getPrimaryNodeId', () => {
 
   it('returns undefined for non-existent component', () => {
     expect(getPrimaryNodeId(componentMap, 'NonExistent')).toBeUndefined();
+  });
+});
+
+describe('getVariantNodeId', () => {
+  const componentMap = createMockComponentMap();
+
+  it('returns base variant nodeId for base state', () => {
+    const result = getVariantNodeId(componentMap, 'Button', 'base');
+    expect(result.nodeId).toBe('NODE:base-123');
+    expect(result.state).toBe('base');
+    expect(result.fromVariant).toBe(true);
+  });
+
+  it('returns specific variant nodeId for named state', () => {
+    const result = getVariantNodeId(componentMap, 'Button', 'primary');
+    expect(result.nodeId).toBe('NODE:primary-456');
+    expect(result.state).toBe('primary');
+    expect(result.fromVariant).toBe(true);
+  });
+
+  it('parses state from componentKey with :: suffix', () => {
+    const result = getVariantNodeId(componentMap, 'Button::primary');
+    expect(result.nodeId).toBe('NODE:primary-456');
+    expect(result.state).toBe('primary');
+    expect(result.fromVariant).toBe(true);
+  });
+
+  it('returns undefined nodeId when variant state not found', () => {
+    const result = getVariantNodeId(componentMap, 'Button', 'hover');
+    expect(result.nodeId).toBeUndefined();
+    expect(result.state).toBe('hover');
+    expect(result.fromVariant).toBe(false);
+  });
+
+  it('returns default variant for components using "default" as base', () => {
+    const result = getVariantNodeId(componentMap, 'Card', 'default');
+    expect(result.nodeId).toBe('NODE:card-789');
+    expect(result.fromVariant).toBe(true);
+  });
+
+  it('falls back from base to default', () => {
+    // Card has 'default' but not 'base'
+    const result = getVariantNodeId(componentMap, 'Card', 'base');
+    expect(result.nodeId).toBe('NODE:card-789');
+    expect(result.state).toBe('default');
+    expect(result.fromVariant).toBe(true);
+  });
+
+  it('does NOT fall back to Component Set nodeId', () => {
+    // Button has a Component Set but we should NOT return it
+    const result = getVariantNodeId(componentMap, 'Button', 'nonexistent');
+    expect(result.nodeId).toBeUndefined();
+    expect(result.fromVariant).toBe(false);
+  });
+});
+
+describe('hasVariantNodeId', () => {
+  const componentMap = createMockComponentMap();
+
+  it('returns true for existing variant state', () => {
+    expect(hasVariantNodeId(componentMap, 'Button', 'base')).toBe(true);
+    expect(hasVariantNodeId(componentMap, 'Button', 'primary')).toBe(true);
+  });
+
+  it('returns false for missing variant state', () => {
+    expect(hasVariantNodeId(componentMap, 'Button', 'hover')).toBe(false);
+  });
+
+  it('returns false for component with no variants', () => {
+    expect(hasVariantNodeId(componentMap, 'NoFigma', 'base')).toBe(false);
   });
 });
 

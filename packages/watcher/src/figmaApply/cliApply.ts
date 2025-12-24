@@ -17,6 +17,8 @@
  * FLAGS:
  *   --apply    Enable apply mode (still requires FIGMA_APPLY_ON=true, FIGMA_APPLY_DRY_RUN=false)
  *   --verbose  Show detailed operation list
+ *   --component <name>  Target a specific component
+ *   --state <state>     Target a specific state (e.g., hover)
  */
 
 import { readFile } from 'node:fs/promises';
@@ -34,6 +36,8 @@ import {
   normalizeSourcePath,
 } from './artifact.js';
 import { hasStableNodeId } from './applyPolicy.js';
+import { extractMarkers } from '../parse/parseIntentFromReact.js';
+import { loadDesignOverrides } from '../reconcile/loadDesignOverrides.js';
 import type { ApplyInput, ApplyResult, ApplyConfig } from './types.js';
 import type { ComponentMap } from '../reconcile/componentMap.js';
 import type { CanonicalResolution } from '../canonicalResolver/types.js';
@@ -46,6 +50,8 @@ interface CliArgs {
   sourceFile: string;
   apply: boolean;
   verbose: boolean;
+  component?: string;
+  state?: string;
 }
 
 function parseArgs(): CliArgs {
@@ -54,23 +60,35 @@ function parseArgs(): CliArgs {
   let sourceFile = '';
   let apply = false;
   let verbose = false;
+  let component: string | undefined;
+  let state: string | undefined;
 
-  for (const arg of args) {
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
     if (arg === '--apply') {
       apply = true;
     } else if (arg === '--verbose' || arg === '-v') {
       verbose = true;
+    } else if (arg === '--component') {
+      // --component LoginButton
+      component = args[++i];
+    } else if (arg === '--state') {
+      // --state hover
+      state = args[++i];
     } else if (!arg.startsWith('-')) {
-      sourceFile = arg;
+      // First non-flag arg is the source file
+      if (!sourceFile) {
+        sourceFile = arg;
+      }
     }
   }
 
   if (!sourceFile) {
-    console.error('Usage: figma:apply <source-file> [--apply] [--verbose]');
+    console.error('Usage: figma:apply <source-file> [--apply] [--verbose] [--component <name>] [--state <state>]');
     process.exit(1);
   }
 
-  return { sourceFile, apply, verbose };
+  return { sourceFile, apply, verbose, component, state };
 }
 
 // =============================================================================
@@ -291,6 +309,12 @@ async function main(): Promise<void> {
 
   console.log('=== FIGMA APPLY CLI (Phase 11C) ===');
   console.log(`Source: ${normalizedSource}`);
+  if (args.component) {
+    console.log(`Component: ${args.component}`);
+  }
+  if (args.state) {
+    console.log(`State: ${args.state}`);
+  }
   console.log('');
 
   // Load configuration
@@ -313,12 +337,37 @@ async function main(): Promise<void> {
   // Create canonical resolution (mock for now)
   const resolution = createMockResolution();
 
+  // Load markers from source file (for state-specific data detection)
+  let markers;
+  const absoluteSourcePath = resolve(getRepoRoot(), normalizedSource);
+  if (existsSync(absoluteSourcePath)) {
+    try {
+      const sourceContent = await readFile(absoluteSourcePath, 'utf-8');
+      markers = extractMarkers(sourceContent);
+      if (args.verbose) {
+        console.log(`Loaded ${markers.length} markers from source file`);
+      }
+    } catch (err) {
+      console.warn(`Warning: Could not read source file for markers: ${err}`);
+    }
+  }
+
+  // Load design overrides (for state-specific data detection)
+  const overrides = await loadDesignOverrides() ?? undefined;
+  if (args.verbose && overrides) {
+    console.log(`Loaded ${Object.keys(overrides).length} design overrides`);
+  }
+
   // Build input using normalized source path
   const input: ApplyInput = {
     resolution,
     componentMap,
     sourceFile: normalizedSource,
     config,
+    targetComponent: args.component,
+    targetState: args.state,
+    markers,
+    overrides,
   };
 
   // Generate apply operations

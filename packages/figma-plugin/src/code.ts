@@ -969,6 +969,44 @@ async function executeComposeOperation(op: ComposeOperationItem): Promise<Compos
 }
 
 // =============================================================================
+// TEXT DESCENDANT RESOLUTION (Phase 11C.1)
+// =============================================================================
+
+/**
+ * Find the first TEXT node descendant within a container.
+ *
+ * WHY: When applying text properties (fontSize, fontWeight, textColor) to a
+ * variant frame or component, we need to find the actual TEXT node inside
+ * rather than applying to the container itself.
+ *
+ * Resolution strategy (deterministic):
+ * 1. If the node itself is a TEXT node, return it
+ * 2. If the node has children, find the first TEXT node depth-first
+ * 3. Return null if no TEXT node found
+ *
+ * @param node - The container node to search within
+ * @returns The first TEXT node found, or null
+ */
+function findTextDescendant(node: SceneNode): TextNode | null {
+  // If the node itself is a TEXT node, return it
+  if (node.type === 'TEXT') {
+    return node;
+  }
+
+  // If the node has children, search depth-first
+  if ('children' in node) {
+    for (const child of (node as ChildrenMixin).children) {
+      const textNode = findTextDescendant(child);
+      if (textNode) {
+        return textNode;
+      }
+    }
+  }
+
+  return null;
+}
+
+// =============================================================================
 // EXECUTE APPLY PROPERTY (Phase 11C)
 // =============================================================================
 
@@ -977,6 +1015,10 @@ async function executeComposeOperation(op: ComposeOperationItem): Promise<Compos
  * 
  * Phase 11C: Applies resolved canonical properties to existing Figma nodes.
  * Only targets nodes by stable ID - does NOT create new nodes.
+ *
+ * Phase 11C.1: For text properties (fontSize, fontWeight, textColor), if the
+ * target node is a container (variant frame), automatically finds the first
+ * TEXT descendant and applies the property there.
  */
 async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropertyResult> {
   console.log(`[Plugin] Applying ${op.property}="${op.to}" to node ${op.nodeId}`);
@@ -1031,13 +1073,22 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
       }
 
       case 'textColor': {
-        if (node.type !== 'TEXT') {
+        // Phase 11C.1: Resolve TEXT descendant for text properties
+        let textNode: TextNode | null = null;
+        if (node.type === 'TEXT') {
+          textNode = node;
+        } else if ('children' in node) {
+          // Node is a container - search for TEXT descendant
+          textNode = findTextDescendant(node as SceneNode);
+        }
+
+        if (!textNode) {
           return {
             opId: op.opId,
             success: false,
             nodeId: op.nodeId,
             property: op.property,
-            error: `Node ${op.nodeId} is not a text node`,
+            error: `No TEXT node found under ${op.nodeId} (type: ${node.type})`,
           };
         }
 
@@ -1053,8 +1104,9 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
         }
 
         const newFill: SolidPaint = { type: 'SOLID', color };
-        node.fills = [newFill];
+        textNode.fills = [newFill];
         
+        console.log(`[Plugin] Applied textColor to TEXT node ${textNode.id} (target was ${op.nodeId})`);
         return {
           opId: op.opId,
           success: true,
@@ -1198,13 +1250,21 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
       }
 
       case 'fontSize': {
-        if (node.type !== 'TEXT') {
+        // Phase 11C.1: Resolve TEXT descendant for text properties
+        let textNode: TextNode | null = null;
+        if (node.type === 'TEXT') {
+          textNode = node;
+        } else if ('children' in node) {
+          textNode = findTextDescendant(node as SceneNode);
+        }
+
+        if (!textNode) {
           return {
             opId: op.opId,
             success: false,
             nodeId: op.nodeId,
             property: op.property,
-            error: `Node ${op.nodeId} is not a text node`,
+            error: `No TEXT node found under ${op.nodeId} (type: ${node.type})`,
           };
         }
 
@@ -1220,9 +1280,10 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
         }
 
         // Load font before changing size
-        await figma.loadFontAsync(node.fontName as FontName);
-        node.fontSize = fontSize;
+        await figma.loadFontAsync(textNode.fontName as FontName);
+        textNode.fontSize = fontSize;
         
+        console.log(`[Plugin] Applied fontSize to TEXT node ${textNode.id} (target was ${op.nodeId})`);
         return {
           opId: op.opId,
           success: true,
@@ -1232,13 +1293,21 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
       }
 
       case 'fontWeight': {
-        if (node.type !== 'TEXT') {
+        // Phase 11C.1: Resolve TEXT descendant for text properties
+        let textNode: TextNode | null = null;
+        if (node.type === 'TEXT') {
+          textNode = node;
+        } else if ('children' in node) {
+          textNode = findTextDescendant(node as SceneNode);
+        }
+
+        if (!textNode) {
           return {
             opId: op.opId,
             success: false,
             nodeId: op.nodeId,
             property: op.property,
-            error: `Node ${op.nodeId} is not a text node`,
+            error: `No TEXT node found under ${op.nodeId} (type: ${node.type})`,
           };
         }
 
@@ -1267,12 +1336,12 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
         };
 
         const styleName = weightMap[weight] || 'Regular';
-        const currentFont = node.fontName as FontName;
+        const currentFont = textNode.fontName as FontName;
         const newFont: FontName = { family: currentFont.family, style: styleName };
 
         try {
           await figma.loadFontAsync(newFont);
-          node.fontName = newFont;
+          textNode.fontName = newFont;
         } catch {
           // If exact weight not available, try Regular
           return {
@@ -1284,6 +1353,7 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
           };
         }
         
+        console.log(`[Plugin] Applied fontWeight to TEXT node ${textNode.id} (target was ${op.nodeId})`);
         return {
           opId: op.opId,
           success: true,

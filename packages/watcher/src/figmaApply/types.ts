@@ -130,6 +130,18 @@ export interface FigmaApplyOp {
    * Resolution policy notes (if any).
    */
   policyNote?: string;
+
+  /**
+   * Target state/variant (e.g., 'base', 'hover', 'disabled').
+   * Undefined means base/default state.
+   */
+  targetState?: string;
+
+  /**
+   * Whether the nodeId came from a variant (true) or Component Set (false).
+   * Used for auditability.
+   */
+  fromVariant?: boolean;
 }
 
 // =============================================================================
@@ -168,11 +180,14 @@ export interface ApplyPolicyViolation {
    * Type of violation.
    */
   type:
-    | 'missing-node-id'      // Node not in component-map
-    | 'property-not-allowed' // Property category not in allow-list
-    | 'no-canonical-source'  // No canonical token to apply
-    | 'low-confidence'       // Confidence too low for apply
-    | 'value-unchanged';     // Value already matches
+    | 'missing-node-id'           // Node not in component-map
+    | 'missing-variant-id'        // Variant nodeId not found, would target Component Set
+    | 'targeting-component-set'   // Would target Component Set instead of variant
+    | 'property-not-allowed'      // Property category not in allow-list
+    | 'no-canonical-source'       // No canonical token to apply
+    | 'low-confidence'            // Confidence too low for apply
+    | 'value-unchanged'           // Value already matches
+    | 'no-state-specific-data';   // No state-specific semantics, refusing to apply base to target state
 
   /**
    * Component key involved.
@@ -193,6 +208,11 @@ export interface ApplyPolicyViolation {
    * Canonical token involved (if applicable).
    */
   canonicalSource?: string;
+
+  /**
+   * State/variant that was targeted (if applicable).
+   */
+  targetState?: string;
 }
 
 // =============================================================================
@@ -275,6 +295,30 @@ export interface ApplyInput {
    * Apply configuration.
    */
   config: ApplyConfig;
+
+  /**
+   * Optional: Target component key filter (from --component flag).
+   * When specified, only generate ops for this component.
+   */
+  targetComponent?: string;
+
+  /**
+   * Optional: Target state filter (from --state flag).
+   * When specified, target this specific variant state (e.g., 'hover').
+   */
+  targetState?: string;
+
+  /**
+   * Optional: Markers parsed from the source file.
+   * Used to detect explicit state data for non-base states.
+   */
+  markers?: import('../parse/parseIntentFromReact.js').MarkerData[];
+
+  /**
+   * Optional: Design overrides loaded from design-overrides.json.
+   * Used to detect explicit state data for non-base states.
+   */
+  overrides?: import('../reconcile/types.js').DesignOverrides;
 
   /**
    * Optional: Map of componentKey → canonical semantics.

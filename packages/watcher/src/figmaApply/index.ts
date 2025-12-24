@@ -45,6 +45,8 @@ export {
 export {
   hasStableNodeId,
   getPrimaryNodeId,
+  getVariantNodeId,
+  hasVariantNodeId,
   getAllNodeIds,
   validateApplyOp,
   isNodeIdInMap,
@@ -62,7 +64,10 @@ export {
   generateApplyOps,
   deduplicateOps,
   sortOps,
+  getExplicitStateData,
 } from './generateApplyOps.js';
+
+export type { ExplicitStateData } from './generateApplyOps.js';
 
 // Artifact
 export {

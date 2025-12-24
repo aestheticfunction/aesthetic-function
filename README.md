@@ -159,6 +159,8 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Server /apply-properties endpoint | ✅ |
 | Plugin APPLY_PROPERTIES handler | ✅ |
 | CLI `figma:apply` command | ✅ |
+| Variant-aware apply targeting (Phase 11C.1) | ✅ |
+| Text-descendant resolution for text props | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -1899,6 +1901,27 @@ Building on the canonical resolution pipeline:
 3. **Category Allow-List** - Fine-grained control over property types
 4. **Opt-In Apply Mode** - Artifact-only by default
 5. **Audit Trail** - Full logging of all apply operations
+6. **Variant-Aware Targeting** - Ops target variant nodeIds, never Component Sets (Phase 11C.1)
+7. **Text-Descendant Resolution** - Text props auto-resolve to TEXT node descendants (Phase 11C.1)
+
+### Variant-Aware Targeting (Phase 11C.1)
+
+Apply operations target the correct variant nodeId rather than the Component Set:
+
+- **Component Sets** are containers and should never receive visual properties directly
+- When `ComponentKey::state` is specified (e.g., `LoginButton::hover`), the variant nodeId for that state is used
+- `getVariantNodeId(componentMap, componentKey, state?)` returns `{ nodeId, state, fromVariant }`
+- If no variant exists for the requested state, a `missing-variant-id` violation is created (no fallback to Component Set)
+- State name fallback: `base` ↔ `default` for compatibility
+
+### Text-Descendant Resolution (Phase 11C.1)
+
+Text properties (`fontSize`, `fontWeight`, `textColor`) require a TEXT node, but apply ops often target containers:
+
+- **Plugin auto-resolution**: `findTextDescendant(node)` finds the first TEXT node within a container (depth-first)
+- If the target node is not a TEXT node, the plugin searches for a TEXT descendant
+- Console logs show which TEXT node was actually modified: `Applied fontSize to TEXT node 23:45 (target was 23:27)`
+- Falls back gracefully if no TEXT node is found
 
 ### Property Types
 
