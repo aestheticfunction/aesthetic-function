@@ -408,6 +408,15 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
         // In dry-run mode, just log and return
         if (mode === 'dry-run') {
+          // Build results array with "dry-run" status for each operation
+          const results = data.operations.map((op: ApplyPropertyItem) => ({
+            opId: op.opId,
+            nodeId: op.nodeId,
+            property: op.property,
+            success: true,
+            dryRun: true,
+          }));
+
           logApplyProperties({
             requestId,
             mode,
@@ -425,6 +434,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
             operationCount: data.operations.length,
             sentToPlugin: false,
             pluginClientCount: pluginClients.size,
+            results,
           }));
           return;
         }
@@ -450,6 +460,16 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
 
         console.log(`[Server] Broadcast APPLY_PROPERTIES to ${sent} plugin client(s)`);
 
+        // Build results array with "queued" status for each operation
+        // Actual success/failure will be determined by plugin response
+        const results = data.operations.map((op: ApplyPropertyItem) => ({
+          opId: op.opId,
+          nodeId: op.nodeId,
+          property: op.property,
+          success: true, // Queued successfully, actual result comes from plugin
+          queued: true,
+        }));
+
         // Audit log
         logApplyProperties({
           requestId,
@@ -469,6 +489,7 @@ const httpServer = createServer(async (req: IncomingMessage, res: ServerResponse
           sentToPlugin: sent > 0,
           pluginClientCount: sent,
           requestId,
+          results,
         }));
       } catch (err) {
         console.error('[Server] Error handling apply-properties:', err);

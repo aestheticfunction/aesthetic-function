@@ -983,7 +983,8 @@ async function executeApplyProperty(op: ApplyPropertyItem): Promise<ApplyPropert
 
   try {
     // Find node by ID - MUST exist
-    const node = figma.getNodeById(op.nodeId);
+    // Use getNodeByIdAsync for dynamic-page documentAccess mode
+    const node = await figma.getNodeByIdAsync(op.nodeId);
     if (!node) {
       return {
         opId: op.opId,

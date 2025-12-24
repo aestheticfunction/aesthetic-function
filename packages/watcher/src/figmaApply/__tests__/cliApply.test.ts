@@ -110,6 +110,64 @@ describe('validateServerResponse', () => {
       expect(validated[0]).toHaveProperty('appliedValue', '#ff0000');
     });
   });
+
+  describe('server response shapes (integration)', () => {
+    it('validates dry-run response shape from server', () => {
+      // This is the shape that server /apply-properties returns in dry-run mode
+      const serverResponse = {
+        success: true,
+        mode: 'dry-run',
+        operationCount: 2,
+        sentToPlugin: false,
+        pluginClientCount: 0,
+        results: [
+          { opId: 'op-1', nodeId: 'node-1', property: 'fill', success: true, dryRun: true },
+          { opId: 'op-2', nodeId: 'node-2', property: 'padding', success: true, dryRun: true },
+        ],
+      };
+
+      const validated = validateServerResponse(serverResponse);
+      expect(validated).toHaveLength(2);
+      expect(validated[0].opId).toBe('op-1');
+      expect(validated[1].opId).toBe('op-2');
+    });
+
+    it('validates apply mode response shape from server', () => {
+      // This is the shape that server /apply-properties returns in apply mode
+      const serverResponse = {
+        success: true,
+        mode: 'apply',
+        operationCount: 2,
+        sentToPlugin: true,
+        pluginClientCount: 1,
+        requestId: 'apply-123',
+        results: [
+          { opId: 'op-1', nodeId: 'node-1', property: 'fill', success: true, queued: true },
+          { opId: 'op-2', nodeId: 'node-2', property: 'padding', success: true, queued: true },
+        ],
+      };
+
+      const validated = validateServerResponse(serverResponse);
+      expect(validated).toHaveLength(2);
+      expect(validated[0].success).toBe(true);
+      expect(validated[1].success).toBe(true);
+    });
+
+    it('validates results with proper opIds match operation count', () => {
+      const serverResponse = {
+        success: true,
+        operationCount: 3,
+        results: [
+          { opId: 'apply-001', nodeId: 'n1', property: 'fill', success: true },
+          { opId: 'apply-002', nodeId: 'n2', property: 'fill', success: true },
+          { opId: 'apply-003', nodeId: 'n3', property: 'padding', success: true },
+        ],
+      };
+
+      const validated = validateServerResponse(serverResponse);
+      expect(validated).toHaveLength(serverResponse.operationCount);
+    });
+  });
 });
 
 // =============================================================================
