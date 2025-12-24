@@ -541,7 +541,7 @@ export function generateApplyOps(input: ApplyInput): ApplyOutput {
     }
 
     if (!hasSemanticData && !explicitData) {
-      const message = `No state-specific semantics found for "${targetState}"; refusing to apply base semantics to ${targetState}.`;
+      const message = `No explicit ${targetState} data found (marker or override). Base semantics will not be applied to non-base states.`;
       console.log('');
       console.log(`⚠️  ${message}`);
       console.log('');

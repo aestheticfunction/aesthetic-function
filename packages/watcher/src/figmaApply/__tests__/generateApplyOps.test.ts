@@ -600,7 +600,7 @@ describe('state targeting', () => {
     expect(noStateData).toBeDefined();
     expect(noStateData?.componentKey).toBe('LoginButton');
     expect(noStateData?.targetState).toBe('hover');
-    expect(noStateData?.message).toContain('refusing to apply base semantics');
+    expect(noStateData?.message).toContain('will not be applied to non-base states');
   });
 
   it('does not refuse when targeting base state', () => {
