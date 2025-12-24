@@ -15,6 +15,7 @@
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type {
   ApplyArtifact,
@@ -22,6 +23,42 @@ import type {
   ApplyConfig,
   ApplyResult,
 } from './types.js';
+
+// =============================================================================
+// REPO ROOT DETECTION
+// =============================================================================
+
+/**
+ * Marker files that indicate the repository root.
+ */
+const REPO_ROOT_MARKERS = ['pnpm-workspace.yaml', '.git'];
+
+/**
+ * Walk up the directory tree to find the repository root.
+ *
+ * Looks for pnpm-workspace.yaml or .git directory.
+ * Falls back to process.cwd() if not found.
+ *
+ * @param startDir - Starting directory (defaults to process.cwd())
+ * @returns Absolute path to the repository root
+ */
+export function getRepoRoot(startDir: string = process.cwd()): string {
+  let currentDir = resolve(startDir);
+  const root = dirname(currentDir) === currentDir ? currentDir : '/';
+
+  while (currentDir !== root) {
+    for (const marker of REPO_ROOT_MARKERS) {
+      const markerPath = join(currentDir, marker);
+      if (existsSync(markerPath)) {
+        return currentDir;
+      }
+    }
+    currentDir = dirname(currentDir);
+  }
+
+  // Fallback to process.cwd()
+  return process.cwd();
+}
 
 // =============================================================================
 // ARTIFACT DIRECTORY
@@ -57,13 +94,21 @@ export function generateArtifactName(sourceFile: string): string {
 
 /**
  * Get full artifact path.
+ *
+ * Always resolves to repo-root/design-materializations/,
+ * regardless of current working directory.
+ *
+ * @param sourceFile - Source file path for artifact naming
+ * @param repoRoot - Optional override for repo root (for testing)
+ * @returns Absolute path to the artifact file
  */
 export function getArtifactPath(
   sourceFile: string,
-  outputDir: string = DEFAULT_ARTIFACT_DIR
+  repoRoot?: string
 ): string {
+  const root = repoRoot ?? getRepoRoot();
   const filename = generateArtifactName(sourceFile);
-  return join(outputDir, filename);
+  return join(root, DEFAULT_ARTIFACT_DIR, filename);
 }
 
 // =============================================================================
@@ -100,13 +145,17 @@ export function buildApplyArtifact(
  * Write apply artifact to design-materializations/.
  *
  * Creates the output directory if it doesn't exist.
+ * Always writes to repo-root/design-materializations/.
+ *
+ * @param artifact - The artifact to write
+ * @param repoRoot - Optional override for repo root (for testing)
+ * @returns Absolute path to the written artifact
  */
 export async function writeApplyArtifact(
   artifact: ApplyArtifact,
-  outputDir: string = DEFAULT_ARTIFACT_DIR
+  repoRoot?: string
 ): Promise<string> {
-  const artifactPath = getArtifactPath(artifact.sourceFile, outputDir);
-  const fullPath = resolve(process.cwd(), artifactPath);
+  const fullPath = getArtifactPath(artifact.sourceFile, repoRoot);
 
   // Ensure directory exists
   await mkdir(dirname(fullPath), { recursive: true });
@@ -115,7 +164,7 @@ export async function writeApplyArtifact(
   const content = JSON.stringify(artifact, null, 2);
   await writeFile(fullPath, content, 'utf-8');
 
-  return artifactPath;
+  return fullPath;
 }
 
 // =============================================================================
