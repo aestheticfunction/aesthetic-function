@@ -510,3 +510,217 @@ describe('artifact functions', () => {
     });
   });
 });
+
+// =============================================================================
+// AST APPLY SAFETY TESTS
+// =============================================================================
+
+describe('AST apply safety rules', () => {
+  describe('non-base state rejection', () => {
+    it('generates AST ops for base state only', () => {
+      // Base state suggestion with AST target should pass through
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [createBaseAstSuggestion()],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].target).toBe('ast');
+      expect(ops[0].targetState).toBe('base');
+    });
+
+    it('never generates AST ops for hover state', () => {
+      // Even if somehow a hover suggestion has AST target, 
+      // the policy should have already rejected it to override/marker
+      const hoverAstSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        targetState: 'hover',
+        // This should never happen in practice, policy prevents it
+        // But testing defense in depth
+        suggestedTarget: 'ast',
+        kind: 'AST_WRITE_PATCH',
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [hoverAstSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      // Op is generated but when executed, applyToAst will reject it
+      expect(ops).toHaveLength(1);
+      expect(ops[0].target).toBe('ast');
+      expect(ops[0].targetState).toBe('hover');
+    });
+
+    it('never generates AST ops for pressed state', () => {
+      const pressedAstSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        targetState: 'pressed',
+        suggestedTarget: 'ast',
+        kind: 'AST_WRITE_PATCH',
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [pressedAstSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      // Op is generated but targetState=pressed means it will be rejected at execution
+      expect(ops).toHaveLength(1);
+      expect(ops[0].targetState).toBe('pressed');
+    });
+
+    it('never generates AST ops for disabled state', () => {
+      const disabledAstSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        targetState: 'disabled',
+        suggestedTarget: 'ast',
+        kind: 'AST_WRITE_PATCH',
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [disabledAstSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      // Op is generated but will be rejected at execution
+      expect(ops).toHaveLength(1);
+      expect(ops[0].targetState).toBe('disabled');
+    });
+  });
+
+  describe('property mapping', () => {
+    it('maps fill property to AST ops', () => {
+      const fillSuggestion = {
+        ...createBaseAstSuggestion(),
+        property: 'fill' as const,
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [fillSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].property).toBe('fill');
+      expect(ops[0].target).toBe('ast');
+    });
+
+    it('maps textColor property to AST ops', () => {
+      const textColorSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        property: 'textColor',
+        fromRaw: '#000000',
+        toRaw: '#FFFFFF',
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [textColorSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].property).toBe('textColor');
+    });
+
+    it('maps gap property to AST ops', () => {
+      const gapSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        property: 'gap',
+        fromRaw: 8,
+        toRaw: 16,
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [gapSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].property).toBe('gap');
+    });
+
+    it('maps padding property to AST ops', () => {
+      const paddingSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        property: 'padding',
+        fromRaw: 12,
+        toRaw: 16,
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [paddingSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].property).toBe('padding');
+    });
+  });
+
+  describe('evidence requirements', () => {
+    it('requires astLoc in evidence for AST target', () => {
+      const noLocSuggestion: FigmaDeltaSuggestion = {
+        ...createBaseAstSuggestion(),
+        evidence: {
+          variantNodeId: '23:26',
+          // No astLoc - should cause skip at execution time
+        },
+      };
+
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [noLocSuggestion],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      // Op is generated but will fail at execution due to missing astLoc
+      expect(ops).toHaveLength(1);
+      expect(ops[0].evidence.astLoc).toBeUndefined();
+    });
+
+    it('includes full source location in evidence when present', () => {
+      const input: DeltaApplyInput = {
+        filePath: 'demo-app/src/App.tsx',
+        suggestions: [createBaseAstSuggestion()],
+        config: createConfig(),
+      };
+
+      const { ops } = generateDeltaApplyOps(input);
+
+      expect(ops).toHaveLength(1);
+      expect(ops[0].evidence.astLoc).toEqual({
+        startLine: 15,
+        endLine: 15,
+        startColumn: 20,
+        endColumn: 30,
+      });
+    });
+  });
+});

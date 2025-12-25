@@ -36,6 +36,7 @@ import { loadComponentMap } from '../reconcile/componentMap.js';
 import { extractMarkers } from '../parse/parseIntentFromReact.js';
 import { generateDeltaSuggestions } from '../figmaDeltaSuggest/suggest.js';
 import { generateDeltas } from '../figmaDelta/generateDeltas.js';
+import { getAstWriteMode, getAstWriteDryRun, getAstWriteAllow, isAstWriteEnabled } from '../materialize/config.js';
 
 import type { DeltaApplyInput, DeltaApplyOp, OpApplyResult } from './types.js';
 import type { FigmaDeltaSuggestion } from '../figmaDeltaSuggest/types.js';
@@ -130,6 +131,19 @@ function printConfigStatus(
   console.log(`  FIGMA_DELTA_APPLY_DRY_RUN: ${dryRun}`);
   console.log(`  FIGMA_DELTA_APPLY_ALLOW: ${allow.join(', ')}`);
   console.log(`  FIGMA_DELTA_APPLY_MIN_CONFIDENCE: ${minConfidence}`);
+
+  // AST write status
+  const astWriteMode = getAstWriteMode();
+  const astWriteDryRun = getAstWriteDryRun();
+  const astWriteAllow = getAstWriteAllow();
+  const astWriteActive = isAstWriteEnabled() && !astWriteDryRun;
+
+  console.log();
+  console.log('  AST Write Status:');
+  console.log(`    AST_WRITE_MODE: ${astWriteMode} ${astWriteMode === 'off' ? '🔴' : '🟢'}`);
+  console.log(`    AST_WRITE_DRY_RUN: ${astWriteDryRun}`);
+  console.log(`    AST_WRITE_ALLOW: ${astWriteAllow.join(', ')}`);
+  console.log(`    Status: ${astWriteActive ? '✓ ACTIVE (will write to AST)' : '⚠ SKIPPED (dry-run or off)'}`);
 }
 
 function printOperationPlan(ops: DeltaApplyOp[]): void {

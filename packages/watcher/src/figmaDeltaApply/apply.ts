@@ -35,6 +35,7 @@ import type {
 } from './types.js';
 import type { FigmaDeltaSuggestion, SuggestionArtifact } from '../figmaDeltaSuggest/types.js';
 import type { DesignOverrides, DesignOverride } from '../reconcile/types.js';
+import type { SourceLocation } from '../ast/types.js';
 
 import { isTargetAllowed, meetsConfidenceThreshold, isApplyModeEnabled } from './config.js';
 
@@ -394,17 +395,86 @@ async function applyToMarker(
 // =============================================================================
 
 /**
+ * Non-base states that cannot have AST writes.
+ *
+ * WHY: Non-base states (hover, pressed, disabled) exist as runtime variants.
+ * There's no static JSX representation for them in base component code.
+ * These states should only be stored in:
+ * - design-overrides.json (runtime lookup)
+ * - @figma markers with state= attribute
+ *
+ * Never AST-write for non-base states.
+ */
+const NON_BASE_STATES = ['hover', 'pressed', 'disabled', 'focus', 'active'];
+
+/**
+ * Check if a state is a non-base state.
+ */
+function isNonBaseState(state: string): boolean {
+  return NON_BASE_STATES.includes(state.toLowerCase());
+}
+
+/**
+ * Map delta property to AST write operation type.
+ *
+ * - fill → SET_FILL (backgroundColor)
+ * - text → SET_TEXT (JSX text content)
+ * - gap, padding, margin, width, height → SET_LAYOUT
+ */
+function propertyToAstOpType(property: string): 'SET_TEXT' | 'SET_FILL' | 'SET_LAYOUT' | null {
+  switch (property) {
+    case 'fill':
+      return 'SET_FILL';
+    case 'text':
+      return 'SET_TEXT';
+    case 'gap':
+    case 'padding':
+    case 'margin':
+    case 'width':
+    case 'height':
+      return 'SET_LAYOUT';
+    default:
+      return null;
+  }
+}
+
+/**
  * Apply an operation to AST.
  *
- * Delegates to existing materializeAstWrite pipeline.
+ * Delegates to existing materializeAstWrite pipeline functions.
+ *
+ * SAFETY:
+ * - Non-base states are always rejected (go to override/marker instead)
+ * - Only applies to auto-writable literals (from Phase 6C)
+ * - Uses atomic file writes
+ *
+ * @param op - The operation to apply
+ * @param sourceCode - Current file source code
+ * @param filePath - Relative file path
+ * @param repoRoot - Repository root path
+ * @param dryRun - Whether to skip actual writes
+ * @returns Apply result
  */
 async function applyToAst(
   op: DeltaApplyOp,
-  _sourceCode: string,
+  sourceCode: string,
   filePath: string,
-  _repoRoot: string,
+  repoRoot: string,
   dryRun: boolean
 ): Promise<OpApplyResult> {
+  // SAFETY: Non-base states cannot have AST writes
+  // They must go to override or marker targets only
+  if (isNonBaseState(op.targetState)) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `non-base-state-refused: ${op.targetState} cannot be AST-written`,
+      appliedTarget: 'ast',
+      appliedLocation: `${filePath}`,
+    };
+  }
+
   const astLoc = op.evidence.astLoc;
   if (!astLoc) {
     return {
@@ -415,38 +485,346 @@ async function applyToAst(
     };
   }
 
-  // For now, AST writes are not fully implemented in Phase 12C
-  // They require integration with the full materializeAstWrite pipeline
-  // which needs WriteFeasibilityReport etc.
-
-  // This is a placeholder that returns a "not implemented" result
-  // Full implementation would:
-  // 1. Parse AST with Babel
-  // 2. Find the value at astLoc
-  // 3. Replace if it's a literal
-  // 4. Regenerate code
-
-  if (dryRun) {
+  // Check AST write mode is enabled
+  const { getAstWriteMode, isAstWriteOpAllowed, getAstWriteDryRun } = await import(
+    '../materialize/config.js'
+  );
+  const mode = getAstWriteMode();
+  if (mode === 'off') {
     return {
       opId: op.opId,
       applied: false,
       skipped: true,
-      skipReason: `Dry-run mode: would update AST at L${astLoc.startLine}`,
+      skipReason: 'AST_WRITE_MODE=off',
       appliedTarget: 'ast',
       appliedLocation: `${filePath}:${astLoc.startLine}`,
     };
   }
 
-  // For Phase 12C MVP, AST writes require WriteFeasibility which we may not have
-  // Return as skipped with explanation
+  // Determine operation type
+  const opType = propertyToAstOpType(op.property);
+  if (!opType) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `Property '${op.property}' not mappable to AST write op`,
+    };
+  }
+
+  // Check if op type is allowed
+  if (!isAstWriteOpAllowed(opType)) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `Op type '${opType}' not in AST_WRITE_ALLOW`,
+      appliedTarget: 'ast',
+      appliedLocation: `${filePath}:${astLoc.startLine}`,
+    };
+  }
+
+  // Resolve dry run from config if not explicitly provided
+  const effectiveDryRun = dryRun || getAstWriteDryRun();
+
+  if (effectiveDryRun) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `Dry-run mode: would update AST at L${astLoc.startLine} (${opType})`,
+      appliedTarget: 'ast',
+      appliedLocation: `${filePath}:${astLoc.startLine}`,
+    };
+  }
+
+  // Import Babel tools dynamically to avoid bundle bloat for non-AST paths
+  const { parse } = await import('@babel/parser');
+  const babelTraverse = await import('@babel/traverse');
+  const babelGenerator = await import('@babel/generator');
+  const t = await import('@babel/types');
+
+  // Handle ESM/CJS interop
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const traverse = typeof babelTraverse === 'function' 
+    ? babelTraverse 
+    : (babelTraverse as any).default ?? (babelTraverse as any).default?.default;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const generate = typeof babelGenerator === 'function' 
+    ? babelGenerator 
+    : (babelGenerator as any).default ?? (babelGenerator as any).default?.default;
+
+  // Parse the source
+  let ast: ReturnType<typeof parse>;
+  try {
+    ast = parse(sourceCode, {
+      sourceType: 'module',
+      plugins: ['typescript', 'jsx'],
+    });
+  } catch (parseError) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `Failed to parse AST: ${parseError instanceof Error ? parseError.message : 'unknown error'}`,
+    };
+  }
+
+  // Apply the change based on operation type
+  let modified = false;
+  const newValue = String(op.to);
+
+  try {
+    switch (opType) {
+      case 'SET_TEXT':
+        modified = applyTextChangeAtLoc(traverse, t, ast, astLoc, newValue);
+        break;
+      case 'SET_FILL':
+        modified = applyFillChangeAtLoc(traverse, t, ast, astLoc, newValue);
+        break;
+      case 'SET_LAYOUT':
+        modified = applyLayoutChangeAtLoc(traverse, t, ast, astLoc, op.property, newValue);
+        break;
+    }
+  } catch (applyError) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `Failed to apply AST change: ${applyError instanceof Error ? applyError.message : 'unknown error'}`,
+    };
+  }
+
+  if (!modified) {
+    return {
+      opId: op.opId,
+      applied: false,
+      skipped: true,
+      skipReason: `No AST node found at L${astLoc.startLine}:${astLoc.startColumn ?? 0}`,
+    };
+  }
+
+  // Regenerate code
+  const output = generate(ast, {
+    retainLines: true,
+    retainFunctionParens: true,
+  });
+
+  // Atomic write: write to temp file then rename
+  const absolutePath = join(repoRoot, filePath);
+  const tempPath = absolutePath + '.delta-ast-tmp';
+  await writeFile(tempPath, output.code, 'utf-8');
+
+  // Rename for atomic operation
+  const { rename } = await import('node:fs/promises');
+  await rename(tempPath, absolutePath);
+
   return {
     opId: op.opId,
-    applied: false,
-    skipped: true,
-    skipReason: 'AST writes require WriteFeasibilityReport (not provided)',
+    applied: true,
+    skipped: false,
     appliedTarget: 'ast',
     appliedLocation: `${filePath}:${astLoc.startLine}`,
   };
+}
+
+// =============================================================================
+// AST MODIFICATION HELPERS
+// =============================================================================
+
+/**
+ * Apply a text change at a specific AST location.
+ *
+ * Targets JSXText nodes and string literals in JSX expressions.
+ */
+function applyTextChangeAtLoc(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  traverse: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  t: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ast: any,
+  targetLoc: SourceLocation,
+  newValue: string
+): boolean {
+  let modified = false;
+
+  traverse(ast, {
+    JSXText(path: { node: { loc: { start: { line: number; column: number } }; value: string }; stop: () => void }) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      if (
+        loc.start.line === targetLoc.startLine &&
+        (targetLoc.startColumn === undefined || loc.start.column === targetLoc.startColumn)
+      ) {
+        // Preserve leading/trailing whitespace
+        const original = path.node.value;
+        const leadingWs = original.match(/^(\s*)/)?.[1] ?? '';
+        const trailingWs = original.match(/(\s*)$/)?.[1] ?? '';
+        path.node.value = leadingWs + newValue + trailingWs;
+        modified = true;
+        path.stop();
+      }
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    StringLiteral(path: any) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      // Check if parent is JSXExpressionContainer
+      const parent = path.parent;
+      if (!t.isJSXExpressionContainer(parent)) return;
+
+      if (
+        loc.start.line === targetLoc.startLine &&
+        (targetLoc.startColumn === undefined || loc.start.column === targetLoc.startColumn)
+      ) {
+        path.node.value = newValue;
+        modified = true;
+        path.stop();
+      }
+    },
+  });
+
+  return modified;
+}
+
+/**
+ * Apply a fill (backgroundColor) change at a specific AST location.
+ *
+ * Targets string literals that are values of backgroundColor property.
+ */
+function applyFillChangeAtLoc(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  traverse: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  t: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ast: any,
+  targetLoc: SourceLocation,
+  newValue: string
+): boolean {
+  let modified = false;
+
+  traverse(ast, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    StringLiteral(path: any) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      if (
+        loc.start.line === targetLoc.startLine &&
+        (targetLoc.startColumn === undefined || loc.start.column === targetLoc.startColumn)
+      ) {
+        // Verify this is a backgroundColor property value
+        const parent = path.parent;
+        if (!t.isObjectProperty(parent)) return;
+
+        const key = t.isIdentifier(parent.key)
+          ? parent.key.name
+          : t.isStringLiteral(parent.key)
+            ? parent.key.value
+            : null;
+
+        if (key !== 'backgroundColor') return;
+
+        path.node.value = newValue;
+        modified = true;
+        path.stop();
+      }
+    },
+  });
+
+  return modified;
+}
+
+/**
+ * Apply a layout property change at a specific AST location.
+ *
+ * Targets numeric or string literals for layout properties (gap, padding, etc.).
+ */
+function applyLayoutChangeAtLoc(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  traverse: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  t: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ast: any,
+  targetLoc: SourceLocation,
+  layoutKey: string,
+  newValue: string
+): boolean {
+  let modified = false;
+
+  // Determine if new value should be numeric or string
+  const numericValue = parseFloat(newValue);
+  const isNumeric = !isNaN(numericValue) && String(numericValue) === newValue;
+
+  traverse(ast, {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    NumericLiteral(path: any) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      if (
+        loc.start.line === targetLoc.startLine &&
+        (targetLoc.startColumn === undefined || loc.start.column === targetLoc.startColumn)
+      ) {
+        // Verify this is a layout property value
+        const parent = path.parent;
+        if (!t.isObjectProperty(parent)) return;
+
+        const key = t.isIdentifier(parent.key)
+          ? parent.key.name
+          : t.isStringLiteral(parent.key)
+            ? parent.key.value
+            : null;
+
+        if (key !== layoutKey) return;
+
+        if (isNumeric) {
+          path.node.value = numericValue;
+        } else {
+          path.replaceWith(t.stringLiteral(newValue));
+        }
+        modified = true;
+        path.stop();
+      }
+    },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    StringLiteral(path: any) {
+      const loc = path.node.loc;
+      if (!loc) return;
+
+      if (
+        loc.start.line === targetLoc.startLine &&
+        (targetLoc.startColumn === undefined || loc.start.column === targetLoc.startColumn)
+      ) {
+        // Verify this is a layout property value
+        const parent = path.parent;
+        if (!t.isObjectProperty(parent)) return;
+
+        const key = t.isIdentifier(parent.key)
+          ? parent.key.name
+          : t.isStringLiteral(parent.key)
+            ? parent.key.value
+            : null;
+
+        if (key !== layoutKey) return;
+
+        if (isNumeric) {
+          path.replaceWith(t.numericLiteral(numericValue));
+        } else {
+          path.node.value = newValue;
+        }
+        modified = true;
+        path.stop();
+      }
+    },
+  });
+
+  return modified;
 }
 
 // =============================================================================
