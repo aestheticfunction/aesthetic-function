@@ -26,6 +26,7 @@
     "map:bootstrap": "tsx src/bootstrap/cliBootstrap.ts",
     "figma:compose": "tsx src/compose/cliCompose.ts",
     "figma:apply": "tsx src/figmaApply/cliApply.ts",
+    "figma:delta-apply": "tsx src/figmaDeltaApply/cliDeltaApply.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",

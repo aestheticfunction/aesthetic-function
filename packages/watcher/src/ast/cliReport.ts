@@ -50,6 +50,18 @@ import {
 } from '../figmaSuggestions/index.js';
 import type { CanonicalSemantics } from '../tokens/canonical/types.js';
 import type { CanonicalResolution, CoverageReport } from '../canonicalResolver/types.js';
+import {
+  generateDeltas,
+  type BatchDeltaInput,
+  type BatchDeltaOutput,
+  type DeltaInput,
+} from '../figmaDelta/index.js';
+import {
+  generateDeltaSuggestions,
+  writeSuggestionArtifact,
+  type SuggestInput,
+  type SuggestOutput,
+} from '../figmaDeltaSuggest/index.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -774,6 +786,180 @@ function printFigmaSuggestionsSummary(result: FigmaSuggestionResult): void {
   console.log(`    By source: ${result.countBySource.canonical} canonical, ${result.countBySource.adapter} adapter, ${result.countBySource.policy} policy, ${result.countBySource.coverage} coverage`);
 }
 
+/**
+ * Print Figma → Code deltas (Phase 12A).
+ *
+ * READ-ONLY: This section shows detected changes in Figma relative to
+ * the known baseline from code/canonical resolution.
+ *
+ * NOTE: This is analysis only. No writes to code, markers, or overrides.
+ */
+function printFigmaDeltaSummary(deltaOutput: BatchDeltaOutput): void {
+  printHeader('FIGMA → CODE DELTAS (Phase 12A)');
+
+  if (deltaOutput.summary.totalDeltas === 0) {
+    console.log('  (no deltas detected)');
+    return;
+  }
+
+  // Print deltas grouped by component::state
+  for (const result of deltaOutput.results) {
+    if (result.deltas.length === 0) {
+      continue;
+    }
+
+    console.log(`  - ${result.componentKey}::${result.state}`);
+
+    for (const delta of result.deltas) {
+      // Format: property: from → to (canonicalFrom → canonicalTo)
+      const fromStr = delta.from !== undefined ? String(delta.from) : '(none)';
+      const toStr = String(delta.to);
+      
+      let canonicalInfo = '';
+      if (delta.canonicalFrom || delta.canonicalTo) {
+        const cfrom = delta.canonicalFrom ?? '?';
+        const cto = delta.canonicalTo ?? '?';
+        canonicalInfo = ` (${cfrom} → ${cto})`;
+      }
+
+      console.log(`    ${delta.property}: ${fromStr} → ${toStr}${canonicalInfo}`);
+
+      // Print normalization note if present
+      if (delta.normalizationNote) {
+        console.log(`      ⚠ ${delta.normalizationNote}`);
+      }
+    }
+  }
+
+  // Print summary
+  console.log();
+  console.log(`  Summary: ${deltaOutput.summary.totalDeltas} deltas across ${deltaOutput.summary.variantsWithDeltas} variants`);
+
+  // Print by property counts
+  const propCounts = Object.entries(deltaOutput.summary.deltasByProperty)
+    .filter(([, count]) => count > 0)
+    .map(([prop, count]) => `${prop}: ${count}`)
+    .join(', ');
+  if (propCounts) {
+    console.log(`    By property: ${propCounts}`);
+  }
+
+  // Print by confidence counts
+  const confCounts = Object.entries(deltaOutput.summary.deltasByConfidence)
+    .filter(([, count]) => count > 0)
+    .map(([conf, count]) => `${conf}: ${count}`)
+    .join(', ');
+  if (confCounts) {
+    console.log(`    By confidence: ${confCounts}`);
+  }
+}
+
+/**
+ * Print Figma delta suggestions (Phase 12B).
+ *
+ * READ-ONLY: This section shows where each delta should land:
+ * - AST: Direct code write (literal values only)
+ * - marker: Update existing @figma comment
+ * - override: Update design-overrides.json
+ * - none: Blocked (manual intervention required)
+ *
+ * NOTE: This is analysis only. No writes to code, markers, or overrides.
+ */
+function printDeltaSuggestionsSummary(
+  suggestionOutput: SuggestOutput,
+  artifactPath: string | null
+): void {
+  printHeader('FIGMA DELTA SUGGESTIONS (Phase 12B)');
+
+  if (suggestionOutput.suggestions.length === 0) {
+    console.log('  (no suggestions - no deltas to process)');
+    return;
+  }
+
+  // Group suggestions by state, then by property
+  const byState = new Map<string, typeof suggestionOutput.suggestions>();
+  for (const suggestion of suggestionOutput.suggestions) {
+    const key = `${suggestion.componentKey}::${suggestion.targetState}`;
+    const group = byState.get(key) ?? [];
+    group.push(suggestion);
+    byState.set(key, group);
+  }
+
+  // Print suggestions grouped by component::state
+  for (const [key, suggestions] of byState) {
+    console.log(`  - ${key}`);
+
+    for (const s of suggestions) {
+      // Format target with icon
+      const targetIcon =
+        s.suggestedTarget === 'ast'
+          ? '📝'
+          : s.suggestedTarget === 'marker'
+            ? '💬'
+            : s.suggestedTarget === 'override'
+              ? '📦'
+              : '🚫';
+
+      // Format delta values
+      const fromStr = s.fromRaw !== undefined ? String(s.fromRaw) : '(none)';
+      const toStr = String(s.toRaw);
+
+      console.log(
+        `    ${targetIcon} ${s.property}: ${fromStr} → ${toStr} [target: ${s.suggestedTarget}]`
+      );
+
+      // Print reason if blocked
+      if (s.suggestedTarget === 'none') {
+        console.log(`      ⚠ ${s.reason}`);
+      }
+
+      // Print evidence hints
+      if (s.evidence.overrideKey) {
+        console.log(`      via override: ${s.evidence.overrideKey}`);
+      }
+      if (s.evidence.markerLine) {
+        console.log(`      via marker L${s.evidence.markerLine}`);
+      }
+      if (s.evidence.astLoc) {
+        console.log(
+          `      via AST L${s.evidence.astLoc.startLine}-${s.evidence.astLoc.endLine}`
+        );
+      }
+      if (s.evidence.canonicalPolicyNotes) {
+        console.log(`      note: ${s.evidence.canonicalPolicyNotes}`);
+      }
+    }
+  }
+
+  // Print summary
+  console.log();
+  console.log(`  Summary: ${suggestionOutput.summary.total} suggestions`);
+
+  // By target
+  const targetCounts = Object.entries(suggestionOutput.summary.byTarget)
+    .filter(([, count]) => count > 0)
+    .map(([target, count]) => `${target}: ${count}`)
+    .join(', ');
+  if (targetCounts) {
+    console.log(`    By target: ${targetCounts}`);
+  }
+
+  // By property
+  const propCounts = Object.entries(suggestionOutput.summary.byProperty)
+    .filter(([, count]) => count > 0)
+    .map(([prop, count]) => `${prop}: ${count}`)
+    .join(', ');
+  if (propCounts) {
+    console.log(`    By property: ${propCounts}`);
+  }
+
+  // Print artifact path
+  if (artifactPath) {
+    console.log();
+    console.log(`  Artifact: ${artifactPath}`);
+  }
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -945,6 +1131,107 @@ async function main(): Promise<void> {
     jsxVsOverridesDiffs.push(...diffJsxVsOverrides(anchor, override));
   }
 
+  // Generate Figma → Code deltas (Phase 12A - READ-ONLY)
+  // Build delta inputs from canonical resolution (baseline) vs design-overrides (Figma state)
+  const deltaInputs: DeltaInput[] = [];
+
+  // For each component in component-map with overrides, detect deltas
+  if (componentMap && overrides) {
+    for (const [componentKey, entry] of Object.entries(componentMap.components)) {
+      // Get variants from component-map
+      const variants = entry.figma?.variants ?? {};
+      const componentSetNodeId = entry.figma?.componentSetNodeId;
+
+      for (const [state, variantMapping] of Object.entries(variants)) {
+        const nodeId = variantMapping.nodeId;
+
+        // Skip if nodeId matches Component Set (invalid target)
+        if (componentSetNodeId && nodeId === componentSetNodeId) {
+          continue;
+        }
+
+        // Get override - check both "Component" and "Component::base" for base state
+        let override = overrides[`${componentKey}::${state}`];
+        if (!override && state === 'base') {
+          override = overrides[componentKey];
+        }
+
+        // Get baseline from canonical resolution
+        const resolution = resolutionMap.get(componentKey);
+
+        // Build baseline from resolution
+        const baseline: DeltaInput['baseline'] = {};
+        if (resolution?.colors.fill?.resolved) {
+          baseline.fill = {
+            raw: resolution.colors.fill.resolved,
+            canonical: resolution.colors.fill.canonical,
+            source: 'canonical-resolution',
+          };
+        }
+
+        // Build Figma state from override
+        const figmaState: DeltaInput['figmaState'] = {};
+        if (override?.fill) {
+          figmaState.fill = {
+            raw: override.fill,
+            isExplicit: true,
+          };
+        }
+        if (override?.layout?.padding !== undefined) {
+          figmaState.padding = {
+            raw: override.layout.padding,
+            isExplicit: true,
+          };
+        }
+        if (override?.layout?.gap !== undefined) {
+          figmaState.gap = {
+            raw: override.layout.gap,
+            isExplicit: true,
+          };
+        }
+
+        // Only add if there's Figma state to compare
+        if (Object.keys(figmaState).length > 0) {
+          deltaInputs.push({
+            componentKey,
+            state,
+            nodeId,
+            baseline,
+            figmaState,
+          });
+        }
+      }
+    }
+  }
+
+  const deltaInput: BatchDeltaInput = {
+    sourceFile: relativePath,
+    inputs: deltaInputs,
+  };
+  const deltaOutput = generateDeltas(deltaInput);
+
+  // Generate Figma delta suggestions (Phase 12B - READ-ONLY)
+  // Build suggestion input from delta output and available context
+  const suggestInput: SuggestInput = {
+    filePath: relativePath,
+    componentMap: componentMap ?? { version: 2, components: {} },
+    markers,
+    overrides,
+    deltas: deltaOutput.results,
+    // Note: writeFeasibility would enable AST write suggestions for base state
+    // but we don't have it wired up in cliReport yet
+  };
+  const suggestionOutput = generateDeltaSuggestions(suggestInput);
+
+  // Write suggestion artifact
+  let suggestionArtifactPath: string | null = null;
+  if (suggestionOutput.suggestions.length > 0) {
+    suggestionArtifactPath = await writeSuggestionArtifact(
+      suggestionOutput,
+      relativePath
+    );
+  }
+
   // Print sections
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
@@ -953,6 +1240,8 @@ async function main(): Promise<void> {
   printResolutionSummary(adapterResult);
   printSuggestionsSummary(suggestionResult);
   printFigmaSuggestionsSummary(figmaSuggestionResult);
+  printFigmaDeltaSummary(deltaOutput);
+  printDeltaSuggestionsSummary(suggestionOutput, suggestionArtifactPath);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);

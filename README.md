@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 11C)
+## What Works Today (Phase 12C)
 
 | Feature | Status |
 |---------|--------|
@@ -161,6 +161,36 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | CLI `figma:apply` command | ✅ |
 | Variant-aware apply targeting (Phase 11C.1) | ✅ |
 | Text-descendant resolution for text props | ✅ |
+| **Figma → Code Delta Detection (Phase 12A)** | |
+| Delta detection: Figma state vs code baseline | ✅ |
+| Canonical token resolution for both sides | ✅ |
+| Normalization notes for aliased values | ✅ |
+| Confidence scoring (high/medium/low) | ✅ |
+| Per-property delta types (fill, padding, gap) | ✅ |
+| Batch processing for multiple components | ✅ |
+| Delta artifact generation | ✅ |
+| CLI output (read-only, no file writes) | ✅ |
+| **Figma Delta Suggestions (Phase 12B)** | |
+| Suggestion layer for delta application | ✅ |
+| Target selection: AST / marker / override / blocked | ✅ |
+| Non-base state policy (never AST writes) | ✅ |
+| Base state AST write detection (auto-writable) | ✅ |
+| Deterministic, sorted output | ✅ |
+| Suggestion artifact generation | ✅ |
+| CLI integration (`ast:report` output) | ✅ |
+| **Figma Delta Application (Phase 12C)** | |
+| Apply delta suggestions to storage targets | ✅ |
+| Target routing: AST / marker / override / blocked | ✅ |
+| Override writes (state-aware keys) | ✅ |
+| Marker updates (existing markers only) | ✅ |
+| AST writes (auto-writable literals only) | ✅ |
+| Confidence threshold filtering | ✅ |
+| Allow-list based target filtering | ✅ |
+| Dry-run mode (default, no writes) | ✅ |
+| Opt-in apply mode (requires env flags) | ✅ |
+| Delta apply artifact generation | ✅ |
+| Audit trail logging | ✅ |
+| CLI `figma:delta-apply` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
