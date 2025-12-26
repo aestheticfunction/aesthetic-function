@@ -28,6 +28,7 @@
     "figma:apply": "tsx src/figmaApply/cliApply.ts",
     "figma:delta-apply": "tsx src/figmaDeltaApply/cliDeltaApply.ts",
     "figma:resolve": "tsx src/figmaDeltaResolution/cliResolve.ts",
+    "figma:resolve-apply": "tsx src/figmaResolveApply/cliResolveApply.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",

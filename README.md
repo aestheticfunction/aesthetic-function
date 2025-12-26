@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12E)
+## What Works Today (Phase 12F)
 
 | Feature | Status |
 |---------|--------|
@@ -210,6 +210,18 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Resolution artifact generation (.figma-resolution-plan.json) | ✅ |
 | CLI `figma:resolve` command | ✅ |
 | Read-only (produces plan, does NOT apply) | ✅ |
+| **Apply Resolution Plans (Phase 12F)** | |
+| Execute resolution plans from Phase 12E | ✅ |
+| Target routing: AST / marker / override / blocked | ✅ |
+| Opt-in apply mode (artifact-only default) | ✅ |
+| Multi-flag gate (ON + MODE=apply + DRY_RUN=false) | ✅ |
+| Allow-list based target filtering | ✅ |
+| Non-base state AST blocking | ✅ |
+| Confidence threshold filtering | ✅ |
+| Decision ID traceability | ✅ |
+| Apply artifact generation (.figma-resolve-apply.json) | ✅ |
+| Audit trail logging | ✅ |
+| CLI `figma:resolve-apply` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -304,6 +316,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 12C** | Figma Delta Application (Opt-In, Auditable) | ✅ |
 | **Phase 12D** | Conflict Surfacing & Resolution Preview (Read-Only) | ✅ |
 | **Phase 12E** | Guided Conflict Resolution Plans (Read-Only) | ✅ |
+| **Phase 12F** | Apply Resolution Plans (Opt-In, Auditable) | ✅ |
 
 ### Not Implemented Yet
 
@@ -313,7 +326,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), property application to existing Figma nodes with category-scoped allow-lists (Phase 11C), Figma → Code delta detection with canonical token resolution (Phase 12A), delta suggestion layer with target selection (Phase 12B), delta application with confidence-based filtering (Phase 12C), conflict surfacing with resolution preview (Phase 12D), and guided conflict resolution plans with human-reviewable decisions (Phase 12E). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), property application to existing Figma nodes with category-scoped allow-lists (Phase 11C), Figma → Code delta detection with canonical token resolution (Phase 12A), delta suggestion layer with target selection (Phase 12B), delta application with confidence-based filtering (Phase 12C), conflict surfacing with resolution preview (Phase 12D), guided conflict resolution plans with human-reviewable decisions (Phase 12E), and controlled resolution plan application with multi-flag gate (Phase 12F). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -2260,7 +2273,134 @@ pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
 - **Does NOT modify markers** - No automatic marker updates
 - **Does NOT modify design-overrides.json** - No override writes
 - **Does NOT emit Figma operations** - Read-only analysis
-- **Does NOT apply changes** - Phase 12C is the executor
+- **Does NOT apply changes** - Phase 12F is the executor
+
+---
+
+## Apply Resolution Plans (Phase 12F)
+
+Phase 12F provides the controlled execution layer that takes Phase 12E resolution plans and applies them to the correct targets.
+
+### Key Principles
+
+- **Artifact-only by default** - No mutations without explicit opt-in
+- **Multi-flag gate** - Requires all three flags: ON + MODE=apply + DRY_RUN=false
+- **Allow-list enforcement** - Only enabled targets can be written
+- **Non-base state AST blocking** - Hover/pressed/disabled states never get AST writes
+- **Deterministic execution** - Same plan → same operations → same artifacts
+- **Full traceability** - Decision IDs link artifacts to source conflicts
+
+### Environment Variables
+
+| Variable | Default | Values | Description |
+|----------|---------|--------|-------------|
+| `FIGMA_RESOLVE_APPLY_ON` | `false` | `true`/`false` | Master switch |
+| `FIGMA_RESOLVE_APPLY_MODE` | `artifact` | `artifact`/`apply` | Artifact-only or apply |
+| `FIGMA_RESOLVE_APPLY_DRY_RUN` | `true` | `true`/`false` | Dry-run mode |
+| `FIGMA_RESOLVE_APPLY_ALLOW` | `ast,marker,override` | CSV list | Allowed targets |
+| `FIGMA_RESOLVE_APPLY_MIN_CONFIDENCE` | `high` | `low`/`medium`/`high` | Min confidence |
+| `FIGMA_RESOLVE_PLAN_PATH` | (auto) | File path | Custom plan path |
+
+### CLI Commands
+
+```bash
+# Preview what would be applied (artifact-only, default)
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx
+
+# Apply with explicit flags (still respects env var gates)
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# Full apply (all flags enabled)
+FIGMA_RESOLVE_APPLY_ON=true FIGMA_RESOLVE_APPLY_MODE=apply FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# Apply from custom plan artifact
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx \
+  --from .aesthetic-function/artifacts/my-custom-plan.json
+
+# Filter by component or state
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx \
+  --component LoginButton --state base
+```
+
+### Apply Result Statuses
+
+| Status | Description |
+|--------|-------------|
+| `applied` | Successfully written to target |
+| `noop` | Target already matches intended value |
+| `skipped` | Skipped due to IGNORE/BLOCK or filter |
+| `blocked` | Policy/precondition prevented apply |
+| `failed` | Attempted but errored |
+
+### Professional Runbook
+
+Complete workflow for resolving conflicts:
+
+```bash
+# 1. Generate conflict report and resolution plan
+pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+
+# 2. Review the generated plan artifact
+cat .aesthetic-function/artifacts/demo-app/App.figma-resolution-plan.json
+
+# 3. Preview what would be applied (artifact-only)
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx
+
+# 4. Apply with full flags (when ready)
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+FIGMA_RESOLVE_APPLY_ALLOW=override,marker \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# 5. Verify applied changes
+git diff demo-app/src/App.tsx
+cat .aesthetic-function/design-overrides.json
+```
+
+### Artifact Files
+
+| File Pattern | Phase | Content |
+|--------------|-------|---------|
+| `*.figma-resolution-plan.json` | 12E | Resolution decisions with reasons |
+| `*.figma-resolve-apply.json` | 12F | Apply results with decision IDs |
+
+### Example Apply Artifact
+
+```json
+{
+  "version": "1.0",
+  "source": "figma-resolution-apply",
+  "generatedAt": "2025-01-01T00:00:00.000Z",
+  "sourceFile": "demo-app/src/App.tsx",
+  "planPath": ".aesthetic-function/artifacts/demo-app/App.figma-resolution-plan.json",
+  "mode": "apply",
+  "dryRun": false,
+  "summary": {
+    "decisionsTotal": 4,
+    "attempted": 4,
+    "applied": 2,
+    "noop": 1,
+    "skipped": 0,
+    "blocked": 0,
+    "failed": 1
+  },
+  "results": [
+    {
+      "decisionId": "a1b2c3d4e5f6g7h8",
+      "componentKey": "LoginButton",
+      "targetState": "base",
+      "property": "fill",
+      "action": "APPLY_TO_AST",
+      "target": "ast",
+      "success": true,
+      "status": "applied",
+      "appliedValue": "#FF0000"
+    }
+  ]
+}
+```
 
 ---
 
