@@ -62,6 +62,12 @@ import {
   type SuggestInput,
   type SuggestOutput,
 } from '../figmaDeltaSuggest/index.js';
+import {
+  generateConflictReport,
+  writeConflictArtifact,
+  type ConflictReport,
+  type ConflictDetectionInput,
+} from '../figmaDelta/conflicts/index.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -960,6 +966,94 @@ function printDeltaSuggestionsSummary(
   }
 }
 
+/**
+ * Print Conflict & Resolution Preview (Phase 12D).
+ *
+ * READ-ONLY: This section shows what conflicts exist between Figma and code,
+ * what would happen if they were applied, and why.
+ *
+ * NOTE: This is analysis only. No writes to code, markers, or overrides.
+ */
+function printConflictPreview(
+  conflictReport: ConflictReport,
+  artifactPath: string | null
+): void {
+  printHeader('CONFLICT & RESOLUTION PREVIEW (Phase 12D)');
+
+  if (conflictReport.conflicts.length === 0) {
+    console.log('  (no conflicts detected)');
+    return;
+  }
+
+  // Group conflicts by component::state
+  const byState = new Map<string, typeof conflictReport.conflicts>();
+  for (const conflict of conflictReport.conflicts) {
+    const key = `${conflict.componentKey}::${conflict.targetState}`;
+    const group = byState.get(key) ?? [];
+    group.push(conflict);
+    byState.set(key, group);
+  }
+
+  // Print conflicts grouped by component::state
+  for (const [key, conflicts] of byState) {
+    console.log(`\n  ${key}`);
+
+    for (const c of conflicts) {
+      // Print property and values
+      console.log(`    ${c.property}:`);
+      console.log(`      figma: ${c.figma.value}${c.figma.canonical ? ` (${c.figma.canonical})` : ''}`);
+
+      if (c.existing) {
+        const loc = c.existing.loc ? ` L${c.existing.loc.startLine}` : '';
+        console.log(`      ${c.existing.source}: ${c.existing.value}${loc}`);
+      } else {
+        console.log(`      (no existing value)`);
+      }
+
+      // Print resolution
+      const applyIcon = c.wouldApply ? '✓' : '✗';
+      console.log(`      → suggested: ${c.suggestedTarget}`);
+      console.log(`      → would apply: ${applyIcon} ${c.wouldApply ? 'YES' : 'NO'}`);
+      console.log(`      → reason: ${c.reason}`);
+
+      // Print policy rule if different from reason
+      if (c.policyRule && !c.reason.includes(c.policyRule)) {
+        console.log(`      → policy: ${c.policyRule}`);
+      }
+    }
+  }
+
+  // Print summary
+  console.log();
+  console.log(`  Summary: ${conflictReport.summary.total} conflicts`);
+  console.log(`    Would apply: ${conflictReport.summary.wouldApply}`);
+  console.log(`    Blocked: ${conflictReport.summary.blocked}`);
+
+  // By target
+  const targetCounts = Object.entries(conflictReport.summary.byTarget)
+    .filter(([, count]) => count > 0)
+    .map(([target, count]) => `${target}: ${count}`)
+    .join(', ');
+  if (targetCounts) {
+    console.log(`    By target: ${targetCounts}`);
+  }
+
+  // By type
+  const typeCounts = Object.entries(conflictReport.summary.byType)
+    .filter(([, count]) => count > 0)
+    .map(([type, count]) => `${type}: ${count}`)
+    .join(', ');
+  if (typeCounts) {
+    console.log(`    By type: ${typeCounts}`);
+  }
+
+  // Print artifact path
+  if (artifactPath) {
+    console.log();
+    console.log(`  Artifact: ${artifactPath}`);
+  }
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -1232,6 +1326,26 @@ async function main(): Promise<void> {
     );
   }
 
+  // Generate Conflict & Resolution Preview (Phase 12D - READ-ONLY)
+  // Combines delta analysis with suggestion targets to show what would happen
+  const conflictInput: ConflictDetectionInput = {
+    filePath: relativePath,
+    deltas: deltaOutput.results,
+    suggestions: suggestionOutput.suggestions,
+    astReport,
+    markers,
+    overrides,
+    // writeFeasibility would be here if available
+  };
+  const conflictReport = generateConflictReport(conflictInput);
+
+  // Write conflict artifact (only if conflicts exist)
+  let conflictArtifactPath: string | null = null;
+  if (conflictReport.conflicts.length > 0) {
+    const artifactResult = await writeConflictArtifact(conflictReport, repoRoot);
+    conflictArtifactPath = artifactResult ?? null;
+  }
+
   // Print sections
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
@@ -1242,12 +1356,13 @@ async function main(): Promise<void> {
   printFigmaSuggestionsSummary(figmaSuggestionResult);
   printFigmaDeltaSummary(deltaOutput);
   printDeltaSuggestionsSummary(suggestionOutput, suggestionArtifactPath);
+  printConflictPreview(conflictReport, conflictArtifactPath);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);
 
   console.log();
-  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches, ${suggestionResult.newCount} new suggestions`);
+  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches, ${conflictReport.summary.total} conflicts, ${suggestionResult.newCount} new suggestions`);
 }
 
 main().catch((err) => {
