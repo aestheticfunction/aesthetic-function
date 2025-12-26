@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12C)
+## What Works Today (Phase 12E)
 
 | Feature | Status |
 |---------|--------|
@@ -191,6 +191,25 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Delta apply artifact generation | ✅ |
 | Audit trail logging | ✅ |
 | CLI `figma:delta-apply` command | ✅ |
+| **Conflict Surfacing & Preview (Phase 12D)** | |
+| Conflict detection: AST vs Figma vs markers vs overrides | ✅ |
+| Conflict types: AST_VS_FIGMA, MARKER_VS_FIGMA, OVERRIDE_VS_FIGMA | ✅ |
+| Canonical mismatch detection | ✅ |
+| Non-base state blocking | ✅ |
+| Low confidence blocking | ✅ |
+| Conflict evidence with source locations | ✅ |
+| Policy rule explanations | ✅ |
+| Conflict artifact generation (.figma-conflicts.json) | ✅ |
+| CLI conflict preview section | ✅ |
+| Read-only (no file modifications) | ✅ |
+| **Guided Conflict Resolution (Phase 12E)** | |
+| Resolution plan generation from conflicts | ✅ |
+| Resolution actions: APPLY_TO_AST, APPLY_TO_MARKER, APPLY_TO_OVERRIDE, IGNORE, BLOCK | ✅ |
+| Human-readable reason explanations | ✅ |
+| Deterministic decision ordering | ✅ |
+| Resolution artifact generation (.figma-resolution-plan.json) | ✅ |
+| CLI `figma:resolve` command | ✅ |
+| Read-only (produces plan, does NOT apply) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -280,6 +299,11 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 11A** | Figma Composition Suggestions (Read-Only) | ✅ |
 | **Phase 11B** | Figma Composition Application (Opt-In, Auditable) | ✅ |
 | **Phase 11C** | Figma Property Application (Opt-In, Scoped, Auditable) | ✅ |
+| **Phase 12A** | Figma → Code Delta Detection (Read-Only) | ✅ |
+| **Phase 12B** | Figma Delta Suggestions (Target Selection) | ✅ |
+| **Phase 12C** | Figma Delta Application (Opt-In, Auditable) | ✅ |
+| **Phase 12D** | Conflict Surfacing & Resolution Preview (Read-Only) | ✅ |
+| **Phase 12E** | Guided Conflict Resolution Plans (Read-Only) | ✅ |
 
 ### Not Implemented Yet
 
@@ -289,7 +313,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), and property application to existing Figma nodes with category-scoped allow-lists (Phase 11C). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), property application to existing Figma nodes with category-scoped allow-lists (Phase 11C), Figma → Code delta detection with canonical token resolution (Phase 12A), delta suggestion layer with target selection (Phase 12B), delta application with confidence-based filtering (Phase 12C), conflict surfacing with resolution preview (Phase 12D), and guided conflict resolution plans with human-reviewable decisions (Phase 12E). Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
@@ -2113,6 +2137,130 @@ Apply operations are logged to sync-log.md:
 | Operations | ENSURE_* | Property assignments |
 | Allow-list | Operation types | Property categories |
 | Creates nodes | Yes | No |
+
+---
+
+## Guided Conflict Resolution (Phase 12D/12E)
+
+Phase 12D/12E introduces a guided resolution layer that surfaces conflicts between Figma and code, then proposes explicit, auditable resolution plans.
+
+### Key Principles
+
+- **No automatic resolution** - Plans are proposals, not executions
+- **No silent writes** - All changes require explicit approval
+- **No inference beyond existing policy** - Uses same rules as Phase 12B/12C
+- **Everything explicit, reviewable, and reversible**
+
+### Conflict Types (Phase 12D)
+
+| Type | Description |
+|------|-------------|
+| `AST_VS_FIGMA` | AST literal differs from Figma value |
+| `MARKER_VS_FIGMA` | Marker attribute differs from Figma value |
+| `OVERRIDE_VS_FIGMA` | Override entry differs from Figma value |
+| `CANONICAL_MISMATCH` | Raw values match but canonical tokens differ |
+| `UNMAPPED_VARIANT` | Variant nodeId not found in component map |
+| `NON_BASE_STATE_BLOCKED` | Non-base state without explicit data |
+| `LOW_CONFIDENCE_BLOCKED` | Delta confidence too low for auto-apply |
+
+### Resolution Actions (Phase 12E)
+
+| Action | Description |
+|--------|-------------|
+| `APPLY_TO_AST` | Write value directly to AST literal |
+| `APPLY_TO_MARKER` | Update @figma marker line |
+| `APPLY_TO_OVERRIDE` | Write to design-overrides.json |
+| `IGNORE` | Skip this conflict (user must decide) |
+| `BLOCK` | Cannot resolve automatically |
+
+### Default Resolution Rules
+
+| Conflict Scenario | Default Resolution |
+|-------------------|--------------------|
+| AST auto-writable base state | APPLY_TO_AST |
+| Non-base state with explicit marker | APPLY_TO_MARKER |
+| Non-base state with existing override | APPLY_TO_OVERRIDE |
+| Non-base state, no explicit data | BLOCK |
+| Unsafe AST write | APPLY_TO_OVERRIDE |
+| Canonical mismatch | IGNORE |
+| Low confidence | BLOCK |
+
+### CLI Commands
+
+```bash
+# Generate resolution plan for a file
+pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+
+# Full report including conflict preview (in ast:report)
+pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
+```
+
+### CLI Output
+
+```
+=== CONFLICT RESOLUTION PLAN (Phase 12E) ===
+
+  Component: LoginButton
+  State: hover
+
+    Property: fill
+    Conflict: LoginButton::hover::fill
+    Suggested Resolution: APPLY_TO_MARKER
+    Reason: Non-base state (hover) with explicit marker present
+
+  Summary:
+    - Apply to AST: 1
+    - Apply to Marker: 2
+    - Apply to Override: 0
+    - Ignored: 1
+    - Blocked: 1
+
+  Resolution plan written to:
+    design-materializations/demo-app__src__App.figma-resolution-plan.json
+```
+
+### Artifact Files
+
+| File Pattern | Phase | Content |
+|--------------|-------|---------|
+| `*.figma-conflicts.json` | 12D | Conflict analysis with evidence |
+| `*.figma-resolution-plan.json` | 12E | Resolution decisions with reasons |
+
+### Example Resolution Plan Artifact
+
+```json
+{
+  "version": "1.0",
+  "source": "figma-resolution-plan",
+  "generatedAt": "2025-01-01T00:00:00.000Z",
+  "sourceFile": "demo-app/src/App.tsx",
+  "summary": {
+    "applyAst": 1,
+    "applyMarker": 2,
+    "applyOverride": 0,
+    "ignored": 0,
+    "blocked": 1
+  },
+  "decisions": [
+    {
+      "componentKey": "LoginButton",
+      "targetState": "base",
+      "property": "fill",
+      "action": "APPLY_TO_AST",
+      "reason": "Base state with auto-writable fill literal in AST",
+      "sourceConflictId": "LoginButton::base::fill"
+    }
+  ]
+}
+```
+
+### What Phase 12E Does NOT Do
+
+- **Does NOT modify TSX/JSX** - Resolution plans are proposals only
+- **Does NOT modify markers** - No automatic marker updates
+- **Does NOT modify design-overrides.json** - No override writes
+- **Does NOT emit Figma operations** - Read-only analysis
+- **Does NOT apply changes** - Phase 12C is the executor
 
 ---
 

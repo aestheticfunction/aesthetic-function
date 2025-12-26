@@ -68,6 +68,11 @@ import {
   type ConflictReport,
   type ConflictDetectionInput,
 } from '../figmaDelta/conflicts/index.js';
+import {
+  generateResolutionPlan,
+  writeResolutionArtifact,
+  type ResolutionPlan,
+} from '../figmaDeltaResolution/index.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -1054,6 +1059,61 @@ function printConflictPreview(
   }
 }
 
+/**
+ * Print Resolution Plan (Phase 12E).
+ *
+ * READ-ONLY: This section shows the proposed resolution plan for conflicts.
+ * These are SUGGESTIONS, not executions.
+ *
+ * NOTE: This does NOT apply changes. It only proposes what would happen.
+ */
+function printResolutionPlan(
+  plan: ResolutionPlan,
+  artifactPath: string | null
+): void {
+  printHeader('RESOLUTION PLAN (Phase 12E)');
+
+  if (plan.decisions.length === 0) {
+    console.log('  (no conflicts to resolve)');
+    return;
+  }
+
+  // Group decisions by component::state
+  const byState = new Map<string, typeof plan.decisions>();
+  for (const decision of plan.decisions) {
+    const key = `${decision.componentKey}::${decision.targetState}`;
+    const group = byState.get(key) ?? [];
+    group.push(decision);
+    byState.set(key, group);
+  }
+
+  // Print decisions grouped by component::state
+  for (const [key, decisions] of byState) {
+    console.log(`\n  ${key}`);
+
+    for (const d of decisions) {
+      const actionIcon = d.action === 'BLOCK' ? '✗' : d.action === 'IGNORE' ? '?' : '→';
+      console.log(`    ${d.property}: ${actionIcon} ${d.action}`);
+      console.log(`      reason: ${d.reason}`);
+    }
+  }
+
+  // Print summary
+  console.log();
+  console.log(`  Summary: ${plan.decisions.length} decisions`);
+  console.log(`    Apply to AST: ${plan.summary.applyAst}`);
+  console.log(`    Apply to Marker: ${plan.summary.applyMarker}`);
+  console.log(`    Apply to Override: ${plan.summary.applyOverride}`);
+  console.log(`    Ignored: ${plan.summary.ignored}`);
+  console.log(`    Blocked: ${plan.summary.blocked}`);
+
+  // Print artifact path
+  if (artifactPath) {
+    console.log();
+    console.log(`  Artifact: ${artifactPath}`);
+  }
+}
+
 // =============================================================================
 // MAIN CLI
 // =============================================================================
@@ -1346,6 +1406,17 @@ async function main(): Promise<void> {
     conflictArtifactPath = artifactResult ?? null;
   }
 
+  // Generate Resolution Plan (Phase 12E - READ-ONLY)
+  // Transforms conflict report into explicit, auditable resolution proposals
+  const resolutionPlan = generateResolutionPlan({ conflictReport });
+
+  // Write resolution artifact (only if decisions exist)
+  let resolutionArtifactPath: string | null = null;
+  if (resolutionPlan.decisions.length > 0) {
+    const artifactResult = await writeResolutionArtifact(resolutionPlan, repoRoot);
+    resolutionArtifactPath = artifactResult ?? null;
+  }
+
   // Print sections
   printMarkerSummary(markerSummary);
   printAnchoredSummary(anchoredReport);
@@ -1357,12 +1428,13 @@ async function main(): Promise<void> {
   printFigmaDeltaSummary(deltaOutput);
   printDeltaSuggestionsSummary(suggestionOutput, suggestionArtifactPath);
   printConflictPreview(conflictReport, conflictArtifactPath);
+  printResolutionPlan(resolutionPlan, resolutionArtifactPath);
   printOverridesSummary(overrides);
   printDiffSection('DIFF: JSX vs MARKER', jsxVsMarkerDiffs);
   printDiffSection('DIFF: JSX vs OVERRIDES', jsxVsOverridesDiffs);
 
   console.log();
-  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches, ${conflictReport.summary.total} conflicts, ${suggestionResult.newCount} new suggestions`);
+  console.log(`Summary: ${markerSummary.length} markers, ${astReport.components.length} components, ${jsxVsMarkerDiffs.length + jsxVsOverridesDiffs.length} mismatches, ${conflictReport.summary.total} conflicts, ${resolutionPlan.decisions.length} decisions, ${suggestionResult.newCount} new suggestions`);
 }
 
 main().catch((err) => {
