@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12F)
+## What Works Today (Phase 12G)
 
 | Feature | Status |
 |---------|--------|
@@ -222,6 +222,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Apply artifact generation (.figma-resolve-apply.json) | ✅ |
 | Audit trail logging | ✅ |
 | CLI `figma:resolve-apply` command | ✅ |
+| **Post-Apply Verification (Phase 12G)** | |
+| Verify applied resolutions landed as intended | ✅ |
+| AST/marker/override target verification | ✅ |
+| Optional Figma read-only verification | ✅ |
+| Mismatch and missing detection | ✅ |
+| Rollback information capture | ✅ |
+| Verification artifact generation (.figma-verification.json) | ✅ |
+| CI-safe exit codes (0 = pass, 1 = fail) | ✅ |
+| CLI `figma:verify` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -2399,6 +2408,151 @@ cat .aesthetic-function/design-overrides.json
       "appliedValue": "#FF0000"
     }
   ]
+}
+```
+
+---
+
+## Post-Apply Verification (Phase 12G)
+
+Phase 12G provides the verification layer that confirms whether applied resolution plans landed as intended.
+
+### Key Principles
+
+- **Verification-only** - No mutations, only observes and records
+- **Apply ≠ Trust** - System proves it did what it claimed
+- **Detect drift** - Identifies partial failures or external changes
+- **CI-safe** - Exit codes suitable for CI gates
+- **Rollback preparation** - Captures previous values for future use
+
+### Environment Variables
+
+| Variable | Default | Values | Description |
+|----------|---------|--------|-------------|
+| `FIGMA_VERIFY_INCLUDE_FIGMA` | `false` | `true`/`false` | Include Figma verification (read-only) |
+| `FIGMA_VERIFY_ALWAYS_WRITE_ARTIFACT` | `false` | `true`/`false` | Write artifact even on success |
+| `FIGMA_SERVER_URL` | `http://localhost:3001` | URL | Server for Figma queries |
+
+### CLI Commands
+
+```bash
+# Verify most recent apply (auto-discovers artifacts)
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+
+# Verify specific apply artifact
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx \
+  --apply-artifact .aesthetic-function/artifacts/demo-app/App.figma-resolve-apply.json
+
+# Always write verification artifact (even on success)
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx --always-write
+
+# Include Figma verification (requires server running)
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx --include-figma
+```
+
+### Exit Codes
+
+| Code | Meaning | CI Behavior |
+|------|---------|-------------|
+| 0 | All verified or skipped | Pass |
+| 1 | Any mismatch, missing, or blocked | Fail |
+
+### Verification Statuses
+
+| Status | Description |
+|--------|-------------|
+| `verified` | Actual value matches expected |
+| `mismatch` | Values differ (drift detected) |
+| `missing` | Target not found (file, marker, or override) |
+| `skipped` | Verification not applicable |
+| `blocked` | Could not verify (network error, etc.) |
+
+### Verification Targets
+
+| Target | What is Verified |
+|--------|------------------|
+| `ast` | Re-read source file and check JSX value at expected location |
+| `marker` | Parse markers and verify property value |
+| `override` | Parse design-overrides.json and check property |
+| `figma` | Query Figma server for current value (optional) |
+
+### Professional Runbook
+
+Complete workflow with verification:
+
+```bash
+# 1. Generate and apply resolution plan
+pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# 2. Verify the apply succeeded
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+
+# 3. Check verification artifact if failures
+cat .aesthetic-function/artifacts/demo-app/App.figma-verification.json
+
+# 4. Use in CI (exit code gates the build)
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || exit 1
+```
+
+### Artifact Files
+
+| File Pattern | Phase | Content |
+|--------------|-------|---------|
+| `*.figma-resolve-apply.json` | 12F | Apply results with decision IDs |
+| `*.figma-verification.json` | 12G | Verification results with evidence |
+
+### Example Verification Artifact
+
+```json
+{
+  "version": 1,
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "file": "demo-app/src/App.tsx",
+  "items": [
+    {
+      "decisionId": "a1b2c3d4e5f6g7h8",
+      "componentKey": "LoginButton",
+      "targetState": "base",
+      "property": "fill",
+      "target": "ast",
+      "status": "verified",
+      "expected": "#FF0000",
+      "actual": "#FF0000"
+    },
+    {
+      "decisionId": "b2c3d4e5f6g7h8i9",
+      "componentKey": "LoginButton",
+      "targetState": "hover",
+      "property": "fill",
+      "target": "marker",
+      "status": "mismatch",
+      "expected": "#CC0000",
+      "actual": "#00FF00",
+      "evidence": {
+        "markerText": "// @figma node=LoginButton::hover fill=#00FF00",
+        "location": "demo-app/src/App.tsx:42"
+      }
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "verified": 1,
+    "mismatch": 1,
+    "missing": 0,
+    "skipped": 0,
+    "blocked": 0
+  },
+  "rollbackInfo": {
+    "a1b2c3d4e5f6g7h8": {
+      "previousValue": "#0000FF",
+      "target": "ast",
+      "location": "demo-app/src/App.tsx:35"
+    }
+  }
 }
 ```
 
