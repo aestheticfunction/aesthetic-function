@@ -41,6 +41,7 @@ import type {
   RunSnapshot,
   LoadLedgerResult,
   SelectRunsResult,
+  RunSelectionExplanation,
 } from './types.js';
 
 // Re-export utilities for external use
@@ -91,6 +92,8 @@ export async function loadRunLedger(
  *
  * Default: latest run vs previous run.
  * Explicit: use --from and/or --to run IDs.
+ *
+ * Returns explanation of how runs were selected (Phase 13C.1).
  */
 export function selectRuns(
   ledger: RunLedgerArtifact,
@@ -111,6 +114,7 @@ export function selectRuns(
   // Default: latest (to) vs previous (from)
   let fromEntry: RunEntry;
   let toEntry: RunEntry;
+  let explanation: RunSelectionExplanation;
 
   if (fromRunId && toRunId) {
     // Both specified
@@ -134,6 +138,14 @@ export function selectRuns(
 
     fromEntry = fromMatch;
     toEntry = toMatch;
+    explanation = {
+      fromMethod: 'explicit',
+      fromReason: `Explicitly specified via --from ${fromRunId}`,
+      toMethod: 'explicit',
+      toReason: `Explicitly specified via --to ${toRunId}`,
+      explicitFrom: true,
+      explicitTo: true,
+    };
   } else if (fromRunId) {
     // Only from specified, to defaults to latest
     const fromMatch = runs.find(r => r.runId === fromRunId);
@@ -147,6 +159,14 @@ export function selectRuns(
 
     fromEntry = fromMatch;
     toEntry = runs[runs.length - 1];
+    explanation = {
+      fromMethod: 'explicit',
+      fromReason: `Explicitly specified via --from ${fromRunId}`,
+      toMethod: 'latest',
+      toReason: `Auto-selected as latest run (most recent in ledger)`,
+      explicitFrom: true,
+      explicitTo: false,
+    };
   } else if (toRunId) {
     // Only to specified, from defaults to previous
     const toIndex = runs.findIndex(r => r.runId === toRunId);
@@ -167,13 +187,29 @@ export function selectRuns(
 
     fromEntry = runs[toIndex - 1];
     toEntry = runs[toIndex];
+    explanation = {
+      fromMethod: 'relative-to-explicit',
+      fromReason: `Auto-selected as run immediately before --to (index ${toIndex - 1})`,
+      toMethod: 'explicit',
+      toReason: `Explicitly specified via --to ${toRunId}`,
+      explicitFrom: false,
+      explicitTo: true,
+    };
   } else {
     // Default: latest vs previous
     fromEntry = runs[runs.length - 2];
     toEntry = runs[runs.length - 1];
+    explanation = {
+      fromMethod: 'previous',
+      fromReason: `Auto-selected as second-to-last run (default comparison baseline)`,
+      toMethod: 'latest',
+      toReason: `Auto-selected as latest run (most recent in ledger)`,
+      explicitFrom: false,
+      explicitTo: false,
+    };
   }
 
-  return { ok: true, fromEntry, toEntry };
+  return { ok: true, fromEntry, toEntry, explanation };
 }
 
 // =============================================================================

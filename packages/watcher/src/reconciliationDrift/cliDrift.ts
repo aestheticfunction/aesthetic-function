@@ -3,6 +3,7 @@
  * @aesthetic-function/watcher - reconciliationDrift/cliDrift.ts
  *
  * Phase 13C: CLI for Drift Diffs (Run-to-Run).
+ * Phase 13C.1: UX Hardening + Guardrails.
  *
  * Usage:
  *   pnpm --filter @aesthetic-function/watcher figma:drift <file> [options]
@@ -13,6 +14,8 @@
  *   --json           Output JSON instead of formatted text
  *   --write          Write artifact to disk
  *   --verbose        Show detailed output (artifact paths, reasons)
+ *   --explain        Explain run selection (why from/to were chosen)
+ *   --strict         Exit 1 if any drift item has severity 'fail'
  *   --repo-root <path>  Explicit repository root
  */
 
@@ -23,6 +26,8 @@ import {
   normalizeSourcePath,
   computeDriftDiffArtifact,
   createInsufficientHistoryArtifact,
+  loadRunLedger,
+  selectRuns,
 } from './compute.js';
 
 import {
@@ -30,7 +35,7 @@ import {
   writeDriftDiffArtifact,
 } from './artifact.js';
 
-import type { DriftCliOptions, DriftDiffArtifact } from './types.js';
+import type { DriftCliOptions, DriftDiffArtifact, RunSelectionExplanation } from './types.js';
 
 // =============================================================================
 // ARGUMENT PARSING
@@ -72,6 +77,10 @@ function parseArgs(args: string[]): DriftCliOptions | { error: string } {
       options.write = true;
     } else if (arg === '--verbose') {
       options.verbose = true;
+    } else if (arg === '--explain') {
+      options.explain = true;
+    } else if (arg === '--strict') {
+      options.strict = true;
     } else if (arg.startsWith('--')) {
       return { error: `Unknown option: ${arg}` };
     } else if (!options.sourceFile) {
@@ -108,19 +117,61 @@ Options:
   --json              Output JSON instead of formatted text
   --write             Write artifact to disk
   --verbose           Show detailed output (artifact paths, reasons)
+  --explain           Explain run selection (why from/to were chosen)
+  --strict            Exit 1 if any drift item has severity 'fail'
   --repo-root <path>  Explicit repository root
+
+Exit Codes:
+  0                   Success (default), or no 'fail' severity changes
+  1                   Error, or (with --strict) any 'fail' severity change
+  2                   Usage error
 
 Examples:
   figma:drift demo-app/src/App.tsx
   figma:drift demo-app/src/App.tsx --json
   figma:drift demo-app/src/App.tsx --from abc12345 --to def67890
   figma:drift demo-app/src/App.tsx --write --verbose
+  figma:drift demo-app/src/App.tsx --explain
+  figma:drift demo-app/src/App.tsx --strict
 `.trim());
 }
 
 // =============================================================================
 // MAIN
 // =============================================================================
+
+/**
+ * Check if drift artifact represents "no material drift".
+ *
+ * Definition: No drift items exist OR all drift changes are 'info' severity
+ * AND all numeric deltas are zero.
+ */
+function isNoMaterialDrift(artifact: DriftDiffArtifact): boolean {
+  if (artifact.summary.insufficientHistory) {
+    return false;
+  }
+
+  if (artifact.changes.length === 0) {
+    return true;
+  }
+
+  // All changes must be info severity
+  const allInfo = artifact.changes.every((c) => c.severity === 'info');
+  if (!allInfo) {
+    return false;
+  }
+
+  // All numeric deltas must be zero
+  const allZeroDelta = artifact.changes.every((c) => c.delta === undefined || c.delta === 0);
+  return allZeroDelta;
+}
+
+/**
+ * Check if artifact has any 'fail' severity changes.
+ */
+function hasFailSeverity(artifact: DriftDiffArtifact): boolean {
+  return artifact.changes.some((c) => c.severity === 'fail');
+}
 
 /**
  * Main CLI entry point.
@@ -132,7 +183,7 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   if ('error' in parsed) {
     console.error(`Error: ${parsed.error}`);
     printUsage();
-    return 1;
+    return 2;
   }
 
   const options = parsed;
@@ -144,11 +195,65 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   // Normalize source path
   const sourceCanonical = normalizeSourcePath(options.sourceFile, repoRoot);
 
-  // Verbose header
-  if (options.verbose && !options.json) {
+  // Load ledger to get run selection info
+  const ledgerResult = await loadRunLedger(repoRoot, sourceCanonical);
+  const ledgerExists = ledgerResult.ok;
+
+  // Get run selection explanation if ledger exists and has enough runs
+  let explanation: RunSelectionExplanation | undefined;
+  let fromRunId: string | undefined;
+  let fromTimestamp: string | undefined;
+  let toRunId: string | undefined;
+  let toTimestamp: string | undefined;
+
+  if (ledgerResult.ok) {
+    const selectResult = selectRuns(ledgerResult.ledger, options.fromRunId, options.toRunId);
+    if (selectResult.ok) {
+      explanation = selectResult.explanation;
+      fromRunId = selectResult.fromEntry.runId;
+      fromTimestamp = selectResult.fromEntry.timestamp;
+      toRunId = selectResult.toEntry.runId;
+      toTimestamp = selectResult.toEntry.timestamp;
+    }
+  }
+
+  // Print preconditions banner (Phase 13C.1) - always in non-JSON mode
+  if (!options.json) {
+    console.log('=== DRIFT DIFF PRECONDITIONS ===');
     console.log(`Repo Root: ${repoRoot}`);
+    console.log(`Source (input): ${options.sourceFile}`);
     console.log(`Source (canonical): ${sourceCanonical}`);
-    console.log(`Working Directory: ${startCwd}`);
+    console.log(`Ledger: ${ledgerExists ? '✓ found' : '✗ missing'}`);
+
+    if (fromRunId && toRunId) {
+      console.log('Run selection:');
+      console.log(`  from: ${fromRunId} (${fromTimestamp})`);
+      console.log(`  to:   ${toRunId} (${toTimestamp})`);
+    }
+
+    console.log('');
+  }
+
+  // Print --explain output if requested (Phase 13C.1)
+  if (options.explain && !options.json) {
+    console.log('=== RUN SELECTION EXPLANATION ===');
+
+    if (!ledgerExists) {
+      console.log('Cannot explain: ledger not found');
+    } else if (!explanation) {
+      console.log('Cannot explain: insufficient history for comparison');
+    } else {
+      console.log('From Run:');
+      console.log(`  Method: ${explanation.fromMethod}`);
+      console.log(`  Reason: ${explanation.fromReason}`);
+      console.log(`  Explicit: ${explanation.explicitFrom ? 'yes (--from provided)' : 'no (auto-selected)'}`);
+      console.log('');
+      console.log('To Run:');
+      console.log(`  Method: ${explanation.toMethod}`);
+      console.log(`  Reason: ${explanation.toReason}`);
+      console.log(`  Explicit: ${explanation.explicitTo ? 'yes (--to provided)' : 'no (auto-selected)'}`);
+    }
+
     console.log('');
   }
 
@@ -191,7 +296,7 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
       return 1;
     }
 
-    if (options.verbose && !options.json) {
+    if (!options.json) {
       console.log(`Wrote: ${writeResult.path}`);
       console.log('');
     }
@@ -201,8 +306,20 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   if (options.json) {
     stdout.write(JSON.stringify(artifact, null, 2) + '\n');
   } else {
-    const formatted = formatDriftDiff(artifact, repoRoot, options.verbose);
-    console.log(formatted);
+    // Check for no material drift (Phase 13C.1)
+    if (isNoMaterialDrift(artifact)) {
+      console.log('✓ No material drift detected between runs.');
+    } else {
+      const formatted = formatDriftDiff(artifact, repoRoot, options.verbose);
+      console.log(formatted);
+    }
+  }
+
+  // Determine exit code (Phase 13C.1)
+  // Default: 0
+  // With --strict: exit 1 if any drift item has severity 'fail'
+  if (options.strict && hasFailSeverity(artifact)) {
+    return 1;
   }
 
   return 0;

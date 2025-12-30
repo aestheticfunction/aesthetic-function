@@ -108,6 +108,50 @@ export function writeDriftDiffArtifact(
 // =============================================================================
 
 /**
+ * Severity ordering for presentation (Phase 13C.1).
+ * fail → warn → info
+ */
+const SEVERITY_ORDER: Record<DriftChange['severity'], number> = {
+  fail: 0,
+  warn: 1,
+  info: 2,
+};
+
+/**
+ * Sort drift changes for deterministic presentation (Phase 13C.1).
+ *
+ * Order:
+ * 1. severity: fail → warn → info
+ * 2. field name (alphabetical)
+ * 3. from value (stringified)
+ * 4. to value (stringified)
+ *
+ * This is presentation-only sorting; does not modify artifact.changes.
+ */
+export function sortChangesForPresentation(changes: DriftChange[]): DriftChange[] {
+  return [...changes].sort((a, b) => {
+    // 1. Severity order
+    const severityDiff = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+    if (severityDiff !== 0) return severityDiff;
+
+    // 2. Field name
+    const fieldDiff = a.field.localeCompare(b.field);
+    if (fieldDiff !== 0) return fieldDiff;
+
+    // 3. From value (stringified for comparison)
+    const fromA = a.from === null ? '' : String(a.from);
+    const fromB = b.from === null ? '' : String(b.from);
+    const fromDiff = fromA.localeCompare(fromB);
+    if (fromDiff !== 0) return fromDiff;
+
+    // 4. To value (stringified for comparison)
+    const toA = a.to === null ? '' : String(a.to);
+    const toB = b.to === null ? '' : String(b.to);
+    return toA.localeCompare(toB);
+  });
+}
+
+/**
  * Format a severity indicator for CLI output.
  */
 function formatSeverity(severity: DriftChange['severity']): string {
@@ -202,12 +246,13 @@ export function formatDriftDiff(
   lines.push(`Summary: ${artifact.summary.message}`);
   lines.push('');
 
-  // Changes
+  // Changes - sorted for deterministic presentation (Phase 13C.1)
   if (artifact.changes.length === 0) {
     lines.push('No changes detected.');
   } else {
+    const sortedChanges = sortChangesForPresentation(artifact.changes);
     lines.push(`Changes (${artifact.changes.length}):`);
-    for (const change of artifact.changes) {
+    for (const change of sortedChanges) {
       lines.push(`  ${formatChange(change)}`);
       if (verbose) {
         lines.push(`    Reason: ${change.reason}`);

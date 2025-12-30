@@ -283,6 +283,12 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Repo-root invariant (works from any working directory) | ✅ |
 | CLI `figma:drift` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Drift Diff UX Hardening (Phase 13C.1)** | |
+| Preconditions banner (repo root, source paths, ledger, runs) | ✅ |
+| Run selection explanation (--explain flag) | ✅ |
+| Deterministic "no material drift" messaging | ✅ |
+| Strict exit code (--strict: exit 1 if 'fail' severity) | ✅ |
+| Presentation ordering (severity → field → deterministic) | ✅ |
 | **Drift Summary Dashboard (Phase 13D)** | |
 | Aggregated drift dashboard (.figma-drift-dashboard.json) | ✅ |
 | Stability score (0-100, deterministic rule-table) | ✅ |
@@ -3490,11 +3496,71 @@ pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --wri
 
 # Verbose mode (show artifact paths and reasons)
 pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --verbose
+
+# Explain run selection (Phase 13C.1)
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --explain
+
+# Strict mode for CI: exit 1 if any 'fail' severity (Phase 13C.1)
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --strict
+```
+
+### Preconditions Banner (Phase 13C.1)
+
+Every drift command now prints a preconditions header before results:
+
+```
+=== DRIFT DIFF PRECONDITIONS ===
+Repo Root: /path/to/repo
+Source (input): ../../demo-app/src/App.tsx
+Source (canonical): demo-app/src/App.tsx
+Ledger: ✓ found
+Run selection:
+  from: abc12345 (2025-12-30T10:00:00.000Z)
+  to:   def67890 (2025-12-30T11:00:00.000Z)
+```
+
+### Run Selection Explanation (--explain)
+
+The `--explain` flag provides detailed reasoning about run selection:
+
+```bash
+pnpm figma:drift demo-app/src/App.tsx --explain
+```
+
+Output:
+```
+=== RUN SELECTION EXPLANATION ===
+From Run:
+  Method: previous
+  Reason: Auto-selected as second-to-last run (default comparison baseline)
+  Explicit: no (auto-selected)
+
+To Run:
+  Method: latest
+  Reason: Auto-selected as latest run (most recent in ledger)
+  Explicit: no (auto-selected)
+```
+
+### No Material Drift Message (Phase 13C.1)
+
+When no significant changes exist (empty changes or all 'info' with zero deltas):
+
+```
+✓ No material drift detected between runs.
 ```
 
 ### Example Output
 
 ```
+=== DRIFT DIFF PRECONDITIONS ===
+Repo Root: /path/to/repo
+Source (input): demo-app/src/App.tsx
+Source (canonical): demo-app/src/App.tsx
+Ledger: ✓ found
+Run selection:
+  from: abc12345 (2025-12-30T10:00:00.000Z)
+  to:   def67890 (2025-12-30T11:00:00.000Z)
+
 === FIGMA DRIFT DIFF (Phase 13C) ===
 Repo Root: /path/to/repo
 Source: demo-app/src/App.tsx (canonical)
@@ -3539,10 +3605,13 @@ If fewer than 2 runs exist, produces an artifact with `insufficientHistory: true
 ### Guarantees
 
 - **Deterministic**: Same runs → same diff output
+- **Deterministic ordering**: Changes sorted by severity (fail > warn > info), then field name
 - **Read-only**: Never modifies any artifacts or source files
 - **Repo-root invariant**: Works identically from any working directory
-- **Exit code 0**: Always succeeds (even with insufficient history)
-- **Exit code 1**: Only on invalid arguments or corrupted ledger
+- **Preconditions visible**: Always shows source paths, ledger status, run selection
+- **Exit code 0**: Default success (even with insufficient history)
+- **Exit code 1**: With `--strict`, if any drift item has 'fail' severity
+- **Exit code 2**: Usage error (invalid arguments)
 
 ---
 

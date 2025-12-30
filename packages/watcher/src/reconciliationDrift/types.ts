@@ -350,6 +350,18 @@ export interface DriftCliOptions {
    * Verbose output.
    */
   verbose?: boolean;
+
+  /**
+   * Explain run selection (why from/to were chosen).
+   * Read-only, does not alter output or exit code.
+   */
+  explain?: boolean;
+
+  /**
+   * Strict mode: exit 1 if any drift item has severity 'fail'.
+   * Only 'fail' severity triggers non-zero exit; 'warn'/'info' do not.
+   */
+  strict?: boolean;
 }
 
 // =============================================================================
@@ -367,6 +379,50 @@ export type LoadLedgerResult =
  * Result of selecting runs for comparison.
  */
 export type SelectRunsResult =
-  | { ok: true; fromEntry: import('../reconciliationTimeline/types.js').RunEntry; toEntry: import('../reconciliationTimeline/types.js').RunEntry }
+  | { ok: true; fromEntry: import('../reconciliationTimeline/types.js').RunEntry; toEntry: import('../reconciliationTimeline/types.js').RunEntry; explanation: RunSelectionExplanation }
   | { ok: false; insufficientHistory: true; availableRuns: number }
   | { ok: false; insufficientHistory: false; error: string };
+
+// =============================================================================
+// RUN SELECTION EXPLANATION (Phase 13C.1)
+// =============================================================================
+
+/**
+ * How a run was selected.
+ */
+export type RunSelectionMethod = 'explicit' | 'latest' | 'previous' | 'relative-to-explicit';
+
+/**
+ * Explanation of how runs were selected for comparison.
+ */
+export interface RunSelectionExplanation {
+  /**
+   * How the 'from' run was selected.
+   */
+  fromMethod: RunSelectionMethod;
+
+  /**
+   * Explanation text for 'from' selection.
+   */
+  fromReason: string;
+
+  /**
+   * How the 'to' run was selected.
+   */
+  toMethod: RunSelectionMethod;
+
+  /**
+   * Explanation text for 'to' selection.
+   */
+  toReason: string;
+
+  /**
+   * Whether explicit --from was provided.
+   */
+  explicitFrom: boolean;
+
+  /**
+   * Whether explicit --to was provided.
+   */
+  explicitTo: boolean;
+}

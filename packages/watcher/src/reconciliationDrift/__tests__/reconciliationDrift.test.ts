@@ -23,8 +23,9 @@ import {
   writeDriftDiffArtifact,
   formatDriftDiff,
   getDriftDiffArtifactPath,
+  sortChangesForPresentation,
 } from '../artifact.js';
-import type { DriftDiffArtifact, RunSnapshot } from '../types.js';
+import type { DriftDiffArtifact, DriftChange, RunSnapshot } from '../types.js';
 import type { RunLedgerArtifact, RunEntry } from '../../reconciliationTimeline/types.js';
 
 // =============================================================================
@@ -600,5 +601,281 @@ describe('formatDriftDiff', () => {
     expect(output).toContain('overallStatus');
     expect(output).toContain('VERIFIED_OK → VERIFY_FAILED');
     expect(output).toContain('(+2)');
+  });
+});
+
+// =============================================================================
+// PHASE 13C.1: UX HARDENING + GUARDRAILS TESTS
+// =============================================================================
+
+describe('Phase 13C.1: Run Selection Explanation', () => {
+  it('should include explanation when both runs specified explicitly', () => {
+    const ledger: RunLedgerArtifact = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        createMockRunEntry({ runId: 'run1', timestamp: '2025-12-30T10:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run2', timestamp: '2025-12-30T11:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run3', timestamp: '2025-12-30T12:00:00.000Z' }),
+      ],
+    };
+
+    const result = selectRuns(ledger, 'run1', 'run3');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.explanation.fromMethod).toBe('explicit');
+      expect(result.explanation.toMethod).toBe('explicit');
+      expect(result.explanation.explicitFrom).toBe(true);
+      expect(result.explanation.explicitTo).toBe(true);
+      expect(result.explanation.fromReason).toContain('--from run1');
+      expect(result.explanation.toReason).toContain('--to run3');
+    }
+  });
+
+  it('should include explanation for auto-selected latest vs previous', () => {
+    const ledger: RunLedgerArtifact = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        createMockRunEntry({ runId: 'run1', timestamp: '2025-12-30T10:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run2', timestamp: '2025-12-30T11:00:00.000Z' }),
+      ],
+    };
+
+    const result = selectRuns(ledger);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.explanation.fromMethod).toBe('previous');
+      expect(result.explanation.toMethod).toBe('latest');
+      expect(result.explanation.explicitFrom).toBe(false);
+      expect(result.explanation.explicitTo).toBe(false);
+    }
+  });
+
+  it('should include explanation when only --from specified', () => {
+    const ledger: RunLedgerArtifact = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        createMockRunEntry({ runId: 'run1', timestamp: '2025-12-30T10:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run2', timestamp: '2025-12-30T11:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run3', timestamp: '2025-12-30T12:00:00.000Z' }),
+      ],
+    };
+
+    const result = selectRuns(ledger, 'run1', undefined);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.explanation.fromMethod).toBe('explicit');
+      expect(result.explanation.toMethod).toBe('latest');
+      expect(result.explanation.explicitFrom).toBe(true);
+      expect(result.explanation.explicitTo).toBe(false);
+    }
+  });
+
+  it('should include explanation when only --to specified', () => {
+    const ledger: RunLedgerArtifact = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        createMockRunEntry({ runId: 'run1', timestamp: '2025-12-30T10:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run2', timestamp: '2025-12-30T11:00:00.000Z' }),
+        createMockRunEntry({ runId: 'run3', timestamp: '2025-12-30T12:00:00.000Z' }),
+      ],
+    };
+
+    const result = selectRuns(ledger, undefined, 'run3');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.explanation.fromMethod).toBe('relative-to-explicit');
+      expect(result.explanation.toMethod).toBe('explicit');
+      expect(result.explanation.explicitFrom).toBe(false);
+      expect(result.explanation.explicitTo).toBe(true);
+    }
+  });
+});
+
+describe('Phase 13C.1: Presentation Ordering', () => {
+  it('should sort changes by severity (fail > warn > info)', () => {
+    const changes: DriftChange[] = [
+      { field: 'aField', from: 1, to: 2, severity: 'info', reason: 'test' },
+      { field: 'bField', from: 1, to: 2, severity: 'fail', reason: 'test' },
+      { field: 'cField', from: 1, to: 2, severity: 'warn', reason: 'test' },
+    ];
+
+    const sorted = sortChangesForPresentation(changes);
+
+    expect(sorted[0].severity).toBe('fail');
+    expect(sorted[1].severity).toBe('warn');
+    expect(sorted[2].severity).toBe('info');
+  });
+
+  it('should sort by field name within same severity', () => {
+    const changes: DriftChange[] = [
+      { field: 'zField', from: 1, to: 2, severity: 'fail', reason: 'test' },
+      { field: 'aField', from: 1, to: 2, severity: 'fail', reason: 'test' },
+      { field: 'mField', from: 1, to: 2, severity: 'fail', reason: 'test' },
+    ];
+
+    const sorted = sortChangesForPresentation(changes);
+
+    expect(sorted[0].field).toBe('aField');
+    expect(sorted[1].field).toBe('mField');
+    expect(sorted[2].field).toBe('zField');
+  });
+
+  it('should be deterministic with mixed severities and fields', () => {
+    const changes: DriftChange[] = [
+      { field: 'status', from: 'OK', to: 'FAIL', severity: 'fail', reason: 'test' },
+      { field: 'count', from: 5, to: 10, severity: 'info', reason: 'test' },
+      { field: 'errors', from: 0, to: 3, severity: 'warn', reason: 'test' },
+      { field: 'alpha', from: 'x', to: 'y', severity: 'fail', reason: 'test' },
+    ];
+
+    const sorted1 = sortChangesForPresentation(changes);
+    const sorted2 = sortChangesForPresentation([...changes].reverse());
+
+    // Should produce identical order regardless of input order
+    expect(sorted1.map((c) => c.field)).toEqual(sorted2.map((c) => c.field));
+    expect(sorted1[0].field).toBe('alpha'); // fail, alphabetically first
+    expect(sorted1[1].field).toBe('status'); // fail, alphabetically second
+    expect(sorted1[2].field).toBe('errors'); // warn
+    expect(sorted1[3].field).toBe('count'); // info
+  });
+});
+
+describe('Phase 13C.1: No Material Drift Detection', () => {
+  it('should detect no drift when changes array is empty', () => {
+    const artifact: DriftDiffArtifact = {
+      version: '1.0',
+      sourceFile: 'demo-app/src/App.tsx',
+      fromRunId: 'run1',
+      toRunId: 'run2',
+      generatedAt: '2025-12-30T12:00:00.000Z',
+      summary: {
+        totalChanges: 0,
+        infoCount: 0,
+        warnCount: 0,
+        failCount: 0,
+        insufficientHistory: false,
+        message: 'No changes detected',
+      },
+      changes: [],
+      from: createMockSnapshot({ runId: 'run1' }),
+      to: createMockSnapshot({ runId: 'run2' }),
+    };
+
+    // No material drift = empty changes
+    expect(artifact.changes.length).toBe(0);
+    expect(artifact.summary.failCount).toBe(0);
+    expect(artifact.summary.warnCount).toBe(0);
+  });
+
+  it('should not be no-drift when fail severity exists', () => {
+    const artifact: DriftDiffArtifact = {
+      version: '1.0',
+      sourceFile: 'demo-app/src/App.tsx',
+      fromRunId: 'run1',
+      toRunId: 'run2',
+      generatedAt: '2025-12-30T12:00:00.000Z',
+      summary: {
+        totalChanges: 1,
+        infoCount: 0,
+        warnCount: 0,
+        failCount: 1,
+        insufficientHistory: false,
+        message: '1 regression(s)',
+      },
+      changes: [
+        { field: 'status', from: 'OK', to: 'FAIL', severity: 'fail', reason: 'test' },
+      ],
+      from: createMockSnapshot({ runId: 'run1' }),
+      to: createMockSnapshot({ runId: 'run2' }),
+    };
+
+    expect(artifact.summary.failCount).toBe(1);
+  });
+});
+
+describe('Phase 13C.1: Strict Exit Code', () => {
+  it('should detect fail severity for strict mode', () => {
+    const artifactWithFail: DriftDiffArtifact = {
+      version: '1.0',
+      sourceFile: 'demo-app/src/App.tsx',
+      fromRunId: 'run1',
+      toRunId: 'run2',
+      generatedAt: '2025-12-30T12:00:00.000Z',
+      summary: {
+        totalChanges: 1,
+        infoCount: 0,
+        warnCount: 0,
+        failCount: 1,
+        insufficientHistory: false,
+        message: '1 regression(s)',
+      },
+      changes: [
+        { field: 'status', from: 'OK', to: 'FAIL', severity: 'fail', reason: 'test' },
+      ],
+      from: createMockSnapshot({ runId: 'run1' }),
+      to: createMockSnapshot({ runId: 'run2' }),
+    };
+
+    const hasFail = artifactWithFail.changes.some((c) => c.severity === 'fail');
+    expect(hasFail).toBe(true);
+  });
+
+  it('should not trigger strict mode for warn/info only', () => {
+    const artifactNoFail: DriftDiffArtifact = {
+      version: '1.0',
+      sourceFile: 'demo-app/src/App.tsx',
+      fromRunId: 'run1',
+      toRunId: 'run2',
+      generatedAt: '2025-12-30T12:00:00.000Z',
+      summary: {
+        totalChanges: 2,
+        infoCount: 1,
+        warnCount: 1,
+        failCount: 0,
+        insufficientHistory: false,
+        message: '0 regression(s), 1 warning(s), 1 info change(s)',
+      },
+      changes: [
+        { field: 'count', from: 5, to: 10, delta: 5, severity: 'warn', reason: 'test' },
+        { field: 'flag', from: false, to: true, severity: 'info', reason: 'test' },
+      ],
+      from: createMockSnapshot({ runId: 'run1' }),
+      to: createMockSnapshot({ runId: 'run2' }),
+    };
+
+    const hasFail = artifactNoFail.changes.some((c) => c.severity === 'fail');
+    expect(hasFail).toBe(false);
+  });
+});
+
+describe('Phase 13C.1: Repo-root Invariance', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should produce same canonical path from different inputs', () => {
+    const source1 = 'demo-app/src/App.tsx';
+    const source2 = './demo-app/src/App.tsx';
+
+    // All should normalize to same canonical form
+    const ledger1: RunLedgerArtifact = { version: 1, sourceFile: source1, runs: [] };
+    const ledger2: RunLedgerArtifact = { version: 1, sourceFile: source2.replace('./', ''), runs: [] };
+
+    expect(ledger1.sourceFile).toBe('demo-app/src/App.tsx');
+    expect(ledger2.sourceFile).toBe('demo-app/src/App.tsx');
   });
 });

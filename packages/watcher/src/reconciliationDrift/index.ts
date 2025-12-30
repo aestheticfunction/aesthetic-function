@@ -16,6 +16,8 @@ export type {
   DriftCliOptions,
   LoadLedgerResult,
   SelectRunsResult,
+  RunSelectionExplanation,
+  RunSelectionMethod,
 } from './types.js';
 
 // Compute functions
@@ -36,6 +38,7 @@ export {
   writeDriftDiffArtifact,
   formatDriftDiff,
   formatDriftDiffVerbose,
+  sortChangesForPresentation,
 } from './artifact.js';
 
 // CLI
