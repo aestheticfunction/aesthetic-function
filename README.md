@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13A)
+## What Works Today (Phase 13B)
 
 | Feature | Status |
 |---------|--------|
@@ -265,6 +265,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Legacy artifact name support | ✅ |
 | CLI `figma:index` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Design Drift Timeline (Phase 13B)** | |
+| Append-only run ledger (.figma-run-ledger.json) | ✅ |
+| Deterministic run ID hashing (djb2) | ✅ |
+| Longitudinal run history per file | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| Feature flag gated (RECONCILIATION_TIMELINE_ON) | ✅ |
+| Automatic recording on command completion | ✅ |
+| CLI `figma:timeline` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -365,6 +374,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 12I** | Rollback Preview & Safety Envelope (Read-Only) | ✅ |
 | **Phase 12J** | Reconciliation Lifecycle Status Artifact | ✅ |
 | **Phase 13A** | Reconciliation Run Index (Read-Only, Deterministic) | ✅ |
+| **Phase 13B** | Design Drift Timeline (Append-Only Run Ledger) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3178,6 +3188,148 @@ All input paths (relative, `../`, absolute) normalize to the same canonical form
 - **Repo-root invariant**: Works identically from any working directory
 - **Single artifact**: One index file per source file
 - **Always exit 0**: Read-only indexing never fails CI
+
+---
+
+## Design Drift Timeline (Phase 13B)
+
+Phase 13B turns the one-shot index from Phase 13A into **longitudinal history**. Every reconciliation command run (apply, verify, resolve-apply, etc.) is recorded as an immutable entry in an append-only ledger.
+
+### Key Question
+
+**"What reconciliation runs have occurred for this file over time, and what was the artifact state at each run?"**
+
+This enables:
+- **Drift detection**: Tracking how design/code synchronization evolves
+- **Debugging**: Understanding what happened before a failure
+- **Audit trails**: Recording who/what/when for compliance
+
+### Feature Flag
+
+Recording is **off by default** and gated by:
+
+```bash
+RECONCILIATION_TIMELINE_ON=true
+```
+
+When enabled, runs are automatically recorded after successful completion of:
+- `figma:apply`
+- `figma:verify`
+- `figma:resolve-apply`
+- `figma:rollback-preview`
+- `figma:status`
+- `figma:index`
+
+### Run Ledger Artifact
+
+Pattern: `design-materializations/<file>.figma-run-ledger.json`
+
+```json
+{
+  "version": 1,
+  "sourceFile": "demo-app/src/App.tsx",
+  "runs": [
+    {
+      "runId": "abc12345",
+      "sourceFile": "demo-app/src/App.tsx",
+      "timestamp": "2025-12-30T10:00:00.000Z",
+      "cwd": "/repo",
+      "repoRoot": "/repo",
+      "command": "figma:status",
+      "artifacts": {
+        "conflicts": "design-materializations/demo-app__src__App.figma-conflicts.json"
+      },
+      "summary": {
+        "conflicts": 3,
+        "decisions": 2
+      }
+    },
+    {
+      "runId": "def67890",
+      "sourceFile": "demo-app/src/App.tsx",
+      "timestamp": "2025-12-30T11:00:00.000Z",
+      "cwd": "/repo/packages/watcher",
+      "repoRoot": "/repo",
+      "command": "figma:apply",
+      "mode": "artifact",
+      "artifacts": {},
+      "summary": {}
+    }
+  ]
+}
+```
+
+### Run ID Generation
+
+Run IDs are deterministic 8-character hex strings generated via djb2 hash:
+
+```
+runId = djb2(sourceFile + timestamp + command + sortedArtifactPaths)
+```
+
+This ensures:
+- Same inputs → same ID (deterministic)
+- Different inputs → different ID (unique per run)
+- Collision-resistant for practical purposes
+
+### CLI Usage
+
+```bash
+# View timeline for a file
+pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --json
+
+# Limit results
+pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --limit 5
+
+# Verbose mode (show artifact paths)
+pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --verbose
+
+# Write a test run entry (for testing only)
+RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --write
+```
+
+### Example Output
+
+```
+=== FIGMA RUN TIMELINE (Phase 13B) ===
+Repo Root: /path/to/repo
+Source: demo-app/src/App.tsx (canonical)
+
+Runs (newest first, showing 3 of 3):
+
+[def67890] 2025-12-30 11:00:00
+  Command: figma:apply
+  Mode: artifact
+  Summary: (none)
+
+[abc12345] 2025-12-30 10:00:00
+  Command: figma:status
+  Summary: 3 conflicts, 2 decisions
+
+[xyz99999] 2025-12-29 15:30:00
+  Command: figma:verify
+  Summary: 5 verified, 1 mismatch, 0 missing
+```
+
+### Relation to Phase 13A
+
+| Phase | Purpose | Type |
+|-------|---------|------|
+| 13A: Index | Current artifact snapshot | One-shot |
+| 13B: Timeline | Historical run ledger | Append-only |
+
+Phase 13B uses Phase 13A's artifact discovery to populate each run entry's artifacts and summary fields.
+
+### Guarantees
+
+- **Append-only**: Runs are only ever added, never modified or deleted
+- **Deterministic IDs**: Same run → same runId
+- **Repo-root invariant**: Works identically from any working directory
+- **Feature-flagged**: Recording requires explicit opt-in
+- **Read-only CLI**: Timeline CLI only reads; --write is for testing
 
 ---
 
