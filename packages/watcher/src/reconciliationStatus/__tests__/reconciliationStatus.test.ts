@@ -13,6 +13,8 @@
  * 7. Deterministic output ordering
  * 8. Exit codes (PASS/WARN → 0, FAIL → 1)
  * 9. Artifact formatting
+ * 10. Legacy artifact path fallback (Phase 12J.1)
+ * 11. Repo-root detection (Phase 12J.1)
  *
  * NO demo-app reads. Fixtures only.
  */
@@ -23,8 +25,10 @@ import {
   getStatusExitCode,
   shouldWriteStatusArtifact,
   getDefaultApplyArtifactPath,
+  getLegacyApplyArtifactPath,
   getDefaultVerificationArtifactPath,
   getDefaultRollbackPreviewArtifactPath,
+  getRepoRoot,
 } from '../compute.js';
 import {
   getStatusArtifactPath,
@@ -103,7 +107,8 @@ function createRollbackData(overrides: Partial<LoadedRollbackPreviewData> = {}):
 describe('artifact path generation', () => {
   it('generates correct default apply artifact path', () => {
     const path = getDefaultApplyArtifactPath('src/App.tsx');
-    expect(path).toBe('design-materializations/src__App.figma-resolve-apply.json');
+    // Phase 12J.1: Changed to .figma-resolution-apply.json to match actual pipeline artifacts
+    expect(path).toBe('design-materializations/src__App.figma-resolution-apply.json');
   });
 
   it('generates correct default verification artifact path', () => {
@@ -697,5 +702,46 @@ describe('edge cases', () => {
     const status = computeReconciliationStatus(artifacts, 'src/App.tsx');
 
     expect(status.phases.apply?.operationCount).toBe(0);
+  });
+});
+
+// =============================================================================
+// PHASE 12J.1: LEGACY PATH AND REPO-ROOT TESTS
+// =============================================================================
+
+describe('legacy artifact path backward compatibility', () => {
+  it('generates legacy apply artifact path', () => {
+    const path = getLegacyApplyArtifactPath('src/App.tsx');
+    expect(path).toBe('design-materializations/src__App.figma-resolve-apply.json');
+  });
+
+  it('current and legacy paths differ', () => {
+    const currentPath = getDefaultApplyArtifactPath('src/App.tsx');
+    const legacyPath = getLegacyApplyArtifactPath('src/App.tsx');
+    expect(currentPath).not.toBe(legacyPath);
+    expect(currentPath).toContain('figma-resolution-apply');
+    expect(legacyPath).toContain('figma-resolve-apply');
+  });
+});
+
+describe('repo-root detection', () => {
+  it('returns a valid directory path', () => {
+    const repoRoot = getRepoRoot();
+    expect(typeof repoRoot).toBe('string');
+    expect(repoRoot.length).toBeGreaterThan(0);
+  });
+
+  it('finds repo root from nested directory', () => {
+    // Start from a nested path within the repo
+    const repoRoot = getRepoRoot(process.cwd());
+    expect(repoRoot).toBeTruthy();
+    // Should not be empty or just "/"
+    expect(repoRoot.length).toBeGreaterThan(1);
+  });
+
+  it('returns consistent results for same starting point', () => {
+    const root1 = getRepoRoot(process.cwd());
+    const root2 = getRepoRoot(process.cwd());
+    expect(root1).toBe(root2);
   });
 });

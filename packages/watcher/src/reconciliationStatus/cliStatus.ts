@@ -10,19 +10,27 @@
  *   pnpm figma:status <source-file>
  *
  * OPTIONS:
- *   --repo-root <path>    Repository root (default: cwd)
+ *   --repo-root <path>    Repository root (default: auto-detect)
  *   --json                Output JSON format
  *   --write               Write status artifact (only if non-CLEAN)
+ *   --verbose             Show artifact discovery paths
  *
  * EXIT CODES:
  *   0 - PASS or WARN
  *   1 - FAIL
+ *
+ * Phase 12J.1: Fixed to use correct artifact names and auto-detect repo root.
  */
 
 import { resolve } from 'node:path';
 
 import type { ReconciliationStatusContext } from './types.js';
-import { loadArtifacts, computeReconciliationStatus, getStatusExitCode } from './compute.js';
+import {
+  loadArtifactsWithDiscovery,
+  computeReconciliationStatus,
+  getStatusExitCode,
+  getRepoRoot,
+} from './compute.js';
 import { writeReconciliationStatusArtifact, formatReconciliationStatus } from './artifact.js';
 
 interface CliOptions {
@@ -30,6 +38,7 @@ interface CliOptions {
   repoRoot: string;
   json: boolean;
   write: boolean;
+  verbose: boolean;
 }
 
 /**
@@ -38,9 +47,10 @@ interface CliOptions {
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     sourceFile: '',
-    repoRoot: process.cwd(),
+    repoRoot: '', // Empty means auto-detect
     json: false,
     write: false,
+    verbose: false,
   };
 
   for (let i = 0; i < args.length; i++) {
@@ -53,12 +63,46 @@ function parseArgs(args: string[]): CliOptions {
       options.json = true;
     } else if (arg === '--write') {
       options.write = true;
+    } else if (arg === '--verbose' || arg === '-v') {
+      options.verbose = true;
     } else if (!arg.startsWith('-')) {
       options.sourceFile = arg;
     }
   }
 
   return options;
+}
+
+/**
+ * Format discovery information for CLI output.
+ */
+function formatDiscovery(discovery: {
+  repoRoot: string;
+  applyCheckedPaths: string[];
+  verifyCheckedPaths: string[];
+  rollbackCheckedPaths: string[];
+}, artifacts: { apply: { found: boolean }; verify: { found: boolean }; rollbackPreview: { found: boolean } }): string {
+  const lines: string[] = [];
+  lines.push('Artifact Discovery:');
+  lines.push(`  Repo Root: ${discovery.repoRoot}`);
+  lines.push('');
+  lines.push('  Apply Artifact:');
+  for (const path of discovery.applyCheckedPaths) {
+    const found = artifacts.apply.found && discovery.applyCheckedPaths.indexOf(path) === discovery.applyCheckedPaths.length - 1 
+      ? artifacts.apply.found : false;
+    lines.push(`    ${found ? '✓' : '✗'} ${path}`);
+  }
+  lines.push('');
+  lines.push('  Verify Artifact:');
+  for (const path of discovery.verifyCheckedPaths) {
+    lines.push(`    ${artifacts.verify.found ? '✓' : '✗'} ${path}`);
+  }
+  lines.push('');
+  lines.push('  Rollback Preview Artifact:');
+  for (const path of discovery.rollbackCheckedPaths) {
+    lines.push(`    ${artifacts.rollbackPreview.found ? '✓' : '✗'} ${path}`);
+  }
+  return lines.join('\n');
 }
 
 /**
@@ -75,20 +119,30 @@ async function main(): Promise<void> {
     console.error('Usage: pnpm figma:status <source-file> [options]');
     console.error('');
     console.error('Options:');
-    console.error('  --repo-root <path>  Repository root (default: cwd)');
+    console.error('  --repo-root <path>  Repository root (default: auto-detect)');
     console.error('  --json              Output JSON format');
     console.error('  --write             Write status artifact');
+    console.error('  --verbose, -v       Show artifact discovery paths');
     process.exit(2);
   }
+
+  // Auto-detect repo root if not provided
+  const repoRoot = options.repoRoot || getRepoRoot();
 
   // Create context
   const context: ReconciliationStatusContext = {
     sourceFile: options.sourceFile,
-    repoRoot: options.repoRoot,
+    repoRoot,
   };
 
-  // Load artifacts
-  const artifacts = await loadArtifacts(context);
+  // Load artifacts with discovery information
+  const { artifacts, discovery } = await loadArtifactsWithDiscovery(context);
+
+  // Show discovery info if verbose
+  if (options.verbose && !options.json) {
+    console.log(formatDiscovery(discovery, artifacts));
+    console.log('');
+  }
 
   // Compute status
   const status = computeReconciliationStatus(artifacts, options.sourceFile);

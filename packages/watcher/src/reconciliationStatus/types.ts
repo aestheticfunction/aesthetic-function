@@ -238,9 +238,14 @@ export interface LoadedApplyData {
   found: boolean;
 
   /**
-   * Path to the artifact.
+   * Relative path to the artifact.
    */
   path?: string;
+
+  /**
+   * Absolute path to the artifact (for transparency).
+   */
+  fullPath?: string;
 
   /**
    * Apply mode used.
@@ -278,9 +283,14 @@ export interface LoadedVerifyData {
   found: boolean;
 
   /**
-   * Path to the artifact.
+   * Relative path to the artifact.
    */
   path?: string;
+
+  /**
+   * Absolute path to the artifact (for transparency).
+   */
+  fullPath?: string;
 
   /**
    * Total verified count.
@@ -313,9 +323,14 @@ export interface LoadedRollbackPreviewData {
   found: boolean;
 
   /**
-   * Path to the artifact.
+   * Relative path to the artifact.
    */
   path?: string;
+
+  /**
+   * Absolute path to the artifact (for transparency).
+   */
+  fullPath?: string;
 
   /**
    * Number of rollback actions.

@@ -45,13 +45,19 @@ export type {
 // Computation
 export {
   loadArtifacts,
+  loadArtifactsWithDiscovery,
   computeReconciliationStatus,
   getStatusExitCode,
   shouldWriteStatusArtifact,
   getDefaultApplyArtifactPath,
+  getLegacyApplyArtifactPath,
   getDefaultVerificationArtifactPath,
   getDefaultRollbackPreviewArtifactPath,
+  getRepoRoot,
 } from './compute.js';
+
+// Also re-export the discovery result type
+export type { ArtifactDiscoveryResult } from './compute.js';
 
 // Artifact
 export {

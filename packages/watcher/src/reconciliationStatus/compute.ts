@@ -15,10 +15,13 @@
  * - Read-only only (no mutations)
  * - No heuristics, no inference
  * - Rule-table only
+ *
+ * Phase 12J.1: Fixed artifact discovery to use correct names and repo-root.
  */
 
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import type { ResolutionApplyArtifact } from '../figmaResolveApply/types.js';
 import type { VerificationReport } from '../verification/types.js';
@@ -39,14 +42,83 @@ import type {
 } from './types.js';
 
 // =============================================================================
+// REPO ROOT DETECTION
+// =============================================================================
+
+/** High-priority markers that definitively indicate repository root */
+const REPO_ROOT_PRIMARY_MARKERS = ['pnpm-workspace.yaml', '.git'];
+
+/** Fallback marker (less reliable in monorepos) */
+const REPO_ROOT_FALLBACK_MARKER = 'package.json';
+
+/**
+ * Get the repository root directory.
+ *
+ * Looks for pnpm-workspace.yaml or .git directory first (primary markers).
+ * Falls back to package.json only if primary markers not found.
+ * This ensures correct behavior in monorepos where each package has package.json.
+ *
+ * @param startDir - Starting directory (defaults to process.cwd())
+ * @returns Absolute path to the repository root
+ */
+export function getRepoRoot(startDir: string = process.cwd()): string {
+  let currentDir = resolve(startDir);
+  const fsRoot = dirname(currentDir) === currentDir ? currentDir : '/';
+
+  // First pass: look for primary markers (pnpm-workspace.yaml or .git)
+  let checkDir = currentDir;
+  while (checkDir !== fsRoot) {
+    for (const marker of REPO_ROOT_PRIMARY_MARKERS) {
+      const markerPath = join(checkDir, marker);
+      if (existsSync(markerPath)) {
+        return checkDir;
+      }
+    }
+    checkDir = dirname(checkDir);
+  }
+
+  // Second pass: fallback to package.json if no primary marker found
+  checkDir = currentDir;
+  while (checkDir !== fsRoot) {
+    const markerPath = join(checkDir, REPO_ROOT_FALLBACK_MARKER);
+    if (existsSync(markerPath)) {
+      return checkDir;
+    }
+    checkDir = dirname(checkDir);
+  }
+
+  // Final fallback to process.cwd()
+  return process.cwd();
+}
+
+// =============================================================================
 // ARTIFACT PATH HELPERS
 // =============================================================================
 
 /**
+ * Normalize source file path for artifact naming.
+ * Converts: demo-app/src/App.tsx → demo-app__src__App
+ */
+function normalizeSourceFile(sourceFile: string): string {
+  return sourceFile.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');
+}
+
+/**
  * Get the default apply artifact path for a source file.
+ *
+ * Supports both legacy (.figma-resolve-apply.json) and current (.figma-resolution-apply.json).
+ * Returns the current artifact name; use tryLoadApplyArtifact for fallback.
  */
 export function getDefaultApplyArtifactPath(sourceFile: string): string {
-  const normalized = sourceFile.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');
+  const normalized = normalizeSourceFile(sourceFile);
+  return `design-materializations/${normalized}.figma-resolution-apply.json`;
+}
+
+/**
+ * Get the legacy apply artifact path for backward compatibility.
+ */
+export function getLegacyApplyArtifactPath(sourceFile: string): string {
+  const normalized = normalizeSourceFile(sourceFile);
   return `design-materializations/${normalized}.figma-resolve-apply.json`;
 }
 
@@ -71,9 +143,9 @@ export function getDefaultRollbackPreviewArtifactPath(sourceFile: string): strin
 // =============================================================================
 
 /**
- * Load apply artifact data.
+ * Try loading an artifact from a path, returning the data or not-found.
  */
-async function loadApplyArtifact(
+async function tryLoadApplyArtifact(
   artifactPath: string,
   repoRoot: string
 ): Promise<LoadedApplyData> {
@@ -88,6 +160,7 @@ async function loadApplyArtifact(
     return {
       found: true,
       path: artifactPath,
+      fullPath,
       mode: artifact.mode,
       dryRun: artifact.dryRun,
       operationCount: artifact.results?.length ?? 0,
@@ -95,32 +168,70 @@ async function loadApplyArtifact(
       failedCount,
     };
   } catch {
-    return { found: false };
+    return { found: false, path: artifactPath, fullPath: join(repoRoot, artifactPath) };
   }
+}
+
+/**
+ * Load apply artifact data, trying current then legacy paths.
+ */
+async function loadApplyArtifact(
+  sourceFile: string,
+  repoRoot: string,
+  customPath?: string
+): Promise<LoadedApplyData & { checkedPaths: string[] }> {
+  const checkedPaths: string[] = [];
+
+  // If custom path provided, only try that
+  if (customPath) {
+    checkedPaths.push(join(repoRoot, customPath));
+    const result = await tryLoadApplyArtifact(customPath, repoRoot);
+    return { ...result, checkedPaths };
+  }
+
+  // Try current path first
+  const currentPath = getDefaultApplyArtifactPath(sourceFile);
+  checkedPaths.push(join(repoRoot, currentPath));
+  const currentResult = await tryLoadApplyArtifact(currentPath, repoRoot);
+  if (currentResult.found) {
+    return { ...currentResult, checkedPaths };
+  }
+
+  // Try legacy path for backward compatibility
+  const legacyPath = getLegacyApplyArtifactPath(sourceFile);
+  checkedPaths.push(join(repoRoot, legacyPath));
+  const legacyResult = await tryLoadApplyArtifact(legacyPath, repoRoot);
+  return { ...legacyResult, checkedPaths };
 }
 
 /**
  * Load verification artifact data.
  */
 async function loadVerificationArtifact(
-  artifactPath: string,
-  repoRoot: string
-): Promise<LoadedVerifyData> {
+  sourceFile: string,
+  repoRoot: string,
+  customPath?: string
+): Promise<LoadedVerifyData & { checkedPaths: string[] }> {
+  const artifactPath = customPath ?? getDefaultVerificationArtifactPath(sourceFile);
+  const fullPath = join(repoRoot, artifactPath);
+  const checkedPaths = [fullPath];
+
   try {
-    const fullPath = join(repoRoot, artifactPath);
     const content = await readFile(fullPath, 'utf-8');
     const artifact = JSON.parse(content) as VerificationReport;
 
     return {
       found: true,
       path: artifactPath,
+      fullPath,
       verifiedCount: artifact.summary?.verified ?? 0,
       mismatchCount: artifact.summary?.mismatch ?? 0,
       missingCount: artifact.summary?.missing ?? 0,
       skippedCount: artifact.summary?.skipped ?? 0,
+      checkedPaths,
     };
   } catch {
-    return { found: false };
+    return { found: false, path: artifactPath, fullPath, checkedPaths };
   }
 }
 
@@ -128,41 +239,79 @@ async function loadVerificationArtifact(
  * Load rollback preview artifact data.
  */
 async function loadRollbackPreviewArtifact(
-  artifactPath: string,
-  repoRoot: string
-): Promise<LoadedRollbackPreviewData> {
+  sourceFile: string,
+  repoRoot: string,
+  customPath?: string
+): Promise<LoadedRollbackPreviewData & { checkedPaths: string[] }> {
+  const artifactPath = customPath ?? getDefaultRollbackPreviewArtifactPath(sourceFile);
+  const fullPath = join(repoRoot, artifactPath);
+  const checkedPaths = [fullPath];
+
   try {
-    const fullPath = join(repoRoot, artifactPath);
     const content = await readFile(fullPath, 'utf-8');
     const artifact = JSON.parse(content) as RollbackPreview;
 
     return {
       found: true,
       path: artifactPath,
+      fullPath,
       actionCount: artifact.actions?.length ?? 0,
+      checkedPaths,
     };
   } catch {
-    return { found: false };
+    return { found: false, path: artifactPath, fullPath, checkedPaths };
   }
 }
 
 /**
- * Load all artifacts for a source file.
+ * Artifact discovery result with checked paths for logging.
+ */
+export interface ArtifactDiscoveryResult {
+  artifacts: LoadedArtifacts;
+  discovery: {
+    repoRoot: string;
+    applyCheckedPaths: string[];
+    verifyCheckedPaths: string[];
+    rollbackCheckedPaths: string[];
+  };
+}
+
+/**
+ * Load all artifacts for a source file with discovery logging.
  */
 export async function loadArtifacts(
   context: ReconciliationStatusContext
 ): Promise<LoadedArtifacts> {
-  const applyPath = context.applyArtifactPath ?? getDefaultApplyArtifactPath(context.sourceFile);
-  const verifyPath = context.verificationArtifactPath ?? getDefaultVerificationArtifactPath(context.sourceFile);
-  const rollbackPath = context.rollbackPreviewArtifactPath ?? getDefaultRollbackPreviewArtifactPath(context.sourceFile);
+  const result = await loadArtifactsWithDiscovery(context);
+  return result.artifacts;
+}
 
-  const [apply, verify, rollbackPreview] = await Promise.all([
-    loadApplyArtifact(applyPath, context.repoRoot),
-    loadVerificationArtifact(verifyPath, context.repoRoot),
-    loadRollbackPreviewArtifact(rollbackPath, context.repoRoot),
+/**
+ * Load all artifacts with full discovery information for CLI transparency.
+ */
+export async function loadArtifactsWithDiscovery(
+  context: ReconciliationStatusContext
+): Promise<ArtifactDiscoveryResult> {
+  const [applyResult, verifyResult, rollbackResult] = await Promise.all([
+    loadApplyArtifact(context.sourceFile, context.repoRoot, context.applyArtifactPath),
+    loadVerificationArtifact(context.sourceFile, context.repoRoot, context.verificationArtifactPath),
+    loadRollbackPreviewArtifact(context.sourceFile, context.repoRoot, context.rollbackPreviewArtifactPath),
   ]);
 
-  return { apply, verify, rollbackPreview };
+  // Extract just the artifact data (without checkedPaths) for the LoadedArtifacts result
+  const { checkedPaths: applyCheckedPaths, ...apply } = applyResult;
+  const { checkedPaths: verifyCheckedPaths, ...verify } = verifyResult;
+  const { checkedPaths: rollbackCheckedPaths, ...rollbackPreview } = rollbackResult;
+
+  return {
+    artifacts: { apply, verify, rollbackPreview },
+    discovery: {
+      repoRoot: context.repoRoot,
+      applyCheckedPaths,
+      verifyCheckedPaths,
+      rollbackCheckedPaths,
+    },
+  };
 }
 
 // =============================================================================
