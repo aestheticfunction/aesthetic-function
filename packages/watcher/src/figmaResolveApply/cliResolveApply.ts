@@ -3,6 +3,7 @@
  * @aesthetic-function/watcher - figmaResolveApply/cliResolveApply.ts
  *
  * CLI tool for applying resolution plans (Phase 12F).
+ * Includes post-apply verification integration (Phase 12H).
  *
  * Usage:
  *   pnpm --filter @aesthetic-function/watcher figma:resolve-apply <file> [options]
@@ -13,13 +14,18 @@
  *   --component <key>  Filter by component key
  *   --state <state>    Filter by state (base, hover, etc.)
  *
- * Environment Variables:
+ * Environment Variables (Apply):
  *   FIGMA_RESOLVE_APPLY_ON=true          Master switch
  *   FIGMA_RESOLVE_APPLY_MODE=apply       Apply mode (default: artifact)
  *   FIGMA_RESOLVE_APPLY_DRY_RUN=false    Disable dry-run
  *   FIGMA_RESOLVE_APPLY_ALLOW=ast,marker,override  Allowed targets
  *   FIGMA_RESOLVE_APPLY_MIN_CONFIDENCE=high        Min confidence
  *   FIGMA_RESOLVE_PLAN_PATH=<path>       Custom plan path
+ *
+ * Environment Variables (Post-Apply Verification - Phase 12H):
+ *   POST_APPLY_VERIFY=true               Enable auto-verification after apply
+ *   POST_APPLY_VERIFY_INCLUDE_FIGMA=true Include Figma read checks
+ *   POST_APPLY_VERIFY_STRICT=true        Exit 1 on mismatch/missing (default: true)
  *
  * For AST writes, also set:
  *   AST_WRITE_MODE=write
@@ -34,6 +40,9 @@ import {
   formatResolveApplyConfig,
   getResolvePreconditionStatus,
   isResolveApplyModeEnabled,
+  loadPostApplyVerifyConfig,
+  shouldRunPostApplyVerification,
+  formatPostApplyVerifyConfig,
 } from './config.js';
 import {
   loadResolutionPlan,
@@ -45,6 +54,13 @@ import {
   writeResolveApplyArtifact,
   appendResolveApplyToAuditLog,
 } from './artifact.js';
+import {
+  runPostApplyVerification,
+  createSkippedVerificationResult,
+  formatPostApplyVerifyResult,
+  getExpectedVerificationPath,
+} from './postApplyVerify.js';
+import type { PostApplyVerifyResult, ResolutionApplyArtifact } from './types.js';
 
 // =============================================================================
 // PATH RESOLUTION
@@ -262,7 +278,7 @@ async function main(): Promise<void> {
 
   // Build and write artifact
   printSection('Writing Artifact');
-  const artifact = buildResolveApplyArtifact(
+  let artifact: ResolutionApplyArtifact = buildResolveApplyArtifact(
     relativePath,
     loadResult.loadedFrom,
     config.mode,
@@ -271,6 +287,16 @@ async function main(): Promise<void> {
     results
   );
 
+  // Pre-calculate verification path if verification will run
+  const verifyConfig = loadPostApplyVerifyConfig();
+  const shouldVerify = shouldRunPostApplyVerification(config, verifyConfig);
+  if (shouldVerify.shouldRun) {
+    artifact = {
+      ...artifact,
+      verificationArtifactPath: getExpectedVerificationPath(relativePath),
+    };
+  }
+
   const artifactPath = await writeResolveApplyArtifact(artifact, repoRoot);
   console.log(`  ✓ Written to: ${artifactPath}`);
 
@@ -278,6 +304,36 @@ async function main(): Promise<void> {
   if (isResolveApplyModeEnabled(config)) {
     await appendResolveApplyToAuditLog(artifact, repoRoot);
     console.log('  ✓ Appended to sync-log.md');
+  }
+
+  // ==========================================================================
+  // POST-APPLY VERIFICATION (Phase 12H)
+  // ==========================================================================
+  let verificationResult: PostApplyVerifyResult;
+
+  if (shouldVerify.shouldRun) {
+    printSection('Post-Apply Verification (Phase 12H)');
+    console.log(formatPostApplyVerifyConfig(verifyConfig));
+
+    try {
+      verificationResult = await runPostApplyVerification(artifact, verifyConfig, {
+        repoRoot,
+        applyArtifactPath: artifactPath,
+        plan: loadResult.plan,
+      });
+
+      console.log(formatPostApplyVerifyResult(verificationResult));
+    } catch (error) {
+      console.error('  ✗ Verification failed:', error);
+      verificationResult = createSkippedVerificationResult(
+        `Verification error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    }
+  } else {
+    verificationResult = createSkippedVerificationResult(shouldVerify.skipReason ?? 'Unknown');
+    printSection('Post-Apply Verification (Phase 12H)');
+    console.log(`  Status: SKIPPED`);
+    console.log(`  Reason: ${shouldVerify.skipReason}`);
   }
 
   // Final status
@@ -290,8 +346,23 @@ async function main(): Promise<void> {
     console.log(`      pnpm --filter @aesthetic-function/watcher figma:resolve-apply ${relativePath} --apply`);
   } else {
     console.log(`  Applied: ${summary.applied} | No-op: ${summary.noop} | Failed: ${summary.failed}`);
+
+    // Phase 12H: Show verification status if verification ran
+    if (verificationResult.ran) {
+      const verifyStatus = verificationResult.passed ? '✓ PASSED' : '✗ FAILED';
+      console.log(`  Verification: ${verifyStatus}`);
+      if (verificationResult.verificationArtifactPath) {
+        console.log(`  Verification artifact: ${verificationResult.verificationArtifactPath}`);
+      }
+    }
   }
   console.log();
+
+  // Phase 12H: Exit with verification code in apply mode
+  if (verificationResult.exitCode !== 0) {
+    console.log(`  Exiting with code ${verificationResult.exitCode} (verification ${verificationResult.passed ? 'passed' : 'failed'})`);
+    process.exit(verificationResult.exitCode);
+  }
 }
 
 main().catch((err) => {

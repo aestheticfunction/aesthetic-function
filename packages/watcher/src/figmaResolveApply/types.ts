@@ -334,6 +334,12 @@ export interface ResolutionApplyArtifact {
    * Per-decision results.
    */
   results: ResolutionApplyResultItem[];
+
+  /**
+   * Verification artifact path (if post-apply verification ran).
+   * Phase 12H: Links apply to verification for audit trail.
+   */
+  verificationArtifactPath?: string;
 }
 
 // =============================================================================
@@ -363,4 +369,83 @@ export interface LoadedResolutionPlan {
    * Error message if loading failed.
    */
   error?: string;
+}
+
+// =============================================================================
+// POST-APPLY VERIFICATION (Phase 12H)
+// =============================================================================
+
+/**
+ * Configuration for post-apply verification.
+ *
+ * WHY: Controls automatic verification after apply operations.
+ *
+ * RULES:
+ * - Verification only runs if:
+ *   - Apply mode is active (MODE=apply)
+ *   - Apply is not dry-run
+ *   - POST_APPLY_VERIFY=true
+ * - No implicit verification — must be explicitly enabled
+ */
+export interface PostApplyVerifyConfig {
+  /**
+   * Whether post-apply verification is enabled.
+   * Must be explicitly set to true.
+   */
+  enabled: boolean;
+
+  /**
+   * Whether to include Figma read-only verification.
+   * Requires server/plugin connectivity.
+   */
+  includeFigma: boolean;
+
+  /**
+   * Whether to use strict mode (exit 1 on mismatch/missing).
+   * Default: true
+   */
+  strict: boolean;
+}
+
+/**
+ * Result of post-apply verification.
+ */
+export interface PostApplyVerifyResult {
+  /**
+   * Whether verification ran.
+   */
+  ran: boolean;
+
+  /**
+   * Reason verification was skipped (if ran=false).
+   */
+  skipReason?: string;
+
+  /**
+   * Verification passed (no mismatches/missing).
+   */
+  passed?: boolean;
+
+  /**
+   * Verification summary counts.
+   */
+  summary?: {
+    verified: number;
+    mismatch: number;
+    missing: number;
+    skipped: number;
+    blocked: number;
+  };
+
+  /**
+   * Path to verification artifact (if written).
+   */
+  verificationArtifactPath?: string;
+
+  /**
+   * Exit code based on verification results.
+   * - 0: Verification passed or disabled
+   * - 1: Verification failed in strict mode
+   */
+  exitCode: number;
 }

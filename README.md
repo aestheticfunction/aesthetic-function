@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12G)
+## What Works Today (Phase 12H)
 
 | Feature | Status |
 |---------|--------|
@@ -231,6 +231,13 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Verification artifact generation (.figma-verification.json) | ✅ |
 | CI-safe exit codes (0 = pass, 1 = fail) | ✅ |
 | CLI `figma:verify` command | ✅ |
+| **Post-Apply Auto-Verification + CI Gate (Phase 12H)** | |
+| Automatic verification after apply operations | ✅ |
+| POST_APPLY_VERIFY environment variable control | ✅ |
+| Strict mode CI gating (exit 1 on mismatch/missing) | ✅ |
+| Non-strict mode for advisory-only verification | ✅ |
+| Bidirectional artifact linking (apply ↔ verify) | ✅ |
+| Seamless CLI integration (`figma:resolve-apply`) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -2554,6 +2561,166 @@ pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || e
     }
   }
 }
+```
+
+---
+
+## Post-Apply Auto-Verification + CI Gate (Phase 12H)
+
+Phase 12H introduces an orchestration layer that automatically runs verification after apply operations when explicitly enabled. This creates a seamless apply → verify → exit-code pipeline for CI integration.
+
+### Key Principles
+
+- **Orchestration + Policy only** - No new mutation capabilities beyond Phase 12F
+- **Opt-in via environment variable** - Nothing changes unless explicitly enabled
+- **CI-safe** - Clear exit semantics for CI gates
+- **Artifact linking** - Bidirectional linking between apply and verification artifacts
+
+### Environment Variables
+
+| Variable | Default | Values | Description |
+|----------|---------|--------|-------------|
+| `POST_APPLY_VERIFY` | `false` | `true`/`false` | Enable automatic verification after apply |
+| `POST_APPLY_VERIFY_INCLUDE_FIGMA` | `false` | `true`/`false` | Include Figma verification (read-only) |
+| `POST_APPLY_VERIFY_STRICT` | `true` | `true`/`false` | Exit 1 on mismatch/missing (CI gate) |
+
+### When Verification Runs
+
+Verification only runs when **all** conditions are met:
+
+1. `POST_APPLY_VERIFY=true`
+2. `FIGMA_RESOLVE_APPLY_MODE=apply` (not artifact-only)
+3. `FIGMA_RESOLVE_APPLY_DRY_RUN=false` (actual mutations occurred)
+
+If any condition is not met, verification is skipped with exit code 0.
+
+### Exit Codes
+
+| Scenario | Exit Code | Description |
+|----------|-----------|-------------|
+| Verification passed | 0 | All items verified or skipped |
+| Verification not enabled | 0 | POST_APPLY_VERIFY=false |
+| Artifact-only mode | 0 | Mode is 'artifact', no verification |
+| Dry-run mode | 0 | DRY_RUN=true, no verification |
+| Strict mode + mismatch | 1 | Found mismatches with strict=true |
+| Strict mode + missing | 1 | Found missing targets with strict=true |
+| Non-strict mode + failure | 0 | Advisory only, no CI failure |
+
+### CLI Usage
+
+Post-apply verification integrates seamlessly with `figma:resolve-apply`:
+
+```bash
+# Apply without verification (default)
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# Apply WITH automatic verification (CI mode)
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+POST_APPLY_VERIFY=true \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# Apply with verification but don't fail CI on mismatches (advisory)
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+POST_APPLY_VERIFY=true \
+POST_APPLY_VERIFY_STRICT=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# Include Figma verification (requires server)
+POST_APPLY_VERIFY=true \
+POST_APPLY_VERIFY_INCLUDE_FIGMA=true \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+```
+
+### Artifact Linking
+
+When post-apply verification runs, artifacts are linked:
+
+**Apply Artifact** includes verification path:
+```json
+{
+  "version": "1.0",
+  "source": "figma-resolution-apply",
+  "verificationArtifactPath": "design-materializations/src__App.figma-verification.json",
+  ...
+}
+```
+
+**Verification Artifact** includes apply path:
+```json
+{
+  "version": "1.0",
+  "source": "figma-verification",
+  "applyArtifactPath": "design-materializations/src__App.figma-resolve-apply.json",
+  ...
+}
+```
+
+### CI Integration Example
+
+```yaml
+# GitHub Actions example
+jobs:
+  sync-design:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply resolution plan with verification
+        run: |
+          FIGMA_RESOLVE_APPLY_ON=true \
+          FIGMA_RESOLVE_APPLY_MODE=apply \
+          FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+          POST_APPLY_VERIFY=true \
+          POST_APPLY_VERIFY_STRICT=true \
+            pnpm --filter @aesthetic-function/watcher figma:resolve-apply src/App.tsx --apply
+        # CI will fail if verification finds mismatches
+
+      - name: Upload verification artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-report
+          path: design-materializations/*.figma-verification.json
+```
+
+### CLI Output
+
+When verification runs:
+
+```
+--- Post-Apply Verification (Phase 12H) ---
+  enabled:      YES
+  includeFigma: NO
+  strict:       YES (exit 1 on mismatch)
+
+POST-APPLY VERIFICATION
+=======================
+  Status: PASSED ✓
+
+  ✓ Verified: 5
+  ⚠ Mismatch: 0
+  ✗ Missing:  0
+  ⏭ Skipped:  1
+  ⊘ Blocked:  0
+
+  Artifact: design-materializations/src__App.figma-verification.json
+
+  Exit Code: 0
+```
+
+When verification is skipped:
+
+```
+--- Post-Apply Verification (Phase 12H) ---
+  Status: SKIPPED
+  Reason: POST_APPLY_VERIFY is not enabled
 ```
 
 ---

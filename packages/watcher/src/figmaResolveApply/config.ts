@@ -25,6 +25,7 @@ import type {
   ResolutionApplyConfig,
   ResolutionApplyMode,
   ResolutionApplyAllowTarget,
+  PostApplyVerifyConfig,
 } from './types.js';
 import type { DeltaConfidence } from '../figmaDelta/types.js';
 
@@ -205,6 +206,85 @@ export function formatResolveApplyConfig(config: ResolutionApplyConfig): string 
   if (config.planPath) {
     lines.push(`  planPath:      ${config.planPath}`);
   }
+
+  return lines.join('\n');
+}
+
+// =============================================================================
+// POST-APPLY VERIFICATION CONFIG (Phase 12H)
+// =============================================================================
+
+/**
+ * Default post-apply verification configuration.
+ * Disabled by default; strict mode defaults to true.
+ */
+export const DEFAULT_POST_APPLY_VERIFY_CONFIG: PostApplyVerifyConfig = {
+  enabled: false,
+  includeFigma: false,
+  strict: true,
+};
+
+/**
+ * Load post-apply verification configuration from environment variables.
+ *
+ * Environment Variables:
+ * - POST_APPLY_VERIFY: Enable/disable verification (default: false)
+ * - POST_APPLY_VERIFY_INCLUDE_FIGMA: Include Figma read checks (default: false)
+ * - POST_APPLY_VERIFY_STRICT: Exit 1 on mismatch/missing (default: true)
+ *
+ * @returns Post-apply verification configuration
+ */
+export function loadPostApplyVerifyConfig(): PostApplyVerifyConfig {
+  return {
+    enabled: parseBoolean(process.env.POST_APPLY_VERIFY, false),
+    includeFigma: parseBoolean(process.env.POST_APPLY_VERIFY_INCLUDE_FIGMA, false),
+    strict: parseBoolean(process.env.POST_APPLY_VERIFY_STRICT, true),
+  };
+}
+
+/**
+ * Check if post-apply verification should run.
+ *
+ * Verification only runs when:
+ * - POST_APPLY_VERIFY=true
+ * - Apply mode is enabled (not artifact-only)
+ * - Dry-run is disabled (actual mutations occurred)
+ *
+ * @param applyConfig - Resolution apply configuration
+ * @param verifyConfig - Post-apply verification configuration
+ * @returns Whether verification should run and reason if not
+ */
+export function shouldRunPostApplyVerification(
+  applyConfig: ResolutionApplyConfig,
+  verifyConfig: PostApplyVerifyConfig
+): { shouldRun: boolean; skipReason?: string } {
+  if (!verifyConfig.enabled) {
+    return { shouldRun: false, skipReason: 'POST_APPLY_VERIFY is not enabled' };
+  }
+
+  if (applyConfig.mode !== 'apply') {
+    return {
+      shouldRun: false,
+      skipReason: `Mode is '${applyConfig.mode}', verification only runs in 'apply' mode`,
+    };
+  }
+
+  if (applyConfig.dryRun) {
+    return { shouldRun: false, skipReason: 'Dry-run mode is enabled, no mutations to verify' };
+  }
+
+  return { shouldRun: true };
+}
+
+/**
+ * Format post-apply verify config for CLI display.
+ */
+export function formatPostApplyVerifyConfig(config: PostApplyVerifyConfig): string {
+  const lines = [
+    `  enabled:      ${config.enabled ? 'YES' : 'NO'}`,
+    `  includeFigma: ${config.includeFigma ? 'YES' : 'NO'}`,
+    `  strict:       ${config.strict ? 'YES (exit 1 on mismatch)' : 'NO (always exit 0)'}`,
+  ];
 
   return lines.join('\n');
 }
