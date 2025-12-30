@@ -54,6 +54,7 @@ export {
   getDefaultVerificationArtifactPath,
   getDefaultRollbackPreviewArtifactPath,
   getRepoRoot,
+  normalizeSourcePath,
 } from './compute.js';
 
 // Also re-export the discovery result type

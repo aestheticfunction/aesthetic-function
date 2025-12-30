@@ -21,7 +21,7 @@
 
 import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 
 import type { ResolutionApplyArtifact } from '../figmaResolveApply/types.js';
 import type { VerificationReport } from '../verification/types.js';
@@ -89,6 +89,46 @@ export function getRepoRoot(startDir: string = process.cwd()): string {
 
   // Final fallback to process.cwd()
   return process.cwd();
+}
+
+/**
+ * Normalize a source file path to be repo-relative (canonical).
+ *
+ * Handles:
+ * - Relative paths with ../ (e.g., ../../demo-app/src/App.tsx)
+ * - Paths with ./ (e.g., ./demo-app/src/App.tsx)
+ * - Absolute paths (e.g., /Users/.../demo-app/src/App.tsx)
+ * - Simple relative paths (e.g., demo-app/src/App.tsx)
+ *
+ * @param inputPath - Raw input path from CLI or caller
+ * @param repoRoot - Repository root path
+ * @returns Repo-relative canonical path (e.g., 'demo-app/src/App.tsx')
+ */
+export function normalizeSourcePath(
+  inputPath: string,
+  repoRoot: string
+): string {
+  // If already absolute, make it relative to repo root
+  if (inputPath.startsWith('/')) {
+    if (inputPath.startsWith(repoRoot + '/') || inputPath === repoRoot) {
+      const repoRelative = relative(repoRoot, inputPath);
+      return repoRelative.replace(/\\/g, '/').replace(/^\.\//, '');
+    }
+    return inputPath.replace(/\\/g, '/');
+  }
+
+  // If path has parent references (../), resolve against cwd first
+  if (inputPath.startsWith('../') || inputPath.startsWith('./')) {
+    const absolutePath = resolve(process.cwd(), inputPath);
+    if (absolutePath.startsWith(repoRoot + '/')) {
+      return relative(repoRoot, absolutePath).replace(/\\/g, '/');
+    }
+    // Fallback: strip parent refs for safety
+    return inputPath.replace(/^(\.\.\/)+/, '').replace(/^\.\//, '').replace(/\\/g, '/');
+  }
+
+  // Simple relative path - already canonical
+  return inputPath.replace(/\\/g, '/');
 }
 
 // =============================================================================
@@ -270,6 +310,8 @@ export interface ArtifactDiscoveryResult {
   artifacts: LoadedArtifacts;
   discovery: {
     repoRoot: string;
+    /** The canonical repo-relative source file path after normalization */
+    normalizedSourceFile: string;
     applyCheckedPaths: string[];
     verifyCheckedPaths: string[];
     rollbackCheckedPaths: string[];
@@ -292,10 +334,14 @@ export async function loadArtifacts(
 export async function loadArtifactsWithDiscovery(
   context: ReconciliationStatusContext
 ): Promise<ArtifactDiscoveryResult> {
+  // Phase 12J.2: Normalize source file path to canonical repo-relative form
+  // This ensures ../../demo-app/src/App.tsx → demo-app/src/App.tsx
+  const normalizedSourceFile = normalizeSourcePath(context.sourceFile, context.repoRoot);
+
   const [applyResult, verifyResult, rollbackResult] = await Promise.all([
-    loadApplyArtifact(context.sourceFile, context.repoRoot, context.applyArtifactPath),
-    loadVerificationArtifact(context.sourceFile, context.repoRoot, context.verificationArtifactPath),
-    loadRollbackPreviewArtifact(context.sourceFile, context.repoRoot, context.rollbackPreviewArtifactPath),
+    loadApplyArtifact(normalizedSourceFile, context.repoRoot, context.applyArtifactPath),
+    loadVerificationArtifact(normalizedSourceFile, context.repoRoot, context.verificationArtifactPath),
+    loadRollbackPreviewArtifact(normalizedSourceFile, context.repoRoot, context.rollbackPreviewArtifactPath),
   ]);
 
   // Extract just the artifact data (without checkedPaths) for the LoadedArtifacts result
@@ -307,6 +353,7 @@ export async function loadArtifactsWithDiscovery(
     artifacts: { apply, verify, rollbackPreview },
     discovery: {
       repoRoot: context.repoRoot,
+      normalizedSourceFile,
       applyCheckedPaths,
       verifyCheckedPaths,
       rollbackCheckedPaths,

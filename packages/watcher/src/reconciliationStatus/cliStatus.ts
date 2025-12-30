@@ -78,6 +78,7 @@ function parseArgs(args: string[]): CliOptions {
  */
 function formatDiscovery(discovery: {
   repoRoot: string;
+  normalizedSourceFile: string;
   applyCheckedPaths: string[];
   verifyCheckedPaths: string[];
   rollbackCheckedPaths: string[];
@@ -85,6 +86,7 @@ function formatDiscovery(discovery: {
   const lines: string[] = [];
   lines.push('Artifact Discovery:');
   lines.push(`  Repo Root: ${discovery.repoRoot}`);
+  lines.push(`  Source File (canonical): ${discovery.normalizedSourceFile}`);
   lines.push('');
   lines.push('  Apply Artifact:');
   for (const path of discovery.applyCheckedPaths) {

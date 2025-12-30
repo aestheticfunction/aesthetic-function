@@ -20,6 +20,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { join } from 'node:path';
 import {
   computeReconciliationStatus,
   getStatusExitCode,
@@ -29,6 +30,7 @@ import {
   getDefaultVerificationArtifactPath,
   getDefaultRollbackPreviewArtifactPath,
   getRepoRoot,
+  normalizeSourcePath,
 } from '../compute.js';
 import {
   getStatusArtifactPath,
@@ -743,5 +745,75 @@ describe('repo-root detection', () => {
     const root1 = getRepoRoot(process.cwd());
     const root2 = getRepoRoot(process.cwd());
     expect(root1).toBe(root2);
+  });
+});
+
+// =============================================================================
+// PHASE 12J.2: SOURCE PATH NORMALIZATION TESTS
+// =============================================================================
+
+describe('source path normalization (Phase 12J.2)', () => {
+  // Use a mock repo root for testing
+  const mockRepoRoot = '/Users/test/aesthetic-function';
+
+  it('normalizes simple relative path (no change needed)', () => {
+    const result = normalizeSourcePath('demo-app/src/App.tsx', mockRepoRoot);
+    expect(result).toBe('demo-app/src/App.tsx');
+  });
+
+  it('normalizes path with leading ./', () => {
+    const result = normalizeSourcePath('./demo-app/src/App.tsx', mockRepoRoot);
+    expect(result).toBe('demo-app/src/App.tsx');
+  });
+
+  it('strips parent directory references when path is outside repo', () => {
+    // When the resolved path would be outside repo, strip parent refs
+    const result = normalizeSourcePath('../../demo-app/src/App.tsx', '/some/other/path');
+    expect(result).toBe('demo-app/src/App.tsx');
+  });
+
+  it('normalizes absolute path within repo root', () => {
+    const absolutePath = join(mockRepoRoot, 'demo-app/src/App.tsx');
+    const result = normalizeSourcePath(absolutePath, mockRepoRoot);
+    expect(result).toBe('demo-app/src/App.tsx');
+  });
+
+  it('converts backslashes to forward slashes', () => {
+    const result = normalizeSourcePath('demo-app\\src\\App.tsx', mockRepoRoot);
+    expect(result).toBe('demo-app/src/App.tsx');
+  });
+
+  it('produces same artifact path from different input forms', () => {
+    // All these should produce the same artifact path
+    const simple = 'demo-app/src/App.tsx';
+    const withDotSlash = './demo-app/src/App.tsx';
+    const absolute = join(mockRepoRoot, 'demo-app/src/App.tsx');
+
+    const normalizedSimple = normalizeSourcePath(simple, mockRepoRoot);
+    const normalizedDotSlash = normalizeSourcePath(withDotSlash, mockRepoRoot);
+    const normalizedAbsolute = normalizeSourcePath(absolute, mockRepoRoot);
+
+    expect(normalizedSimple).toBe('demo-app/src/App.tsx');
+    expect(normalizedDotSlash).toBe('demo-app/src/App.tsx');
+    expect(normalizedAbsolute).toBe('demo-app/src/App.tsx');
+
+    // All should produce the same artifact path
+    const artifactPath1 = getDefaultApplyArtifactPath(normalizedSimple);
+    const artifactPath2 = getDefaultApplyArtifactPath(normalizedDotSlash);
+    const artifactPath3 = getDefaultApplyArtifactPath(normalizedAbsolute);
+
+    expect(artifactPath1).toBe(artifactPath2);
+    expect(artifactPath2).toBe(artifactPath3);
+    expect(artifactPath1).toBe('design-materializations/demo-app__src__App.figma-resolution-apply.json');
+  });
+
+  it('produces canonical artifact path (no ..__ segments)', () => {
+    // Even if input has parent refs, the artifact path should be canonical
+    const input = '../../demo-app/src/App.tsx';
+    const normalized = normalizeSourcePath(input, '/some/other/path');
+    const artifactPath = getDefaultApplyArtifactPath(normalized);
+
+    expect(artifactPath).not.toContain('..__');
+    expect(artifactPath).toBe('design-materializations/demo-app__src__App.figma-resolution-apply.json');
   });
 });
