@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13D)
+## What Works Today (Phase 13E)
 
 | Feature | Status |
 |---------|--------|
@@ -294,6 +294,18 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Repo-root invariant (works from any working directory) | ✅ |
 | CLI `figma:dashboard` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Project Drift Dashboard (Phase 13E)** | |
+| Directory-level drift aggregation (.figma-project-dashboard.json) | ✅ |
+| File discovery with configurable patterns (**/*.tsx) | ✅ |
+| Exclusion of node_modules, dist, build, .next, .turbo, .git, coverage | ✅ |
+| Per-file dashboard status (OK, NO_DATA, ERROR) | ✅ |
+| Project stability score (average of files with data) | ✅ |
+| Project verdict (FAIL if any file FAIL, else WARN if any file WARN, else PASS) | ✅ |
+| Top signals across project (sorted by severity → magnitude → file → key) | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| CI strict mode (--strict, exit 1 on FAIL) | ✅ |
+| CLI `figma:project-dashboard` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -397,6 +409,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 13B** | Design Drift Timeline (Append-Only Run Ledger) | ✅ |
 | **Phase 13C** | Drift Diffs (Run-to-Run Comparison) | ✅ |
 | **Phase 13D** | Drift Summary Dashboard (Aggregated + CI-friendly) | ✅ |
+| **Phase 13E** | Project Drift Dashboard (Multi-File Aggregation) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3676,6 +3689,203 @@ CI Verdict:
 - **Repo-root invariant**: Works identically from any working directory
 - **CI-friendly**: Configurable exit codes for build gates
 - **Feature-flagged**: `RECONCILIATION_DASHBOARD_ON` (default: true)
+
+---
+
+## Project Drift Dashboard (Phase 13E)
+
+Phase 13E adds directory-level aggregation of Phase 13D dashboards. It scans a directory for source files, computes or loads dashboards for each file, and produces a project-level summary with an overall verdict, stability score, and top drift signals across all files.
+
+### Artifact
+
+```
+design-materializations/<scanRoot>.figma-project-dashboard.json
+```
+
+Example path: `design-materializations/demo-app__src.figma-project-dashboard.json`
+
+### Structure
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2025-12-30T12:00:00.000Z",
+  "repoRoot": "/path/to/repo",
+  "scanRoot": "demo-app/src",
+  "filePattern": "**/*.tsx",
+  "counts": {
+    "totalFiles": 10,
+    "filesWithData": 8,
+    "filesNoData": 2,
+    "filesWithErrors": 0,
+    "byVerdict": { "PASS": 5, "WARN": 2, "FAIL": 1 },
+    "bySeverity": { "fail": 3, "warn": 5, "info": 12 }
+  },
+  "stabilityScore": {
+    "value": 72,
+    "filesIncluded": 8,
+    "filesExcluded": 2
+  },
+  "topSignals": [
+    {
+      "key": "conflicts.total",
+      "label": "Conflicts",
+      "delta": 2,
+      "from": 0,
+      "to": 2,
+      "severity": "warn",
+      "magnitude": 2,
+      "sourceFile": "demo-app/src/Card.tsx"
+    }
+  ],
+  "files": [
+    {
+      "sourceFile": "demo-app/src/App.tsx",
+      "status": "OK",
+      "verdict": "PASS",
+      "stabilityScore": 84,
+      "runsConsidered": 5,
+      "severityCounts": { "fail": 0, "warn": 1, "info": 3 }
+    }
+  ],
+  "projectVerdict": "FAIL",
+  "exitCode": 0,
+  "explanation": "1 file with FAIL verdict"
+}
+```
+
+### File Discovery
+
+The scanner searches for `**/*.tsx` files in the scan root, excluding:
+
+- `node_modules/`
+- `dist/`
+- `build/`
+- `.next/`
+- `.turbo/`
+- `.git/`
+- `coverage/`
+
+Files are processed in lexicographically sorted order for determinism.
+
+### Per-File Dashboard Loading
+
+For each discovered file, the project dashboard:
+
+1. Attempts to load an existing Phase 13D dashboard artifact
+2. If no artifact exists, attempts to compute a dashboard in-memory (requires run ledger)
+3. If no data is available, records the file as `NO_DATA`
+4. On any error, records the file as `ERROR` with the error message
+
+### Project Verdict
+
+The project verdict is the worst verdict across all files:
+
+| Condition | Project Verdict |
+|-----------|-----------------|
+| Any file has FAIL verdict | FAIL |
+| No FAIL but any file has WARN verdict | WARN |
+| All files are PASS or NO_DATA | PASS |
+
+### Project Stability Score
+
+The project stability score is the average of file stability scores, excluding files with NO_DATA or ERROR status:
+
+```
+projectScore = sum(file.stabilityScore) / filesWithData
+```
+
+### Top Signals
+
+Project-level signals are merged from all file dashboards and sorted deterministically:
+
+1. Severity (fail → warn → info)
+2. Magnitude (descending absolute delta)
+3. File path (ascending lexicographic)
+4. Signal key (ascending lexicographic)
+
+### CLI Usage
+
+```bash
+# Basic usage (scan demo-app/src)
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --json
+
+# Limit top signals
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --limit 10
+
+# Write artifact to disk
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --write
+
+# CI strict mode (exit 1 on FAIL)
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --strict
+
+# Custom repo root
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --repo-root /path/to/repo
+
+# Verbose mode (show all files)
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --verbose
+```
+
+### Example Output
+
+```
+=== FIGMA PROJECT DASHBOARD (Phase 13E) ===
+Repo Root: /path/to/repo
+Scan Root: demo-app/src (canonical)
+File Pattern: **/*.tsx
+Generated: 2025-12-30T12:00:00.000Z
+
+File Counts:
+  Total: 10
+  With data: 8
+  No data: 2
+  Errors: 0
+
+By Verdict:
+  PASS: 5
+  WARN: 2
+  FAIL: 1
+
+Severity Counts (all files):
+  Fail: 3
+  Warn: 5
+  Info: 12
+
+Project Stability Score:
+  ███████░░░ 72/100 (8 files)
+
+Top Signals (3):
+  [FAIL] Card.tsx: Conflicts: +2 (0 → 2)
+  [WARN] App.tsx: Status worsened: CLEAN → APPLIED_UNVERIFIED
+  [INFO] Button.tsx: Verify mismatches: +1 (0 → 1)
+
+Project Verdict:
+  ✗ FAIL
+  1 file with FAIL verdict
+  Exit code: 0
+```
+
+### Exit Code
+
+- **exit 0**: Default behavior (even for WARN or FAIL verdicts)
+- **exit 1**: Only when `--strict` flag or `PROJECT_DASHBOARD_CI_STRICT=true` AND verdict is FAIL
+
+### Relation to Other Phases
+
+| Phase | Scope | Purpose |
+|-------|-------|---------|
+| 13D: Dashboard | Per-file | Aggregated drift summary for one file |
+| 13E: Project Dashboard | Directory | Aggregated summary across many files |
+
+### Guarantees
+
+- **Deterministic**: Same files → same output (sorted, stable)
+- **Read-only**: Never modifies any source files or artifacts
+- **Repo-root invariant**: Works identically from any working directory
+- **CI-friendly**: Configurable exit codes for build gates
 
 ---
 
