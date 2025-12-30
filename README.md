@@ -3322,7 +3322,7 @@ This ensures:
 ### CLI Usage
 
 ```bash
-# View timeline for a file
+# View timeline for a file (read-only mode)
 pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx
 
 # JSON output
@@ -3334,8 +3334,32 @@ pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --
 # Verbose mode (show artifact paths)
 pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --verbose
 
-# Write a test run entry (for testing only)
-RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --write
+# Explicitly record a run to the ledger (requires feature flag)
+RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --record
+
+# Force write ledger artifact (for testing only)
+pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --write
+```
+
+### Recording Runs (Phase 13B.1)
+
+**Recording is explicit and opt-in.** No command automatically records runs to the ledger.
+
+To record a run, BOTH conditions must be met:
+1. The `--record` flag is present
+2. The `RECONCILIATION_TIMELINE_ON=true` environment variable is set
+
+```bash
+# This will record a run:
+RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demo-app/src/App.tsx --record
+
+# This will NOT record (no feature flag):
+pnpm figma:timeline demo-app/src/App.tsx --record
+# Output: ⚠️  Recording disabled: RECONCILIATION_TIMELINE_ON is not set to "true"
+
+# This will NOT record (no --record flag):
+RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demo-app/src/App.tsx
+# Output: ℹ️ Read-only mode (use --record to append a run)
 ```
 
 ### Example Output
@@ -3375,8 +3399,9 @@ Phase 13B uses Phase 13A's artifact discovery to populate each run entry's artif
 - **Append-only**: Runs are only ever added, never modified or deleted
 - **Deterministic IDs**: Same run → same runId
 - **Repo-root invariant**: Works identically from any working directory
-- **Feature-flagged**: Recording requires explicit opt-in
-- **Read-only CLI**: Timeline CLI only reads; --write is for testing
+- **Explicit recording**: Recording ONLY when `--record` flag + `RECONCILIATION_TIMELINE_ON=true`
+- **No implicit side effects**: Other commands never record runs; user must explicitly opt-in
+- **Read-only default**: Timeline CLI reads ledger unless `--record` is specified
 
 ---
 

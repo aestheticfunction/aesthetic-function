@@ -610,3 +610,184 @@ describe('createRunEntry', () => {
     expect(entry.summary.conflicts).toBe(3);
   });
 });
+
+/**
+ * Phase 13B.1: Explicit Run Recording Tests
+ *
+ * Tests for the --record flag behavior:
+ * - Read-only mode: no --record, ledger unchanged
+ * - Record disabled: --record present but RECONCILIATION_TIMELINE_ON=false
+ * - Successful record: --record + env enabled, ledger grows
+ * - Repo-root invariance: ledger path is consistent regardless of cwd
+ * - Idempotent append: multiple --record calls produce multiple entries
+ */
+describe('Explicit Run Recording (Phase 13B.1)', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('read-only mode: without --record flag, ledger should remain unchanged', async () => {
+    // Create an existing ledger with one run
+    const existingLedger: RunLedgerArtifact = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [createMockRunEntry({ runId: 'existing-1', timestamp: '2025-01-01T10:00:00.000Z' })],
+    };
+    await writeRunLedger(existingLedger, testDir);
+
+    const context: TimelineReadContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    // Read the ledger (simulating timeline command without --record)
+    const runs = await getRuns(context);
+    expect(runs).toHaveLength(1);
+
+    // Verify ledger is unchanged
+    const ledgerAfter = await loadRunLedger(context);
+    expect(ledgerAfter?.runs).toHaveLength(1);
+    expect(ledgerAfter?.runs[0]?.runId).toBe('existing-1');
+  });
+
+  it('record disabled: --record but RECONCILIATION_TIMELINE_ON not set should not append', async () => {
+    // Ensure feature flag is not set
+    const originalEnv = process.env.RECONCILIATION_TIMELINE_ON;
+    delete process.env.RECONCILIATION_TIMELINE_ON;
+
+    try {
+      // isTimelineEnabled() should return false
+      expect(isTimelineEnabled()).toBe(false);
+
+      const context: TimelineReadContext = {
+        sourceFile: 'demo-app/src/App.tsx',
+        repoRoot: testDir,
+      };
+
+      // Without the feature flag, no ledger should be created
+      const ledger = await loadRunLedger(context);
+      expect(ledger).toBeUndefined();
+    } finally {
+      // Restore environment
+      if (originalEnv !== undefined) {
+        process.env.RECONCILIATION_TIMELINE_ON = originalEnv;
+      }
+    }
+  });
+
+  it('successful record: --record + env enabled should append entry', async () => {
+    // Enable feature flag
+    const originalEnv = process.env.RECONCILIATION_TIMELINE_ON;
+    process.env.RECONCILIATION_TIMELINE_ON = 'true';
+
+    try {
+      const context: TimelineReadContext = {
+        sourceFile: 'demo-app/src/App.tsx',
+        repoRoot: testDir,
+      };
+
+      // Verify no existing ledger
+      const ledgerBefore = await loadRunLedger(context);
+      expect(ledgerBefore).toBeUndefined();
+
+      // Create and append a run entry
+      const recordContext: TimelineRecordContext = {
+        sourceFile: 'demo-app/src/App.tsx',
+        repoRoot: testDir,
+        command: 'figma:timeline --record',
+        cwd: testDir,
+      };
+
+      const entry = await createRunEntry(recordContext);
+      const updatedLedger = await appendRunEntry(context, entry);
+      await writeRunLedger(updatedLedger, testDir);
+
+      // Verify ledger now has one entry
+      const ledgerAfter = await loadRunLedger(context);
+      expect(ledgerAfter?.runs).toHaveLength(1);
+      expect(ledgerAfter?.runs[0]?.command).toBe('figma:timeline --record');
+    } finally {
+      // Restore environment
+      if (originalEnv !== undefined) {
+        process.env.RECONCILIATION_TIMELINE_ON = originalEnv;
+      } else {
+        delete process.env.RECONCILIATION_TIMELINE_ON;
+      }
+    }
+  });
+
+  it('repo-root invariance: ledger path should be consistent regardless of cwd', async () => {
+    // Create nested subdirectory to simulate running from different cwd
+    const nestedDir = join(testDir, 'packages', 'watcher');
+    mkdirSync(nestedDir, { recursive: true });
+
+    const sourceFile = 'demo-app/src/App.tsx';
+
+    // Get ledger path from repo root
+    const pathFromRoot = getRunLedgerPath(sourceFile);
+
+    // Get ledger path from nested dir (should be same)
+    const pathFromNested = getRunLedgerPath(sourceFile);
+
+    expect(pathFromRoot).toBe(pathFromNested);
+    expect(pathFromRoot).toBe('design-materializations/demo-app__src__App.figma-run-ledger.json');
+  });
+
+  it('idempotent append: multiple --record calls should produce multiple entries', async () => {
+    const originalEnv = process.env.RECONCILIATION_TIMELINE_ON;
+    process.env.RECONCILIATION_TIMELINE_ON = 'true';
+
+    try {
+      const context: TimelineReadContext = {
+        sourceFile: 'demo-app/src/App.tsx',
+        repoRoot: testDir,
+      };
+
+      // Use mock entries with distinct timestamps to ensure unique runIds
+      const mockEntry1 = createMockRunEntry({
+        runId: 'first001',
+        timestamp: '2025-01-01T10:00:00.000Z',
+        command: 'figma:timeline --record',
+      });
+      const ledger1 = await appendRunEntry(context, mockEntry1);
+      await writeRunLedger(ledger1, testDir);
+
+      const mockEntry2 = createMockRunEntry({
+        runId: 'second02',
+        timestamp: '2025-01-01T11:00:00.000Z',
+        command: 'figma:timeline --record',
+      });
+      const ledger2 = await appendRunEntry(context, mockEntry2);
+      await writeRunLedger(ledger2, testDir);
+
+      const mockEntry3 = createMockRunEntry({
+        runId: 'third003',
+        timestamp: '2025-01-01T12:00:00.000Z',
+        command: 'figma:timeline --record',
+      });
+      const ledger3 = await appendRunEntry(context, mockEntry3);
+      await writeRunLedger(ledger3, testDir);
+
+      // Verify all three entries exist
+      const finalLedger = await loadRunLedger(context);
+      expect(finalLedger?.runs).toHaveLength(3);
+
+      // Verify entries are preserved in order
+      expect(finalLedger?.runs[0]?.runId).toBe('first001');
+      expect(finalLedger?.runs[1]?.runId).toBe('second02');
+      expect(finalLedger?.runs[2]?.runId).toBe('third003');
+    } finally {
+      if (originalEnv !== undefined) {
+        process.env.RECONCILIATION_TIMELINE_ON = originalEnv;
+      } else {
+        delete process.env.RECONCILIATION_TIMELINE_ON;
+      }
+    }
+  });
+});

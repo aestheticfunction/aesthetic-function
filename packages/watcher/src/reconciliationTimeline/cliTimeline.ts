@@ -5,7 +5,7 @@
  * Phase 13B: CLI for Design Drift Timeline.
  *
  * WHY: Single command to view the time-ordered reconciliation history
- * for a source file.
+ * for a source file, with explicit opt-in run recording.
  *
  * USAGE:
  *   pnpm figma:timeline <source-file>
@@ -15,7 +15,13 @@
  *   --json                Output JSON format
  *   --limit <n>           Maximum runs to show (default: 10)
  *   --write               Force write ledger artifact even if empty
+ *   --record              Explicitly append a new run to the ledger
  *   --verbose             Show discovery paths
+ *
+ * RECORDING:
+ *   Runs are recorded ONLY when both:
+ *   - --record flag is present
+ *   - RECONCILIATION_TIMELINE_ON=true
  *
  * EXIT CODES:
  *   0 - Always (diagnostic only)
@@ -25,13 +31,16 @@
 import { resolve } from 'node:path';
 import { join } from 'node:path';
 
-import type { TimelineReadContext } from './types.js';
+import type { TimelineReadContext, TimelineRecordContext } from './types.js';
 import {
   getRepoRoot,
   normalizeSourcePath,
   getRecentRuns,
   loadRunLedger,
   getRunLedgerPath,
+  createRunEntry,
+  appendRunEntry,
+  isTimelineEnabled,
 } from './compute.js';
 import { writeRunLedger, formatTimeline, formatTimelineVerbose } from './artifact.js';
 
@@ -41,6 +50,7 @@ interface CliOptions {
   json: boolean;
   limit: number;
   write: boolean;
+  record: boolean;
   verbose: boolean;
 }
 
@@ -54,6 +64,7 @@ function parseArgs(args: string[]): CliOptions {
     json: false,
     limit: 10,
     write: false,
+    record: false,
     verbose: false,
   };
 
@@ -70,6 +81,8 @@ function parseArgs(args: string[]): CliOptions {
       i++;
     } else if (arg === '--write') {
       options.write = true;
+    } else if (arg === '--record') {
+      options.record = true;
     } else if (arg === '--verbose' || arg === '-v') {
       options.verbose = true;
     } else if (!arg.startsWith('-')) {
@@ -98,7 +111,13 @@ async function main(): Promise<void> {
     console.error('  --json              Output JSON format');
     console.error('  --limit <n>         Maximum runs to show (default: 10)');
     console.error('  --write             Force write ledger artifact');
+    console.error('  --record            Explicitly append a new run to the ledger');
     console.error('  --verbose, -v       Show discovery paths');
+    console.error('');
+    console.error('Recording:');
+    console.error('  Runs are recorded ONLY when both:');
+    console.error('  - --record flag is present');
+    console.error('  - RECONCILIATION_TIMELINE_ON=true');
     process.exit(2);
   }
 
@@ -112,12 +131,42 @@ async function main(): Promise<void> {
     repoRoot,
   };
 
-  // Load ledger and get runs
+  // Handle --record flag: explicit run recording
+  let recordedRunId: string | undefined;
+  if (options.record) {
+    if (!isTimelineEnabled()) {
+      // Feature flag is off - warn and skip recording
+      if (!options.json) {
+        console.warn('⚠️  Recording disabled: RECONCILIATION_TIMELINE_ON is not set to "true"');
+        console.warn('');
+      }
+    } else {
+      // Create and append a new run entry
+      const recordContext: TimelineRecordContext = {
+        sourceFile: normalizedSource,
+        repoRoot,
+        command: 'figma:timeline --record',
+        cwd: process.cwd(),
+      };
+
+      const entry = await createRunEntry(recordContext);
+      const updatedLedger = await appendRunEntry(context, entry);
+      await writeRunLedger(updatedLedger, repoRoot);
+      recordedRunId = entry.runId;
+
+      if (!options.json) {
+        console.log(`✓ Run recorded (runId: ${entry.runId})`);
+        console.log('');
+      }
+    }
+  }
+
+  // Load ledger and get runs (after potential recording)
   const ledger = await loadRunLedger(context);
   const runs = await getRecentRuns(context, options.limit);
   const ledgerPath = ledger ? join(repoRoot, getRunLedgerPath(normalizedSource)) : undefined;
 
-  // Write artifact if requested
+  // Write artifact if requested (separate from --record)
   if (options.write) {
     const ledgerToWrite = ledger ?? {
       version: 1 as const,
@@ -139,13 +188,14 @@ async function main(): Promise<void> {
       totalRuns: ledger?.runs.length ?? 0,
       displayedRuns: runs.length,
       limit: options.limit,
+      recordedRunId,
       runs,
     };
     console.log(JSON.stringify(output, null, 2));
   } else if (options.verbose) {
-    console.log(formatTimelineVerbose(runs, normalizedSource, repoRoot, ledgerPath, options.limit));
+    console.log(formatTimelineVerbose(runs, normalizedSource, repoRoot, ledgerPath, options.limit, !options.record));
   } else {
-    console.log(formatTimeline(runs, normalizedSource, repoRoot, options.limit));
+    console.log(formatTimeline(runs, normalizedSource, repoRoot, options.limit, !options.record));
   }
 
   // Always exit 0 (diagnostic only)

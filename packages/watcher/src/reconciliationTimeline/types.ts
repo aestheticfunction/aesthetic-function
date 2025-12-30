@@ -236,4 +236,15 @@ export interface TimelineCliOptions {
    * Force write ledger artifact even if empty.
    */
   write: boolean;
+
+  /**
+   * Explicitly record a new run to the ledger.
+   * Requires RECONCILIATION_TIMELINE_ON=true.
+   */
+  record: boolean;
+
+  /**
+   * Show verbose output with discovery paths.
+   */
+  verbose: boolean;
 }

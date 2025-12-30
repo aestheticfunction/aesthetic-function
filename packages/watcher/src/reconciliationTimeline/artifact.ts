@@ -121,12 +121,19 @@ function formatRunEntry(entry: RunEntry, index: number): string {
 
 /**
  * Format timeline for human-readable CLI output.
+ *
+ * @param runs - Run entries to display (newest first)
+ * @param sourceFile - Canonical source file path
+ * @param repoRoot - Repository root path
+ * @param limit - Max runs to display
+ * @param showReadOnlyMessage - Whether to show the "read-only mode" message when no runs
  */
 export function formatTimeline(
   runs: RunEntry[],
   sourceFile: string,
   repoRoot: string,
-  limit: number
+  limit: number,
+  showReadOnlyMessage: boolean = true
 ): string {
   const lines: string[] = [];
 
@@ -139,10 +146,13 @@ export function formatTimeline(
   if (runs.length === 0) {
     lines.push('No runs recorded yet.');
     lines.push('');
-    lines.push('Runs are recorded when RECONCILIATION_TIMELINE_ON=true');
-    lines.push('and any of these commands complete:');
-    lines.push('  figma:apply, figma:verify, figma:resolve-apply,');
-    lines.push('  figma:rollback-preview, figma:status, figma:index');
+    if (showReadOnlyMessage) {
+      lines.push('ℹ️  Read-only mode (use --record to append a run)');
+      lines.push('');
+      lines.push('Runs are recorded only when:');
+      lines.push('  • RECONCILIATION_TIMELINE_ON=true');
+      lines.push('  • figma:timeline is invoked with --record');
+    }
   } else {
     const displayed = runs.slice(0, limit);
     const total = runs.length;
@@ -174,7 +184,8 @@ export function formatTimelineVerbose(
   sourceFile: string,
   repoRoot: string,
   ledgerPath: string | undefined,
-  limit: number
+  limit: number,
+  showReadOnlyMessage: boolean = true
 ): string {
   const lines: string[] = [];
 
@@ -187,7 +198,7 @@ export function formatTimelineVerbose(
   lines.push('');
 
   // Then regular timeline
-  lines.push(formatTimeline(runs, sourceFile, repoRoot, limit));
+  lines.push(formatTimeline(runs, sourceFile, repoRoot, limit, showReadOnlyMessage));
 
   return lines.join('\n');
 }
