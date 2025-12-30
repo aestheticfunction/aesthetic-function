@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationProjectDashboard/__tests__/reconciliationProjectDashboard.test.ts
  *
  * Phase 13E: Project Dashboard Aggregation Tests.
+ * Phase 13E.1: Thresholds & CI UX Hardening Tests.
  *
  * Tests fixture-based, no demo-app dependency.
  */
@@ -22,10 +23,16 @@ import {
   formatProjectDashboard,
   getProjectDashboardArtifactPath,
 } from '../artifact.js';
+import {
+  resolveThresholds,
+  formatThresholds,
+  determineVerdict,
+} from '../config.js';
 import type {
   ProjectDashboardArtifact,
   ProjectDashboardContext,
 } from '../types.js';
+import { DEFAULT_PROJECT_THRESHOLDS, getVerdictMessage } from '../types.js';
 import type { RunLedgerArtifact, RunEntry } from '../../reconciliationTimeline/types.js';
 import { DEFAULT_THRESHOLDS } from '../../reconciliationDashboard/config.js';
 
@@ -102,6 +109,25 @@ function writeLedger(testDir: string, sourceFile: string, entries: RunEntry[]): 
     runs: entries,
   };
   writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+}
+
+/**
+ * Create a test context with default settings.
+ */
+function createTestContext(
+  testDir: string,
+  scanRoot: string,
+  overrides: Partial<ProjectDashboardContext> = {}
+): ProjectDashboardContext {
+  return {
+    scanRoot,
+    repoRoot: testDir,
+    limit: 10,
+    thresholds: DEFAULT_THRESHOLDS,
+    strict: false,
+    projectThresholds: DEFAULT_PROJECT_THRESHOLDS,
+    ...overrides,
+  };
 }
 
 // =============================================================================
@@ -256,13 +282,7 @@ describe('computeProjectDashboard', () => {
   it('should return error when no .tsx files found', async () => {
     mkdirSync(join(testDir, 'empty'), { recursive: true });
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'empty',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'empty');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(false);
@@ -275,13 +295,7 @@ describe('computeProjectDashboard', () => {
     createMockTsxFile(testDir, 'src/App.tsx');
     createMockTsxFile(testDir, 'src/Button.tsx');
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -304,13 +318,7 @@ describe('computeProjectDashboard', () => {
     });
     writeLedger(testDir, 'src/App.tsx', [entry1]);
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -333,13 +341,7 @@ describe('computeProjectDashboard', () => {
       createMockRunEntry({ runId: 'run1', sourceFile: 'src/Bad.tsx' }),
     ]);
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -354,13 +356,7 @@ describe('computeProjectDashboard', () => {
     createMockTsxFile(testDir, 'src/Apple.tsx');
     createMockTsxFile(testDir, 'src/Mango.tsx');
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result1 = await computeProjectDashboard(context);
     const result2 = await computeProjectDashboard(context);
@@ -381,13 +377,7 @@ describe('computeProjectDashboard', () => {
   it('should set exit code 0 when not strict mode', async () => {
     createMockTsxFile(testDir, 'src/App.tsx');
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -415,13 +405,7 @@ describe('project stability score', () => {
   it('should be 100 when no files have data', async () => {
     createMockTsxFile(testDir, 'src/App.tsx');
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -444,13 +428,7 @@ describe('project stability score', () => {
       createMockRunEntry({ runId: 'run1', sourceFile: 'src/Button.tsx' }),
     ]);
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result = await computeProjectDashboard(context);
     expect(result.ok).toBe(true);
@@ -624,21 +602,9 @@ describe('repo-root invariance', () => {
       createMockTsxFile(testDir1, 'src/App.tsx');
       createMockTsxFile(testDir2, 'src/App.tsx');
 
-      const context1: ProjectDashboardContext = {
-        scanRoot: 'src',
-        repoRoot: testDir1,
-        limit: 10,
-        thresholds: DEFAULT_THRESHOLDS,
-        strict: false,
-      };
+      const context1 = createTestContext(testDir1, 'src');
 
-      const context2: ProjectDashboardContext = {
-        scanRoot: './src',
-        repoRoot: testDir2,
-        limit: 10,
-        thresholds: DEFAULT_THRESHOLDS,
-        strict: false,
-      };
+      const context2 = createTestContext(testDir2, './src');
 
       const result1 = await computeProjectDashboard(context1);
       const result2 = await computeProjectDashboard(context2);
@@ -681,13 +647,7 @@ describe('project signal sorting', () => {
     createMockTsxFile(testDir, 'src/App.tsx');
     createMockTsxFile(testDir, 'src/Button.tsx');
 
-    const context: ProjectDashboardContext = {
-      scanRoot: 'src',
-      repoRoot: testDir,
-      limit: 10,
-      thresholds: DEFAULT_THRESHOLDS,
-      strict: false,
-    };
+    const context = createTestContext(testDir, 'src');
 
     const result1 = await computeProjectDashboard(context);
     const result2 = await computeProjectDashboard(context);
@@ -698,5 +658,245 @@ describe('project signal sorting', () => {
     if (result1.ok && result2.ok) {
       expect(result1.artifact.topSignals).toEqual(result2.artifact.topSignals);
     }
+  });
+});
+// =============================================================================
+// PHASE 13E.1: THRESHOLD TESTS
+// =============================================================================
+
+describe('Phase 13E.1: Threshold Configuration', () => {
+  describe('resolveThresholds', () => {
+    it('should use defaults when no overrides provided', () => {
+      const result = resolveThresholds();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.thresholds.failScore).toBe(60);
+        expect(result.thresholds.warnScore).toBe(80);
+        expect(result.thresholds.maxSignals).toBe(10);
+      }
+    });
+
+    it('should accept valid CLI overrides', () => {
+      const result = resolveThresholds(50, 75, 20);
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.thresholds.failScore).toBe(50);
+        expect(result.thresholds.warnScore).toBe(75);
+        expect(result.thresholds.maxSignals).toBe(20);
+      }
+    });
+
+    it('should reject invalid threshold ordering (failScore >= warnScore)', () => {
+      const result = resolveThresholds(80, 60);
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('failScore');
+        expect(result.error).toContain('warnScore');
+      }
+    });
+
+    it('should reject equal thresholds', () => {
+      const result = resolveThresholds(70, 70);
+      expect(result.ok).toBe(false);
+    });
+
+    it('should reject out of range failScore', () => {
+      const result1 = resolveThresholds(-1, 80);
+      expect(result1.ok).toBe(false);
+
+      const result2 = resolveThresholds(101, 102);
+      expect(result2.ok).toBe(false);
+    });
+
+    it('should reject out of range warnScore', () => {
+      const result = resolveThresholds(60, 101);
+      expect(result.ok).toBe(false);
+    });
+
+    it('should reject non-positive maxSignals', () => {
+      const result = resolveThresholds(60, 80, 0);
+      expect(result.ok).toBe(false);
+    });
+  });
+
+  describe('determineVerdict', () => {
+    it('should return PASS when score >= warnScore', () => {
+      const result = determineVerdict(80, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('PASS');
+    });
+
+    it('should return PASS when score > warnScore', () => {
+      const result = determineVerdict(95, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('PASS');
+    });
+
+    it('should return WARN when failScore <= score < warnScore', () => {
+      const result = determineVerdict(70, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('WARN');
+    });
+
+    it('should return WARN at exact failScore boundary', () => {
+      const result = determineVerdict(60, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('WARN');
+    });
+
+    it('should return FAIL when score < failScore', () => {
+      const result = determineVerdict(59, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('FAIL');
+    });
+
+    it('should return FAIL for very low scores', () => {
+      const result = determineVerdict(0, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.verdict).toBe('FAIL');
+    });
+
+    it('should include score in explanation', () => {
+      const result = determineVerdict(45, DEFAULT_PROJECT_THRESHOLDS);
+      expect(result.explanation).toContain('45');
+    });
+  });
+
+  describe('formatThresholds', () => {
+    it('should format default thresholds correctly', () => {
+      const formatted = formatThresholds(DEFAULT_PROJECT_THRESHOLDS);
+      expect(formatted).toContain('PASS ≥ 80');
+      expect(formatted).toContain('WARN ≥ 60');
+      expect(formatted).toContain('FAIL < 60');
+      expect(formatted).toContain('Max signals shown: 10');
+    });
+
+    it('should format custom thresholds correctly', () => {
+      const custom = { failScore: 50, warnScore: 75, maxSignals: 15 };
+      const formatted = formatThresholds(custom);
+      expect(formatted).toContain('PASS ≥ 75');
+      expect(formatted).toContain('WARN ≥ 50');
+      expect(formatted).toContain('FAIL < 50');
+      expect(formatted).toContain('Max signals shown: 15');
+    });
+  });
+
+  describe('getVerdictMessage', () => {
+    it('should return correct message for PASS', () => {
+      const msg = getVerdictMessage('PASS');
+      expect(msg.verdict).toBe('PASS');
+      expect(msg.emoji).toBe('✓');
+      expect(msg.action).toContain('No action required');
+    });
+
+    it('should return correct message for WARN', () => {
+      const msg = getVerdictMessage('WARN');
+      expect(msg.verdict).toBe('WARN');
+      expect(msg.emoji).toBe('⚠');
+      expect(msg.action).toContain('monitor');
+    });
+
+    it('should return correct message for FAIL', () => {
+      const msg = getVerdictMessage('FAIL');
+      expect(msg.verdict).toBe('FAIL');
+      expect(msg.emoji).toBe('✗');
+      expect(msg.action).toContain('action required');
+    });
+  });
+});
+
+describe('Phase 13E.1: Threshold-Based Verdict', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should include thresholds in artifact', async () => {
+    createMockTsxFile(testDir, 'src/App.tsx');
+
+    const context = createTestContext(testDir, 'src');
+    const result = await computeProjectDashboard(context);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.artifact.thresholds).toBeDefined();
+      expect(result.artifact.thresholds?.failScore).toBe(60);
+      expect(result.artifact.thresholds?.warnScore).toBe(80);
+      expect(result.artifact.thresholds?.maxSignals).toBe(10);
+    }
+  });
+
+  it('should use custom thresholds in verdict', async () => {
+    createMockTsxFile(testDir, 'src/App.tsx');
+
+    // Use very lenient thresholds
+    const customThresholds = { failScore: 10, warnScore: 20, maxSignals: 5 };
+    const context = createTestContext(testDir, 'src', {
+      projectThresholds: customThresholds,
+    });
+
+    const result = await computeProjectDashboard(context);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // With 100% stability score and 20 threshold, should PASS
+      expect(result.artifact.projectVerdict).toBe('PASS');
+      expect(result.artifact.thresholds?.failScore).toBe(10);
+      expect(result.artifact.thresholds?.warnScore).toBe(20);
+    }
+  });
+
+  it('should respect maxSignals from thresholds', async () => {
+    createMockTsxFile(testDir, 'src/App.tsx');
+
+    const customThresholds = { failScore: 60, warnScore: 80, maxSignals: 5 };
+    const context = createTestContext(testDir, 'src', {
+      projectThresholds: customThresholds,
+    });
+
+    const result = await computeProjectDashboard(context);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.artifact.topSignals.length).toBeLessThanOrEqual(5);
+    }
+  });
+});
+
+describe('Phase 13E.1: Deterministic Output', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should produce identical output for identical inputs', async () => {
+    createMockTsxFile(testDir, 'src/App.tsx');
+    createMockTsxFile(testDir, 'src/Button.tsx');
+
+    const context = createTestContext(testDir, 'src');
+
+    const results = await Promise.all([
+      computeProjectDashboard(context),
+      computeProjectDashboard(context),
+      computeProjectDashboard(context),
+    ]);
+
+    expect(results.every(r => r.ok)).toBe(true);
+
+    // Compare artifacts (excluding generatedAt which changes)
+    const normalized = results.map(r => {
+      if (r.ok) {
+        const { generatedAt, ...rest } = r.artifact;
+        return JSON.stringify(rest);
+      }
+      return null;
+    });
+
+    expect(normalized[0]).toBe(normalized[1]);
+    expect(normalized[1]).toBe(normalized[2]);
   });
 });

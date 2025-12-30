@@ -312,6 +312,10 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | CI strict mode (--strict, exit 1 on FAIL) | ✅ |
 | CLI `figma:project-dashboard` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| Configurable thresholds (--fail-score, --warn-score, --max-signals) | ✅ |
+| Environment variable configuration (RECONCILIATION_DASHBOARD_*) | ✅ |
+| Threshold-based verdict (score < fail → FAIL, fail ≤ score < warn → WARN, ≥ warn → PASS) | ✅ |
+| Exit code 2 for invalid configuration | ✅ |
 | **CI Gate Summary (Phase 13F)** | |
 | CI-focused gate command (.figma-ci-gate.json) | ✅ |
 | Reuses Phase 13E project dashboard data | ✅ |
@@ -3983,6 +3987,59 @@ pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src -
 
 # Verbose mode (show all files)
 pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --verbose
+
+# Custom thresholds
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --fail-score 50 --warn-score 70
+
+# Limit max signals in output
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --max-signals 5
+```
+
+### Threshold Configuration (Phase 13E.1)
+
+The project dashboard uses configurable score thresholds to determine the verdict. Thresholds can be set via CLI flags or environment variables, with CLI taking precedence.
+
+#### Threshold Precedence
+
+1. **CLI flags** (highest priority)
+2. **Environment variables**
+3. **Built-in defaults** (lowest priority)
+
+#### Configuration Options
+
+| CLI Flag | Environment Variable | Default | Description |
+|----------|---------------------|---------|-------------|
+| `--fail-score` | `RECONCILIATION_DASHBOARD_FAIL_SCORE` | 60 | Scores below this are FAIL |
+| `--warn-score` | `RECONCILIATION_DASHBOARD_WARN_SCORE` | 80 | Scores below this (but ≥ fail) are WARN |
+| `--max-signals` | `RECONCILIATION_DASHBOARD_MAX_SIGNALS` | 10 | Maximum signals shown in output |
+
+#### Verdict Rules
+
+| Condition | Verdict |
+|-----------|---------|
+| `score < failScore` | **FAIL** |
+| `failScore ≤ score < warnScore` | **WARN** |
+| `score ≥ warnScore` | **PASS** |
+
+#### Invariant
+
+The invariant `failScore < warnScore` is enforced at resolution time. Invalid configurations exit with code 2:
+
+```bash
+# Error: fail-score must be less than warn-score
+pnpm figma:project-dashboard demo-app/src --fail-score 80 --warn-score 70
+# Exit code: 2
+```
+
+#### Environment Variable Examples
+
+```bash
+# Set thresholds via environment
+export RECONCILIATION_DASHBOARD_FAIL_SCORE=50
+export RECONCILIATION_DASHBOARD_WARN_SCORE=75
+export RECONCILIATION_DASHBOARD_MAX_SIGNALS=20
+
+pnpm figma:project-dashboard demo-app/src
 ```
 
 ### Example Output
@@ -3993,6 +4050,12 @@ Repo Root: /path/to/repo
 Scan Root: demo-app/src (canonical)
 File Pattern: **/*.tsx
 Generated: 2025-12-30T12:00:00.000Z
+
+DASHBOARD THRESHOLDS:
+  Fail:  < 60
+  Warn:  < 80
+  Pass:  ≥ 80
+  Max signals: 10
 
 File Counts:
   Total: 10
@@ -4020,14 +4083,17 @@ Top Signals (3):
 
 Project Verdict:
   ✗ FAIL
-  1 file with FAIL verdict
+  Score 72: Below fail threshold (60). Project has failing drift signals.
   Exit code: 0
 ```
 
-### Exit Code
+### Exit Codes
 
-- **exit 0**: Default behavior (even for WARN or FAIL verdicts)
-- **exit 1**: Only when `--strict` flag or `PROJECT_DASHBOARD_CI_STRICT=true` AND verdict is FAIL
+| Exit Code | Condition |
+|-----------|-----------|
+| **0** | Default behavior (even for WARN or FAIL verdicts) |
+| **1** | `--strict` flag or `PROJECT_DASHBOARD_CI_STRICT=true` AND verdict is FAIL |
+| **2** | Invalid configuration (e.g., `--fail-score >= --warn-score`) |
 
 ### Relation to Other Phases
 

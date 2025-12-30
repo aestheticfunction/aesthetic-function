@@ -229,6 +229,16 @@ export interface ProjectDashboardArtifact {
    * Human-readable explanation of the verdict.
    */
   explanation: string;
+
+  /**
+   * Thresholds used for verdict determination (Phase 13E.1).
+   * Optional for backward compatibility with existing consumers.
+   */
+  thresholds?: {
+    failScore: number;
+    warnScore: number;
+    maxSignals: number;
+  };
 }
 
 // =============================================================================
@@ -255,7 +265,7 @@ export interface ProjectDashboardContext {
   limit: number;
 
   /**
-   * Thresholds for CI verdict.
+   * Thresholds for CI verdict (passed to per-file dashboards).
    */
   thresholds: DashboardThresholds;
 
@@ -263,6 +273,11 @@ export interface ProjectDashboardContext {
    * Whether CI strict mode is enabled.
    */
   strict: boolean;
+
+  /**
+   * Project-level thresholds for score-based verdict (Phase 13E.1).
+   */
+  projectThresholds: ProjectDashboardThresholds;
 }
 
 /**
@@ -303,6 +318,23 @@ export interface ProjectDashboardCliOptions {
    * Verbose output.
    */
   verbose?: boolean;
+
+  // Phase 13E.1: Threshold configuration
+
+  /**
+   * Score below which verdict is FAIL (overrides env var).
+   */
+  failScore?: number;
+
+  /**
+   * Score at or above which verdict is PASS (overrides env var).
+   */
+  warnScore?: number;
+
+  /**
+   * Maximum number of signals to show (overrides env var).
+   */
+  maxSignals?: number;
 }
 
 // =============================================================================
@@ -322,3 +354,92 @@ export type ComputeProjectDashboardResult =
 export type LoadFileDashboardResult =
   | { ok: true; dashboard: DriftDashboardArtifact }
   | { ok: false; status: 'NO_DATA' | 'ERROR'; error?: string };
+// =============================================================================
+// PROJECT DASHBOARD THRESHOLDS (Phase 13E.1)
+// =============================================================================
+
+/**
+ * Score-based thresholds for project dashboard verdict.
+ *
+ * Invariant: failScore < warnScore (enforced at resolution time).
+ *
+ * Verdict determination:
+ * - score < failScore → FAIL
+ * - failScore ≤ score < warnScore → WARN
+ * - score ≥ warnScore → PASS
+ */
+export interface ProjectDashboardThresholds {
+  /**
+   * Score below which verdict is FAIL.
+   * Default: 60
+   */
+  failScore: number;
+
+  /**
+   * Score at or above which verdict is PASS.
+   * Score between failScore and warnScore is WARN.
+   * Default: 80
+   */
+  warnScore: number;
+
+  /**
+   * Maximum number of signals to show in output.
+   * Default: 10
+   */
+  maxSignals: number;
+}
+
+/**
+ * Default project dashboard thresholds.
+ */
+export const DEFAULT_PROJECT_THRESHOLDS: ProjectDashboardThresholds = {
+  failScore: 60,
+  warnScore: 80,
+  maxSignals: 10,
+};
+
+/**
+ * Result of threshold resolution.
+ */
+export type ResolveThresholdsResult =
+  | { ok: true; thresholds: ProjectDashboardThresholds }
+  | { ok: false; error: string };
+
+/**
+ * CI messaging for each verdict.
+ */
+export interface VerdictMessage {
+  verdict: CiVerdict;
+  emoji: string;
+  summary: string;
+  action: string;
+}
+
+/**
+ * Get CI messaging for a verdict.
+ */
+export function getVerdictMessage(verdict: CiVerdict): VerdictMessage {
+  switch (verdict) {
+    case 'PASS':
+      return {
+        verdict: 'PASS',
+        emoji: '✓',
+        summary: 'Project drift within acceptable thresholds',
+        action: 'No action required',
+      };
+    case 'WARN':
+      return {
+        verdict: 'WARN',
+        emoji: '⚠',
+        summary: 'Project drift present but below failure threshold',
+        action: 'Drift present; monitor',
+      };
+    case 'FAIL':
+      return {
+        verdict: 'FAIL',
+        emoji: '✗',
+        summary: 'Project drift exceeds acceptable threshold',
+        action: 'Drift exceeds threshold; action required',
+      };
+  }
+}

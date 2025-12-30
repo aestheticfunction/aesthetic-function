@@ -41,10 +41,13 @@ import type {
   ProjectCounts,
   ProjectDashboardArtifact,
   ProjectDashboardContext,
+  ProjectDashboardThresholds,
   ProjectSignal,
   ProjectStabilityScore,
   SeverityCounts,
 } from './types.js';
+
+import { determineVerdict } from './config.js';
 
 // Re-export utilities for external use
 export { getRepoRoot, normalizeSourcePath };
@@ -225,45 +228,29 @@ function sortProjectSignals(signals: ProjectSignal[]): ProjectSignal[] {
 }
 
 /**
- * Compute project-level verdict from per-file verdicts.
+ * Compute project-level verdict from stability score and thresholds.
+ *
+ * Phase 13E.1: Uses score-based thresholds instead of per-file verdicts.
  *
  * Rules:
- * - If any file is FAIL → project FAIL
- * - Else if any file is WARN → project WARN
- * - Else PASS
+ * - score < failScore → FAIL
+ * - failScore ≤ score < warnScore → WARN
+ * - score ≥ warnScore → PASS
  */
 function computeProjectVerdict(
-  files: FileDashboardSummary[]
+  stabilityScore: ProjectStabilityScore,
+  thresholds: ProjectDashboardThresholds
 ): { verdict: CiVerdict; explanation: string } {
-  const failFiles = files.filter(f => f.verdict === 'FAIL');
-  const warnFiles = files.filter(f => f.verdict === 'WARN');
-  const filesWithData = files.filter(f => f.status === 'OK');
-
-  if (failFiles.length > 0) {
-    return {
-      verdict: 'FAIL',
-      explanation: `${failFiles.length} file${failFiles.length > 1 ? 's' : ''} with FAIL verdict`,
-    };
-  }
-
-  if (warnFiles.length > 0) {
-    return {
-      verdict: 'WARN',
-      explanation: `${warnFiles.length} file${warnFiles.length > 1 ? 's' : ''} with WARN verdict`,
-    };
-  }
-
-  if (filesWithData.length === 0) {
+  // If no files have data, return PASS with explanation
+  if (stabilityScore.filesIncluded === 0) {
     return {
       verdict: 'PASS',
       explanation: 'No files with drift data',
     };
   }
 
-  return {
-    verdict: 'PASS',
-    explanation: `All ${filesWithData.length} file${filesWithData.length > 1 ? 's' : ''} passing`,
-  };
+  // Use threshold-based verdict determination
+  return determineVerdict(stabilityScore.value, thresholds);
 }
 
 /**
@@ -374,7 +361,7 @@ export function normalizeScanRoot(scanRoot: string, repoRoot: string): string {
 export async function computeProjectDashboard(
   context: ProjectDashboardContext
 ): Promise<ComputeProjectDashboardResult> {
-  const { scanRoot, repoRoot, limit, strict } = context;
+  const { scanRoot, repoRoot, limit, strict, projectThresholds } = context;
 
   // Normalize scan root
   const normalizedScanRoot = normalizeScanRoot(scanRoot, repoRoot);
@@ -441,12 +428,12 @@ export async function computeProjectDashboard(
   // Compute project stability score
   const stabilityScore = computeProjectStabilityScore(fileSummaries);
 
-  // Collect and sort project signals (top 20)
+  // Collect and sort project signals (limited by maxSignals from thresholds)
   const allSignals = collectProjectSignals(dashboards);
-  const topSignals = allSignals.slice(0, 20);
+  const topSignals = allSignals.slice(0, projectThresholds.maxSignals);
 
-  // Compute project verdict
-  const { verdict, explanation } = computeProjectVerdict(filesWithData);
+  // Compute project verdict using threshold-based scoring (Phase 13E.1)
+  const { verdict, explanation } = computeProjectVerdict(stabilityScore, projectThresholds);
 
   // Determine exit code
   const exitCode = strict && verdict === 'FAIL' ? 1 : 0;
@@ -465,6 +452,11 @@ export async function computeProjectDashboard(
     projectVerdict: verdict,
     exitCode: exitCode as 0 | 1,
     explanation,
+    thresholds: {
+      failScore: projectThresholds.failScore,
+      warnScore: projectThresholds.warnScore,
+      maxSignals: projectThresholds.maxSignals,
+    },
   };
 
   return { ok: true, artifact };
