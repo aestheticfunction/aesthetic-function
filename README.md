@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13E)
+## What Works Today (Phase 13F)
 
 | Feature | Status |
 |---------|--------|
@@ -306,6 +306,17 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | CI strict mode (--strict, exit 1 on FAIL) | ✅ |
 | CLI `figma:project-dashboard` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **CI Gate Summary (Phase 13F)** | |
+| CI-focused gate command (.figma-ci-gate.json) | ✅ |
+| Reuses Phase 13E project dashboard data | ✅ |
+| Trend window from Phase 13B ledgers (default: 5 runs) | ✅ |
+| Trend direction classification (improving/stable/worsening) | ✅ |
+| File trend counts (improving, stable, worsening, insufficient data) | ✅ |
+| Configurable window size (--window, env: RECONCILIATION_CI_WINDOW) | ✅ |
+| CI strict mode (--strict, exit 1 on FAIL) | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| CLI `figma:ci` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -410,6 +421,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 13C** | Drift Diffs (Run-to-Run Comparison) | ✅ |
 | **Phase 13D** | Drift Summary Dashboard (Aggregated + CI-friendly) | ✅ |
 | **Phase 13E** | Project Drift Dashboard (Multi-File Aggregation) | ✅ |
+| **Phase 13F** | CI Gate Summary + Trend Window (Read-Only) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3886,6 +3898,164 @@ Project Verdict:
 - **Read-only**: Never modifies any source files or artifacts
 - **Repo-root invariant**: Works identically from any working directory
 - **CI-friendly**: Configurable exit codes for build gates
+
+---
+
+## CI Gate Summary (Phase 13F)
+
+Phase 13F adds a CI-focused command that computes a pass/warn/fail decision from Phase 13E project dashboard data, with a small trend window derived from Phase 13B ledgers.
+
+### Artifact
+
+```
+design-materializations/<scanRoot>.figma-ci-gate.json
+```
+
+Example path: `design-materializations/demo-app__src.figma-ci-gate.json`
+
+### Structure
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2025-12-30T12:00:00.000Z",
+  "repoRoot": "/path/to/repo",
+  "scanRoot": "demo-app/src",
+  "filePattern": "**/*.tsx",
+  "counts": {
+    "totalFiles": 10,
+    "filesWithData": 8,
+    "filesNoData": 2,
+    "filesWithErrors": 0,
+    "byVerdict": { "pass": 5, "warn": 2, "fail": 1 },
+    "bySeverity": { "fail": 3, "warn": 5, "info": 12 }
+  },
+  "stabilityScore": {
+    "value": 72,
+    "filesIncluded": 8,
+    "filesExcluded": 2
+  },
+  "trend": {
+    "improving": 3,
+    "stable": 4,
+    "worsening": 1,
+    "insufficientData": 2,
+    "windowSize": 5,
+    "files": [
+      {
+        "sourceFile": "demo-app/src/App.tsx",
+        "runsInWindow": 5,
+        "direction": "improving",
+        "startScore": 80,
+        "endScore": 90,
+        "scoreDelta": 10
+      }
+    ]
+  },
+  "topSignals": [...],
+  "files": [...],
+  "verdict": "FAIL",
+  "exitCode": 0,
+  "explanation": "1 file with FAIL verdict"
+}
+```
+
+### Trend Window
+
+The trend summary looks at the last N runs (default: 5) for each file to determine direction:
+
+| Direction | Condition |
+|-----------|-----------|
+| improving | Score increased by ≥5 points |
+| stable | Score changed by <5 points |
+| worsening | Score decreased by ≥5 points |
+
+Files with fewer than 2 runs in the window are marked as "insufficient data".
+
+### CLI Usage
+
+```bash
+# Basic usage
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --json
+
+# Custom trend window
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --window 10
+
+# Write artifact to disk
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --write
+
+# CI strict mode (exit 1 on FAIL)
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --strict
+
+# Verbose mode (show all files and trends)
+pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --verbose
+```
+
+### Example Output
+
+```
+=== FIGMA CI GATE (Phase 13F) ===
+Repo Root: /path/to/repo
+Scan Root: demo-app/src
+Generated: 2025-12-30T12:00:00.000Z
+
+Files:
+  Total discovered: 10
+  With data: 8
+  No data: 2
+  Errors: 0
+
+Verdict Breakdown:
+  PASS: 5
+  WARN: 2
+  FAIL: 1
+
+Project Stability Score:
+  ███████░░░ 72/100
+
+Trend Summary (window: 5 runs):
+  ↑ Improving: 3
+  → Stable: 4
+  ↓ Worsening: 1
+  ? Insufficient data: 2
+
+CI Verdict:
+  ✗ FAIL
+  1 file with FAIL verdict
+  Exit code: 0
+```
+
+### Exit Code
+
+- **exit 0**: Default behavior (even for WARN or FAIL verdicts)
+- **exit 1**: Only when `--strict` flag or `RECONCILIATION_CI_STRICT=true` AND verdict is FAIL
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RECONCILIATION_CI_STRICT` | `false` | Exit 1 on FAIL verdict |
+| `RECONCILIATION_CI_WINDOW` | `5` | Trend window size (runs per file) |
+| `DASHBOARD_LIMIT` | `10` | Max runs to consider per file for dashboard |
+
+### Relation to Other Phases
+
+| Phase | Purpose |
+|-------|---------|
+| 13B: Timeline | Provides run ledger for trend computation |
+| 13D: Dashboard | Per-file drift aggregation |
+| 13E: Project Dashboard | Multi-file aggregation (reused by 13F) |
+| 13F: CI Gate | CI-focused gate with trend window |
+
+### Guarantees
+
+- **Deterministic**: Same inputs → same output
+- **Read-only**: Never modifies any source files or artifacts
+- **Repo-root invariant**: Works identically from any working directory
+- **CI-friendly**: Only `--strict` can cause non-zero exit
 
 ---
 
