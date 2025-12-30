@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13C)
+## What Works Today (Phase 13D)
 
 | Feature | Status |
 |---------|--------|
@@ -283,6 +283,17 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Repo-root invariant (works from any working directory) | ✅ |
 | CLI `figma:drift` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Drift Summary Dashboard (Phase 13D)** | |
+| Aggregated drift dashboard (.figma-drift-dashboard.json) | ✅ |
+| Stability score (0-100, deterministic rule-table) | ✅ |
+| Severity counts (info/warn/fail across run window) | ✅ |
+| Top drift signals (sorted by severity, delta) | ✅ |
+| CI verdict (PASS/WARN/FAIL) with configurable thresholds | ✅ |
+| Configurable run window (--limit, --from, --to) | ✅ |
+| CI strict mode (--strict, exit 1 on FAIL) | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| CLI `figma:dashboard` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -385,6 +396,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 13A** | Reconciliation Run Index (Read-Only, Deterministic) | ✅ |
 | **Phase 13B** | Design Drift Timeline (Append-Only Run Ledger) | ✅ |
 | **Phase 13C** | Drift Diffs (Run-to-Run Comparison) | ✅ |
+| **Phase 13D** | Drift Summary Dashboard (Aggregated + CI-friendly) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3481,6 +3493,189 @@ If fewer than 2 runs exist, produces an artifact with `insufficientHistory: true
 - **Repo-root invariant**: Works identically from any working directory
 - **Exit code 0**: Always succeeds (even with insufficient history)
 - **Exit code 1**: Only on invalid arguments or corrupted ledger
+
+---
+
+## Drift Summary Dashboard (Phase 13D)
+
+Phase 13D adds an aggregated dashboard that summarizes drift across multiple reconciliation runs. It provides an "at a glance" view of design drift over time for a source file, with a stability score, severity counts, top drift signals, and a CI-friendly verdict.
+
+### Artifact
+
+```
+design-materializations/<file>.figma-drift-dashboard.json
+```
+
+Example path: `design-materializations/demo-app__src__App.figma-drift-dashboard.json`
+
+### Structure
+
+```json
+{
+  "version": 1,
+  "generatedAt": "2025-12-30T12:00:00.000Z",
+  "repoRoot": "/path/to/repo",
+  "sourceFile": "demo-app/src/App.tsx",
+  "runWindow": {
+    "limit": 10,
+    "fromRunId": null,
+    "toRunId": null
+  },
+  "counts": {
+    "runsConsidered": 5,
+    "bySeverity": {
+      "info": 3,
+      "warn": 1,
+      "fail": 0
+    }
+  },
+  "stabilityScore": {
+    "value": 84,
+    "rationale": [
+      "-10 (1 warn-severity drift)",
+      "-6 (3 info-severity drifts)"
+    ]
+  },
+  "topSignals": [
+    {
+      "key": "conflicts.total",
+      "label": "Conflicts",
+      "delta": 2,
+      "from": 0,
+      "to": 2,
+      "severity": "warn"
+    }
+  ],
+  "recentRuns": [
+    {
+      "runId": "def67890",
+      "timestamp": "2025-12-30T11:00:00.000Z",
+      "command": "figma:status",
+      "overallStatus": "VERIFIED_OK",
+      "driftSeverity": "info",
+      "highlights": ["Status: VERIFIED_OK", "Drift: info"]
+    }
+  ],
+  "ciVerdict": "WARN",
+  "exitCode": 0,
+  "explanation": "1 warn-severity drift detected"
+}
+```
+
+### Stability Score
+
+The stability score starts at 100 and deducts points based on drift severity:
+
+| Severity | Deduction |
+|----------|-----------|
+| fail | -25 per event |
+| warn | -10 per event |
+| info | -2 per event |
+
+The score is clamped to the range 0-100.
+
+### CI Verdict
+
+| Verdict | Condition |
+|---------|-----------|
+| PASS | No significant drift detected |
+| WARN | Warn-severity drifts but no failures |
+| FAIL | Fail-severity drift or threshold exceeded |
+
+### Thresholds
+
+Configurable via environment variables or CLI flags:
+
+| Threshold | Default | Environment Variable |
+|-----------|---------|---------------------|
+| Fail on fail severity | true | `DASHBOARD_FAIL_ON_FAIL_SEVERITY` |
+| Max fail count | 1 | `DASHBOARD_MAX_FAIL` |
+| Max warn count | none | `DASHBOARD_MAX_WARN` |
+| Max verify mismatch increase | none | `DASHBOARD_MAX_VERIFY_MISMATCH_INCREASE` |
+| Max conflict increase | none | `DASHBOARD_MAX_CONFLICT_INCREASE` |
+
+### Exit Code
+
+- **exit 0**: Default behavior (even for WARN or FAIL verdicts)
+- **exit 1**: Only when `--strict` flag or `DASHBOARD_CI_STRICT=true` AND verdict is FAIL
+
+### CLI Usage
+
+```bash
+# Basic usage
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --json
+
+# Custom run window
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --limit 20
+
+# Specific run range
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --from abc12345 --to def67890
+
+# Write artifact to disk
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --write
+
+# CI strict mode (exit 1 on FAIL)
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --strict
+
+# Verbose mode (show rationale and highlights)
+pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --verbose
+```
+
+### Example Output
+
+```
+=== FIGMA DRIFT DASHBOARD (Phase 13D) ===
+Repo Root: /path/to/repo
+Source: demo-app/src/App.tsx (canonical)
+Generated: 2025-12-30T12:00:00.000Z
+
+Run Window:
+  Runs considered: 5
+  Limit: 10
+
+Drift Counts:
+  Fail: 0
+  Warn: 1
+  Info: 3
+
+Stability Score:
+  ████████░░ 84/100
+
+Top Signals (1):
+  [WARN] Conflicts: +2 (0 → 2)
+
+Recent Runs (newest first, 5):
+  1. [def67890] figma:status - VERIFIED_OK (info)
+  2. [abc12345] figma:apply - APPLIED_UNVERIFIED
+  3. [xyz99999] figma:verify - VERIFIED_OK
+  4. [pqr88888] figma:status - CLEAN
+  5. [mno77777] figma:apply - APPLIED_UNVERIFIED
+
+CI Verdict:
+  ⚠ WARN
+  1 warn-severity drift detected
+  Exit code: 0
+```
+
+### Relation to Other Phases
+
+| Phase | Purpose | Type |
+|-------|---------|------|
+| 13A: Index | Current artifact snapshot | One-shot |
+| 13B: Timeline | Historical run ledger | Append-only |
+| 13C: Drift | Run-to-run comparison | Read-only diff |
+| 13D: Dashboard | Aggregated summary | Read-only |
+
+### Guarantees
+
+- **Deterministic**: Same runs → same dashboard output
+- **Read-only**: Never modifies any artifacts or source files
+- **Repo-root invariant**: Works identically from any working directory
+- **CI-friendly**: Configurable exit codes for build gates
+- **Feature-flagged**: `RECONCILIATION_DASHBOARD_ON` (default: true)
 
 ---
 
