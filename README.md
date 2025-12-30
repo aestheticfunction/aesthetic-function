@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12I)
+## What Works Today (Phase 12J)
 
 | Feature | Status |
 |---------|--------|
@@ -246,6 +246,14 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Rollback preview artifact (.figma-rollback-preview.json) | ✅ |
 | CLI `figma:rollback-preview` command | ✅ |
 | Always exit 0 (never fails CI, diagnostic only) | ✅ |
+| **Reconciliation Status Artifact (Phase 12J)** | |
+| Single deterministic status artifact per file | ✅ |
+| Auto-discover artifacts from Phases 12F-12I | ✅ |
+| OverallStatus: CLEAN, APPLIED_UNVERIFIED, VERIFIED_OK, VERIFY_FAILED, ROLLBACK_AVAILABLE | ✅ |
+| CI Verdict: PASS, WARN, FAIL with exit codes | ✅ |
+| CLI `figma:status` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
+| Rule-table only, no heuristics | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -2854,6 +2862,149 @@ cat design-materializations/demo-app__src__App.figma-rollback-preview.json
 | 12F: Apply | Execute resolution plan | 0 or 1 |
 | 12G: Verify | Confirm apply succeeded | 0 or 1 |
 | 12I: Rollback Preview | Show what would be undone | Always 0 |
+| 12J: Status | Summarize reconciliation lifecycle | 0 (PASS/WARN) or 1 (FAIL) |
+
+---
+
+## Reconciliation Status Artifact (Phase 12J)
+
+Phase 12J completes the reconciliation lifecycle by producing a single, deterministic, human- and CI-readable artifact summarizing the end-to-end reconciliation state for any source file.
+
+### Key Question
+
+**"What is the reconciliation status of this file, right now?"**
+
+The `figma:status` command answers this by:
+1. Auto-discovering artifacts from Phases 12F-12I
+2. Computing status using a fixed rule-table (no heuristics)
+3. Producing a deterministic verdict and exit code
+
+### Status Values
+
+| OverallStatus | Meaning | CiVerdict | Exit Code |
+|---------------|---------|-----------|-----------|
+| `CLEAN` | No reconciliation artifacts found | PASS | 0 |
+| `APPLIED_UNVERIFIED` | Apply attempted, verification not run | WARN | 0 |
+| `VERIFIED_OK` | Apply + verification both succeeded | PASS | 0 |
+| `VERIFY_FAILED` | Verification failed, no rollback preview | FAIL | 1 |
+| `ROLLBACK_AVAILABLE` | Verification failed, rollback preview exists | FAIL | 1 |
+| `INCOMPLETE` | Missing or inconsistent artifacts | WARN | 0 |
+
+### Status Determination Rules
+
+| Condition | overallStatus | ciVerdict |
+|-----------|---------------|-----------|
+| No apply, no deltas | CLEAN | PASS |
+| Apply attempted, no verify | APPLIED_UNVERIFIED | WARN |
+| Apply + verify success | VERIFIED_OK | PASS |
+| Verify failed, rollback preview exists | ROLLBACK_AVAILABLE | FAIL |
+| Verify failed, no rollback preview | VERIFY_FAILED | FAIL |
+| Missing or inconsistent artifacts | INCOMPLETE | WARN |
+
+### CLI Usage
+
+```bash
+# Check status of a file
+pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --json
+
+# Write status artifact (only if non-CLEAN)
+pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --write
+```
+
+### Example Output
+
+```
+✅ Reconciliation Status: ✓ VERIFIED_OK
+
+Source: demo-app/src/App.tsx
+Timestamp: 2025-01-15T12:00:00.000Z
+
+Phases:
+  • Apply: ✓ 5 operation(s)
+  • Verify: ✓ 0 mismatch(es), 0 missing
+  • Rollback Preview: not generated
+
+Explanation: Apply succeeded and verification passed.
+
+CI Verdict: PASS
+Exit Code: 0
+```
+
+### Status Artifact
+
+When `--write` is provided and status is non-CLEAN:
+
+```json
+{
+  "version": "1.0",
+  "sourceFile": "demo-app/src/App.tsx",
+  "timestamp": "2025-01-15T12:00:00.000Z",
+  "phases": {
+    "apply": {
+      "attempted": true,
+      "dryRun": false,
+      "success": true,
+      "operationCount": 5
+    },
+    "verify": {
+      "attempted": true,
+      "success": true,
+      "mismatchCount": 0,
+      "missingCount": 0
+    }
+  },
+  "overallStatus": "VERIFIED_OK",
+  "ciVerdict": "PASS",
+  "explanation": "Apply succeeded and verification passed."
+}
+```
+
+### Complete Workflow
+
+```bash
+# 1. Generate and apply resolution plan
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# 2. Verify the apply succeeded
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+
+# 3. If verification failed, preview what would be rolled back
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+
+# 4. Get comprehensive status summary
+pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --write
+
+# 5. Use status exit code in CI
+if pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx; then
+  echo "Reconciliation OK"
+else
+  echo "Reconciliation FAILED - review status artifact"
+fi
+```
+
+### CI Integration
+
+```yaml
+# .github/workflows/figma-reconciliation.yml
+- name: Check Reconciliation Status
+  run: |
+    pnpm --filter @aesthetic-function/watcher figma:status ${{ matrix.file }} --write
+  # Exit 1 on FAIL verdict, 0 on PASS/WARN
+```
+
+### Guarantees
+
+- **Deterministic**: Same artifacts → same status, always
+- **Rule-table only**: No heuristics, no inference
+- **Read-only**: Reads artifacts, never mutates them
+- **Single artifact**: One status file per source file
+- **CI-friendly**: Exit codes map directly to verdict
 
 ### Non-Goals (Explicit)
 

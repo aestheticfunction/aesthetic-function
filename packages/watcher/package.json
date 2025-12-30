@@ -31,6 +31,7 @@
     "figma:resolve-apply": "tsx src/figmaResolveApply/cliResolveApply.ts",
     "figma:verify": "tsx src/verification/cliVerify.ts",
     "figma:rollback-preview": "tsx src/rollbackPreview/cliRollbackPreview.ts",
+    "figma:status": "tsx src/reconciliationStatus/cliStatus.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",
