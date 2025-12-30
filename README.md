@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12H)
+## What Works Today (Phase 12I)
 
 | Feature | Status |
 |---------|--------|
@@ -238,6 +238,14 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Non-strict mode for advisory-only verification | ✅ |
 | Bidirectional artifact linking (apply ↔ verify) | ✅ |
 | Seamless CLI integration (`figma:resolve-apply`) | ✅ |
+| **Rollback Preview & Safety Envelope (Phase 12I)** | |
+| Read-only rollback preview generation | ✅ |
+| Derive rollback actions from verification failures | ✅ |
+| Deterministic ordering (componentKey → state → property) | ✅ |
+| Mixed target support (ast, marker, override) | ✅ |
+| Rollback preview artifact (.figma-rollback-preview.json) | ✅ |
+| CLI `figma:rollback-preview` command | ✅ |
+| Always exit 0 (never fails CI, diagnostic only) | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -2722,6 +2730,138 @@ When verification is skipped:
   Status: SKIPPED
   Reason: POST_APPLY_VERIFY is not enabled
 ```
+
+---
+
+## Rollback Preview & Safety Envelope (Phase 12I)
+
+Phase 12I introduces a read-only rollback preview layer that shows exactly what would be undone if a verification failure were to trigger a rollback — without performing any rollback.
+
+This phase completes the safety triangle:
+
+**Apply → Verify → Rollback Preview**
+
+Rollback execution itself is explicitly out of scope.
+
+### Key Principles
+
+- **Read-only only** - No mutations, only observes and records
+- **Deterministic** - Same inputs → same outputs
+- **Explicit** - No automatic behavior
+- **Diagnostic** - Improves human confidence and CI auditability
+- **Always exit 0** - Never fails CI (purely informational)
+
+### CLI Commands
+
+```bash
+# Generate rollback preview (auto-discovers artifacts)
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+
+# Use specific artifact paths
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx \
+  --apply-artifact design-materializations/custom-apply.json \
+  --verify-artifact design-materializations/custom-verify.json
+```
+
+### CLI Output
+
+```
+=== ROLLBACK PREVIEW (Phase 12I) ===
+
+LoginButton::hover
+  fill:
+    applied  → #00FF00
+    previous → #2563EB
+    target   → override
+    reason   → mismatch
+
+Summary:
+  Total rollback actions: 1
+  Targets: override (1)
+```
+
+When no rollback is needed:
+
+```
+=== ROLLBACK PREVIEW (Phase 12I) ===
+
+No rollback actions needed.
+All verification items passed or were skipped.
+```
+
+### Rollback Preview Artifact
+
+Pattern: `design-materializations/<file>.figma-rollback-preview.json`
+
+Only written when rollback actions exist.
+
+```json
+{
+  "version": "1.0",
+  "source": "figma-rollback-preview",
+  "sourceFile": "src/App.tsx",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "applyArtifactPath": "design-materializations/src__App.figma-resolve-apply.json",
+  "verificationArtifactPath": "design-materializations/src__App.figma-verification.json",
+  "actions": [
+    {
+      "actionId": "a1b2c3d4e5f6g7h8",
+      "target": "override",
+      "componentKey": "LoginButton",
+      "targetState": "hover",
+      "property": "fill",
+      "appliedValue": "#00FF00",
+      "previousValue": "#2563EB",
+      "sourceApplyOpId": "x1y2z3w4...",
+      "verificationStatus": "mismatch",
+      "reason": "Verification mismatch: expected #00FF00, observed #FF0000"
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "byTarget": { "override": 1 },
+    "byProperty": { "fill": 1 }
+  }
+}
+```
+
+### Professional Runbook
+
+Complete workflow with rollback preview:
+
+```bash
+# 1. Generate and apply resolution plan
+pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+FIGMA_RESOLVE_APPLY_ON=true \
+FIGMA_RESOLVE_APPLY_MODE=apply \
+FIGMA_RESOLVE_APPLY_DRY_RUN=false \
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+
+# 2. Verify the apply succeeded
+pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+
+# 3. If verification failed, preview what would be rolled back
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+
+# 4. Review rollback preview artifact
+cat design-materializations/demo-app__src__App.figma-rollback-preview.json
+```
+
+### Safety Triangle
+
+| Phase | Purpose | Exit Code |
+|-------|---------|-----------|
+| 12F: Apply | Execute resolution plan | 0 or 1 |
+| 12G: Verify | Confirm apply succeeded | 0 or 1 |
+| 12I: Rollback Preview | Show what would be undone | Always 0 |
+
+### Non-Goals (Explicit)
+
+- ❌ Executing rollback
+- ❌ Auto-rollback
+- ❌ Background watchers
+- ❌ Implicit behavior
+- ❌ Any mutation
 
 ---
 

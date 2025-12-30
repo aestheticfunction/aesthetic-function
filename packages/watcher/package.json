@@ -30,6 +30,7 @@
     "figma:resolve": "tsx src/figmaDeltaResolution/cliResolve.ts",
     "figma:resolve-apply": "tsx src/figmaResolveApply/cliResolveApply.ts",
     "figma:verify": "tsx src/verification/cliVerify.ts",
+    "figma:rollback-preview": "tsx src/rollbackPreview/cliRollbackPreview.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",
