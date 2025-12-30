@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 12J)
+## What Works Today (Phase 13A)
 
 | Feature | Status |
 |---------|--------|
@@ -254,6 +254,17 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | CLI `figma:status` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
 | Rule-table only, no heuristics | ✅ |
+| **Reconciliation Run Index (Phase 13A)** | |
+| Read-only indexing of reconciliation artifacts | ✅ |
+| Indexes all phases: delta, suggestions, conflicts, plans, apply, verify, rollback, status | ✅ |
+| One-shot snapshot (NOT timeline/history) | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| Deterministic output (sorted, stable, canonical paths) | ✅ |
+| Metadata extraction (timestamps, modes, counts) | ✅ |
+| Best-candidate selection for multiple artifacts | ✅ |
+| Legacy artifact name support | ✅ |
+| CLI `figma:index` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -349,6 +360,11 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 12D** | Conflict Surfacing & Resolution Preview (Read-Only) | ✅ |
 | **Phase 12E** | Guided Conflict Resolution Plans (Read-Only) | ✅ |
 | **Phase 12F** | Apply Resolution Plans (Opt-In, Auditable) | ✅ |
+| **Phase 12G** | Post-Apply Verification (CI-Safe) | ✅ |
+| **Phase 12H** | Post-Apply Auto-Verification + CI Gate | ✅ |
+| **Phase 12I** | Rollback Preview & Safety Envelope (Read-Only) | ✅ |
+| **Phase 12J** | Reconciliation Lifecycle Status Artifact | ✅ |
+| **Phase 13A** | Reconciliation Run Index (Read-Only, Deterministic) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3013,6 +3029,155 @@ fi
 - ❌ Background watchers
 - ❌ Implicit behavior
 - ❌ Any mutation
+
+---
+
+## Reconciliation Run Index (Phase 13A)
+
+Phase 13A provides a single, deterministic "run index" artifact that summarizes what reconciliation artifacts exist for a given source file and their key metadata. This is **NOT** a timeline/history feature (that is Phase 13B). This phase is one-shot indexing of current/latest artifacts.
+
+### Key Question
+
+**"What reconciliation artifacts exist for this file, and what are their key details?"**
+
+The `figma:index` command answers this by:
+1. Auto-discovering all artifacts from Phases 12A-12J
+2. Extracting key metadata (timestamps, modes, counts)
+3. Producing a deterministic, sorted index
+
+### Indexed Artifact Types
+
+| Artifact Type | Phase | File Pattern |
+|---------------|-------|--------------|
+| delta | 12A | `*.figma-delta.json` |
+| deltaSuggestions | 12B | `*.figma-delta-suggestions.json` |
+| conflicts | 12D | `*.figma-conflicts.json` |
+| resolutionPlan | 12E | `*.figma-resolution-plan.json` |
+| resolutionApply | 12F | `*.figma-resolution-apply.json` |
+| verification | 12G | `*.figma-verification.json` |
+| rollbackPreview | 12I | `*.figma-rollback-preview.json` |
+| status | 12J | `*.figma-reconciliation-status.json` |
+
+### CLI Usage
+
+```bash
+# Index artifacts for a file
+pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --json
+
+# Write run index artifact
+pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --write
+
+# Verbose mode (show discovery paths)
+pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --verbose
+```
+
+### Example Output
+
+```
+=== FIGMA RUN INDEX (Phase 13A) ===
+Repo Root: /path/to/repo
+Source: demo-app/src/App.tsx (canonical)
+
+Artifacts:
+  ✗ delta
+  ✗ delta-suggestions
+  ✓ conflicts (3 conflicts, 1 blocked) 2025-12-30T10:00:00.000Z
+  ✓ resolution-plan (2 decisions) 2025-12-30T11:00:00.000Z
+  ✓ resolution-apply (1 op, dry-run) 2025-12-30T12:00:00.000Z
+  ✗ verification
+  ✗ rollback-preview
+  ✗ status
+
+Notes: none
+```
+
+### Run Index Artifact
+
+Pattern: `design-materializations/<file>.figma-run-index.json`
+
+```json
+{
+  "version": "1.0",
+  "repoRoot": "/abs/path/to/repo",
+  "sourceFile": "demo-app/src/App.tsx",
+  "generatedAt": "2025-12-30T18:10:00.000Z",
+  "artifacts": {
+    "delta": { "found": false },
+    "deltaSuggestions": { "found": false },
+    "conflicts": {
+      "found": true,
+      "path": "design-materializations/demo-app__src__App.figma-conflicts.json",
+      "timestamp": "2025-12-30T10:00:00.000Z",
+      "summary": { "conflicts": 3, "blocked": 1 }
+    },
+    "resolutionPlan": {
+      "found": true,
+      "path": "design-materializations/demo-app__src__App.figma-resolution-plan.json",
+      "timestamp": "2025-12-30T11:00:00.000Z",
+      "summary": { "decisions": 2 }
+    },
+    "resolutionApply": {
+      "found": true,
+      "path": "design-materializations/demo-app__src__App.figma-resolution-apply.json",
+      "timestamp": "2025-12-30T12:00:00.000Z",
+      "summary": { "ops": 1, "dryRun": true, "applied": 0, "skipped": 1, "failed": 0 }
+    },
+    "verification": { "found": false },
+    "rollbackPreview": { "found": false },
+    "status": { "found": false }
+  },
+  "notes": []
+}
+```
+
+### Summary Fields by Artifact Type
+
+| Artifact | Summary Fields |
+|----------|----------------|
+| delta | `deltas` |
+| deltaSuggestions | `suggestions` |
+| conflicts | `conflicts`, `blocked` |
+| resolutionPlan | `decisions` |
+| resolutionApply | `ops`, `dryRun`, `applied`, `skipped`, `failed` |
+| verification | `verified`, `mismatch`, `missing` |
+| rollbackPreview | `actions` |
+| status | `overallStatus`, `ciVerdict` |
+
+### Best-Candidate Selection
+
+If multiple matching artifacts exist for a type (e.g., legacy and current naming):
+1. Prefer canonical current naming
+2. If still multiple, pick newest by timestamp inside artifact
+3. Fallback to file mtime if timestamp field missing
+4. Log a warning in `notes` array
+
+### Repo-Root Invariance
+
+The command behaves identically when run from:
+- Repository root
+- `packages/watcher`
+- Any subdirectory
+
+All input paths (relative, `../`, absolute) normalize to the same canonical form.
+
+### Relation to Other Phases
+
+| Phase | Purpose |
+|-------|---------|
+| 12J: Status | Single lifecycle status (CLEAN, VERIFIED_OK, etc.) |
+| 13A: Index | Snapshot of all artifact presence + metadata |
+| 13B: Timeline (future) | Historical run-over-run tracking |
+
+### Guarantees
+
+- **Deterministic**: Same artifacts → same index output, always
+- **Read-only**: Never generates, applies, or mutates artifacts
+- **Repo-root invariant**: Works identically from any working directory
+- **Single artifact**: One index file per source file
+- **Always exit 0**: Read-only indexing never fails CI
 
 ---
 
