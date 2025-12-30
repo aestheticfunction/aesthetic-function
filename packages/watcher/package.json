@@ -34,6 +34,7 @@
     "figma:status": "tsx src/reconciliationStatus/cliStatus.ts",
     "figma:index": "tsx src/reconciliationIndex/cliIndex.ts",
     "figma:timeline": "tsx src/reconciliationTimeline/cliTimeline.ts",
+    "figma:drift": "tsx src/reconciliationDrift/cliDrift.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",

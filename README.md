@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13B)
+## What Works Today (Phase 13C)
 
 | Feature | Status |
 |---------|--------|
@@ -274,6 +274,15 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Automatic recording on command completion | ✅ |
 | CLI `figma:timeline` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Drift Diffs (Phase 13C)** | |
+| Run-to-run comparison (.figma-drift-diff.json) | ✅ |
+| Severity classification (info/warn/fail) | ✅ |
+| Status worsening detection | ✅ |
+| Metric delta computation | ✅ |
+| Run selection (latest vs previous, explicit IDs) | ✅ |
+| Repo-root invariant (works from any working directory) | ✅ |
+| CLI `figma:drift` command | ✅ |
+| Human-readable and JSON output formats | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -375,6 +384,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 12J** | Reconciliation Lifecycle Status Artifact | ✅ |
 | **Phase 13A** | Reconciliation Run Index (Read-Only, Deterministic) | ✅ |
 | **Phase 13B** | Design Drift Timeline (Append-Only Run Ledger) | ✅ |
+| **Phase 13C** | Drift Diffs (Run-to-Run Comparison) | ✅ |
 
 ### Not Implemented Yet
 
@@ -3330,6 +3340,147 @@ Phase 13B uses Phase 13A's artifact discovery to populate each run entry's artif
 - **Repo-root invariant**: Works identically from any working directory
 - **Feature-flagged**: Recording requires explicit opt-in
 - **Read-only CLI**: Timeline CLI only reads; --write is for testing
+
+---
+
+## Drift Diffs (Phase 13C)
+
+Phase 13C adds run-to-run comparison capability, turning the timeline ledger from Phase 13B into actionable drift detection. It compares two runs and summarizes what changed between them.
+
+### Key Question
+
+**"What changed between this run and the previous run?"**
+
+This enables:
+- **Regression detection**: Catching status worsening (VERIFIED_OK → VERIFY_FAILED)
+- **Trend analysis**: Tracking verification mismatches over time
+- **Debugging**: Understanding what triggered a failure
+
+### Drift Diff Artifact
+
+Pattern: `design-materializations/<file>.figma-drift-diff.json`
+
+```json
+{
+  "version": "1.0",
+  "sourceFile": "demo-app/src/App.tsx",
+  "fromRunId": "abc12345",
+  "toRunId": "def67890",
+  "generatedAt": "2025-12-30T12:00:00.000Z",
+  "summary": {
+    "totalChanges": 2,
+    "infoCount": 1,
+    "warnCount": 0,
+    "failCount": 1,
+    "insufficientHistory": false,
+    "message": "1 regression(s), 0 warning(s), 1 info change(s)"
+  },
+  "changes": [
+    {
+      "field": "overallStatus",
+      "from": "VERIFIED_OK",
+      "to": "VERIFY_FAILED",
+      "severity": "fail",
+      "reason": "Status worsened from VERIFIED_OK to VERIFY_FAILED"
+    },
+    {
+      "field": "verifyMismatch",
+      "from": 0,
+      "to": 2,
+      "delta": 2,
+      "severity": "fail",
+      "reason": "Verification mismatches increased by 2"
+    }
+  ],
+  "from": { "runId": "abc12345", "timestamp": "...", "command": "...", ... },
+  "to": { "runId": "def67890", "timestamp": "...", "command": "...", ... }
+}
+```
+
+### Severity Rules
+
+| Change | Severity | Condition |
+|--------|----------|-----------|
+| Status worsening | fail | To VERIFY_FAILED or worse |
+| Status worsening | warn | To APPLIED_UNVERIFIED |
+| verifyMismatch increase | fail | Any increase > 0 |
+| verifyMissing increase | fail | Any increase > 0 |
+| conflictsTotal increase | warn | Any increase > 0 |
+| deltasTotal increase | warn | Any increase > 0 |
+| applyDryRun toggle | info | Any change |
+| Status improving | info | Level decreasing |
+| CLEAN ↔ VERIFIED_OK | info | Both good states |
+
+### CLI Usage
+
+```bash
+# Compare latest vs previous run
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx
+
+# JSON output
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --json
+
+# Compare specific runs
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --from abc12345 --to def67890
+
+# Write artifact to disk
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --write
+
+# Verbose mode (show artifact paths and reasons)
+pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --verbose
+```
+
+### Example Output
+
+```
+=== FIGMA DRIFT DIFF (Phase 13C) ===
+Repo Root: /path/to/repo
+Source: demo-app/src/App.tsx (canonical)
+
+Comparing: [abc12345] → [def67890]
+
+From:
+  Run ID: abc12345
+  Timestamp: 2025-12-30T10:00:00.000Z
+  Command: figma:status
+  Status: VERIFIED_OK
+
+To:
+  Run ID: def67890
+  Timestamp: 2025-12-30T11:00:00.000Z
+  Command: figma:status
+  Status: VERIFY_FAILED
+
+Summary: 1 regression(s), 0 warning(s), 1 info change(s)
+
+Changes (2):
+  [FAIL] overallStatus: VERIFIED_OK → VERIFY_FAILED
+  [FAIL] verifyMismatch: 0 → 2 (+2)
+```
+
+### Run Selection
+
+By default, compares the latest run vs the previous run:
+- **Default**: `runs[n-2]` (from) vs `runs[n-1]` (to)
+- **Explicit**: Use `--from` and/or `--to` with run IDs
+
+If fewer than 2 runs exist, produces an artifact with `insufficientHistory: true`.
+
+### Relation to Other Phases
+
+| Phase | Purpose | Type |
+|-------|---------|------|
+| 13A: Index | Current artifact snapshot | One-shot |
+| 13B: Timeline | Historical run ledger | Append-only |
+| 13C: Drift | Run-to-run comparison | Read-only diff |
+
+### Guarantees
+
+- **Deterministic**: Same runs → same diff output
+- **Read-only**: Never modifies any artifacts or source files
+- **Repo-root invariant**: Works identically from any working directory
+- **Exit code 0**: Always succeeds (even with insufficient history)
+- **Exit code 1**: Only on invalid arguments or corrupted ledger
 
 ---
 
