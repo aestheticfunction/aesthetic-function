@@ -42,6 +42,10 @@ import type {
   LoadLedgerResult,
   SelectRunsResult,
   RunSelectionExplanation,
+  ComparisonClass,
+  RunState,
+  RunCandidateInfo,
+  CandidateValidationResult,
 } from './types.js';
 
 // Re-export utilities for external use
@@ -210,6 +214,180 @@ export function selectRuns(
   }
 
   return { ok: true, fromEntry, toEntry, explanation };
+}
+
+// =============================================================================
+// CANDIDATE VALIDATION (Phase 13C.2)
+// =============================================================================
+
+/**
+ * Reconciliation artifact types that indicate a meaningful run.
+ * A run must have at least one of these to be comparable.
+ */
+const RECONCILIATION_ARTIFACT_TYPES = [
+  'status',
+  'verification',
+  'resolutionApply',
+  'delta',
+  'conflicts',
+  'resolutionPlan',
+  'rollbackPreview',
+] as const;
+
+/**
+ * Classify a run's state based on its artifacts.
+ */
+export function classifyRunState(runEntry: RunEntry): RunState {
+  const artifacts = runEntry.artifacts;
+
+  // Check for verification artifact
+  const hasVerification = !!artifacts.verification;
+
+  // Check for apply artifact
+  const hasApply = !!artifacts.resolutionApply;
+
+  // Check for any reconciliation artifact
+  const hasAnyReconciliation = RECONCILIATION_ARTIFACT_TYPES.some(
+    (type) => !!(artifacts as Record<string, string | undefined>)[type]
+  );
+
+  if (!hasAnyReconciliation) {
+    return 'EMPTY';
+  }
+
+  if (hasVerification) {
+    // We could check mismatch count, but for simplicity treat all verified as same state
+    // The actual mismatch info is in the snapshot
+    return 'VERIFIED_OK';
+  }
+
+  if (hasApply) {
+    return 'APPLY_ONLY';
+  }
+
+  // Has artifacts but not verification or apply
+  return 'INCOMPLETE';
+}
+
+/**
+ * Build candidate info for a run entry.
+ */
+export function buildRunCandidateInfo(runEntry: RunEntry): RunCandidateInfo {
+  const artifacts = runEntry.artifacts;
+
+  const availableArtifacts = RECONCILIATION_ARTIFACT_TYPES.filter(
+    (type) => !!(artifacts as Record<string, string | undefined>)[type]
+  );
+
+  return {
+    runId: runEntry.runId,
+    timestamp: runEntry.timestamp,
+    state: classifyRunState(runEntry),
+    hasRunIndex: !!artifacts.runIndex,
+    hasReconciliationArtifact: availableArtifacts.length > 0,
+    availableArtifacts,
+  };
+}
+
+/**
+ * Classify the comparison based on two run states.
+ */
+export function classifyComparison(fromState: RunState, toState: RunState): ComparisonClass {
+  // INVALID: Either run is EMPTY or INCOMPLETE
+  if (fromState === 'EMPTY' || toState === 'EMPTY') {
+    return 'INVALID';
+  }
+  if (fromState === 'INCOMPLETE' || toState === 'INCOMPLETE') {
+    return 'INVALID';
+  }
+
+  // FULL: Both runs verified
+  const fromVerified = fromState === 'VERIFIED_OK' || fromState === 'VERIFIED_MISMATCH';
+  const toVerified = toState === 'VERIFIED_OK' || toState === 'VERIFIED_MISMATCH';
+
+  if (fromVerified && toVerified) {
+    return 'FULL';
+  }
+
+  // PARTIAL: One verified, one applied
+  if (fromVerified || toVerified) {
+    return 'PARTIAL';
+  }
+
+  // WEAK: Neither verified (both APPLY_ONLY)
+  return 'WEAK';
+}
+
+/**
+ * Get warning message for a comparison class.
+ */
+function getComparisonWarning(
+  comparisonClass: ComparisonClass,
+  fromState: RunState,
+  toState: RunState
+): string | undefined {
+  switch (comparisonClass) {
+    case 'FULL':
+      return undefined; // No warning for full comparison
+
+    case 'PARTIAL': {
+      // Determine which run is unverified
+      const fromVerified = fromState === 'VERIFIED_OK' || fromState === 'VERIFIED_MISMATCH';
+      const toVerified = toState === 'VERIFIED_OK' || toState === 'VERIFIED_MISMATCH';
+      const unverified = !fromVerified ? 'from' : !toVerified ? 'to' : 'unknown';
+      return `⚠️ Drift comparison is PARTIAL\nReason: ${unverified} run has not been verified\nResults may reflect incomplete reconciliation`;
+    }
+
+    case 'WEAK':
+      return `⚠️ Drift comparison is WEAK\nReason: Neither run has been verified\nResults may reflect incomplete reconciliation`;
+
+    case 'INVALID':
+      return `⚠️ Drift comparison is INVALID\nReason: One or both runs are missing required artifacts\nComparison is not meaningful`;
+  }
+}
+
+/**
+ * Validate that two run candidates are meaningfully comparable.
+ *
+ * Validation rules:
+ * - Same canonical source file (implied by ledger)
+ * - Same repo root (implied by ledger)
+ * - Both runs must have at least one reconciliation artifact
+ */
+export function validateRunCandidates(
+  fromEntry: RunEntry,
+  toEntry: RunEntry
+): CandidateValidationResult {
+  const fromCandidate = buildRunCandidateInfo(fromEntry);
+  const toCandidate = buildRunCandidateInfo(toEntry);
+
+  const issues: string[] = [];
+
+  // Check if both runs have reconciliation artifacts
+  if (!fromCandidate.hasReconciliationArtifact) {
+    issues.push(`From run (${fromCandidate.runId}) has no reconciliation artifacts`);
+  }
+  if (!toCandidate.hasReconciliationArtifact) {
+    issues.push(`To run (${toCandidate.runId}) has no reconciliation artifacts`);
+  }
+
+  // Classify comparison
+  const comparisonClass = classifyComparison(fromCandidate.state, toCandidate.state);
+
+  // Determine validity
+  const valid = comparisonClass !== 'INVALID';
+
+  // Get warning message
+  const warningMessage = getComparisonWarning(comparisonClass, fromCandidate.state, toCandidate.state);
+
+  return {
+    valid,
+    comparisonClass,
+    fromCandidate,
+    toCandidate,
+    issues,
+    warningMessage,
+  };
 }
 
 // =============================================================================

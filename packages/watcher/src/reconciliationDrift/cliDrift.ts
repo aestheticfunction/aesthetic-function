@@ -28,6 +28,7 @@ import {
   createInsufficientHistoryArtifact,
   loadRunLedger,
   selectRuns,
+  validateRunCandidates,
 } from './compute.js';
 
 import {
@@ -35,7 +36,12 @@ import {
   writeDriftDiffArtifact,
 } from './artifact.js';
 
-import type { DriftCliOptions, DriftDiffArtifact, RunSelectionExplanation } from './types.js';
+import type {
+  CandidateValidationResult,
+  DriftCliOptions,
+  DriftDiffArtifact,
+  RunSelectionExplanation,
+} from './types.js';
 
 // =============================================================================
 // ARGUMENT PARSING
@@ -205,6 +211,7 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   let fromTimestamp: string | undefined;
   let toRunId: string | undefined;
   let toTimestamp: string | undefined;
+  let candidateValidation: CandidateValidationResult | undefined;
 
   if (ledgerResult.ok) {
     const selectResult = selectRuns(ledgerResult.ledger, options.fromRunId, options.toRunId);
@@ -214,6 +221,9 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
       fromTimestamp = selectResult.fromEntry.timestamp;
       toRunId = selectResult.toEntry.runId;
       toTimestamp = selectResult.toEntry.timestamp;
+
+      // Phase 13C.2: Validate run candidates
+      candidateValidation = validateRunCandidates(selectResult.fromEntry, selectResult.toEntry);
     }
   }
 
@@ -229,6 +239,34 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
       console.log('Run selection:');
       console.log(`  from: ${fromRunId} (${fromTimestamp})`);
       console.log(`  to:   ${toRunId} (${toTimestamp})`);
+    }
+
+    // Phase 13C.2: Print candidate classification
+    if (candidateValidation) {
+      console.log('');
+      console.log('=== CANDIDATE CLASSIFICATION (Phase 13C.2) ===');
+      console.log(`From Run: ${candidateValidation.fromCandidate.runId}`);
+      console.log(`  State: ${candidateValidation.fromCandidate.state}`);
+      console.log(`  Artifacts: ${candidateValidation.fromCandidate.availableArtifacts.join(', ') || 'none'}`);
+      console.log(`To Run: ${candidateValidation.toCandidate.runId}`);
+      console.log(`  State: ${candidateValidation.toCandidate.state}`);
+      console.log(`  Artifacts: ${candidateValidation.toCandidate.availableArtifacts.join(', ') || 'none'}`);
+      console.log(`Comparison Class: ${candidateValidation.comparisonClass}`);
+
+      // Print warning banner if comparison is not FULL
+      if (candidateValidation.warningMessage) {
+        console.log('');
+        console.log(candidateValidation.warningMessage);
+      }
+
+      // Print validation issues if any
+      if (candidateValidation.issues.length > 0) {
+        console.log('');
+        console.log('Issues:');
+        for (const issue of candidateValidation.issues) {
+          console.log(`  - ${issue}`);
+        }
+      }
     }
 
     console.log('');
@@ -315,11 +353,28 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
     }
   }
 
-  // Determine exit code (Phase 13C.1)
+  // Determine exit code (Phase 13C.1 + 13C.2)
   // Default: 0
-  // With --strict: exit 1 if any drift item has severity 'fail'
-  if (options.strict && hasFailSeverity(artifact)) {
-    return 1;
+  // With --strict:
+  //   - exit 1 if any drift item has severity 'fail'
+  //   - exit 1 if comparison class is INVALID or WEAK (Phase 13C.2)
+  if (options.strict) {
+    // Phase 13C.2: Check comparison class
+    if (candidateValidation) {
+      const { comparisonClass } = candidateValidation;
+      if (comparisonClass === 'INVALID' || comparisonClass === 'WEAK') {
+        if (!options.json) {
+          console.log('');
+          console.log(`✗ Strict mode failed: comparison class is ${comparisonClass}`);
+        }
+        return 1;
+      }
+    }
+
+    // Phase 13C.1: Check for fail severity
+    if (hasFailSeverity(artifact)) {
+      return 1;
+    }
   }
 
   return 0;

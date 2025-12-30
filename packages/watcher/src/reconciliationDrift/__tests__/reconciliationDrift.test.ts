@@ -879,3 +879,237 @@ describe('Phase 13C.1: Repo-root Invariance', () => {
     expect(ledger2.sourceFile).toBe('demo-app/src/App.tsx');
   });
 });
+// =============================================================================
+// PHASE 13C.2: CANDIDATE VALIDATION TESTS
+// =============================================================================
+
+import {
+  classifyRunState,
+  buildRunCandidateInfo,
+  classifyComparison,
+  validateRunCandidates,
+} from '../compute.js';
+
+describe('Phase 13C.2: Candidate Validation', () => {
+  describe('classifyRunState', () => {
+    it('should classify run with verification artifact as VERIFIED_OK', () => {
+      const entry = createMockRunEntry({
+        artifacts: {
+          verification: 'path/to/verification.json',
+        },
+      });
+      expect(classifyRunState(entry)).toBe('VERIFIED_OK');
+    });
+
+    it('should classify run with only apply artifact as APPLY_ONLY', () => {
+      const entry = createMockRunEntry({
+        artifacts: {
+          resolutionApply: 'path/to/apply.json',
+        },
+      });
+      expect(classifyRunState(entry)).toBe('APPLY_ONLY');
+    });
+
+    it('should classify run with status but no verification as INCOMPLETE', () => {
+      const entry = createMockRunEntry({
+        artifacts: {
+          status: 'path/to/status.json',
+        },
+      });
+      expect(classifyRunState(entry)).toBe('INCOMPLETE');
+    });
+
+    it('should classify run with no reconciliation artifacts as EMPTY', () => {
+      const entry = createMockRunEntry({
+        artifacts: {},
+      });
+      expect(classifyRunState(entry)).toBe('EMPTY');
+    });
+
+    it('should classify run with verification over apply', () => {
+      const entry = createMockRunEntry({
+        artifacts: {
+          verification: 'path/to/verification.json',
+          resolutionApply: 'path/to/apply.json',
+        },
+      });
+      expect(classifyRunState(entry)).toBe('VERIFIED_OK');
+    });
+  });
+
+  describe('buildRunCandidateInfo', () => {
+    it('should build candidate info with all artifacts', () => {
+      const entry = createMockRunEntry({
+        runId: 'run123',
+        timestamp: '2025-12-30T10:00:00.000Z',
+        artifacts: {
+          verification: 'path/to/verification.json',
+          status: 'path/to/status.json',
+        },
+      });
+
+      const info = buildRunCandidateInfo(entry);
+
+      expect(info.runId).toBe('run123');
+      expect(info.timestamp).toBe('2025-12-30T10:00:00.000Z');
+      expect(info.state).toBe('VERIFIED_OK');
+      expect(info.hasReconciliationArtifact).toBe(true);
+      expect(info.availableArtifacts).toContain('verification');
+      expect(info.availableArtifacts).toContain('status');
+    });
+
+    it('should detect run index presence', () => {
+      const entryWithIndex = createMockRunEntry({
+        artifacts: {
+          runIndex: 'path/to/runIndex.json',
+          status: 'path/to/status.json',
+        },
+      });
+
+      const info = buildRunCandidateInfo(entryWithIndex);
+      expect(info.hasRunIndex).toBe(true);
+    });
+  });
+
+  describe('classifyComparison', () => {
+    it('should return FULL when both runs are verified', () => {
+      expect(classifyComparison('VERIFIED_OK', 'VERIFIED_OK')).toBe('FULL');
+      expect(classifyComparison('VERIFIED_OK', 'VERIFIED_MISMATCH')).toBe('FULL');
+      expect(classifyComparison('VERIFIED_MISMATCH', 'VERIFIED_OK')).toBe('FULL');
+    });
+
+    it('should return PARTIAL when one run is verified', () => {
+      expect(classifyComparison('VERIFIED_OK', 'APPLY_ONLY')).toBe('PARTIAL');
+      expect(classifyComparison('APPLY_ONLY', 'VERIFIED_OK')).toBe('PARTIAL');
+    });
+
+    it('should return WEAK when neither run is verified', () => {
+      expect(classifyComparison('APPLY_ONLY', 'APPLY_ONLY')).toBe('WEAK');
+    });
+
+    it('should return INVALID when either run is EMPTY', () => {
+      expect(classifyComparison('EMPTY', 'VERIFIED_OK')).toBe('INVALID');
+      expect(classifyComparison('VERIFIED_OK', 'EMPTY')).toBe('INVALID');
+      expect(classifyComparison('EMPTY', 'EMPTY')).toBe('INVALID');
+    });
+
+    it('should return INVALID when either run is INCOMPLETE', () => {
+      expect(classifyComparison('INCOMPLETE', 'VERIFIED_OK')).toBe('INVALID');
+      expect(classifyComparison('APPLY_ONLY', 'INCOMPLETE')).toBe('INVALID');
+    });
+  });
+
+  describe('validateRunCandidates', () => {
+    it('should validate FULL comparison (both verified)', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { verification: 'path/to/v1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: { verification: 'path/to/v2.json' },
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(true);
+      expect(result.comparisonClass).toBe('FULL');
+      expect(result.warningMessage).toBeUndefined();
+      expect(result.issues).toHaveLength(0);
+    });
+
+    it('should validate PARTIAL comparison with warning', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { verification: 'path/to/v1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: { resolutionApply: 'path/to/a1.json' },
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(true);
+      expect(result.comparisonClass).toBe('PARTIAL');
+      expect(result.warningMessage).toContain('PARTIAL');
+      expect(result.warningMessage).toContain('to run has not been verified');
+    });
+
+    it('should validate WEAK comparison with warning', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { resolutionApply: 'path/to/a1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: { resolutionApply: 'path/to/a2.json' },
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(true);
+      expect(result.comparisonClass).toBe('WEAK');
+      expect(result.warningMessage).toContain('WEAK');
+      expect(result.warningMessage).toContain('Neither run has been verified');
+    });
+
+    it('should invalidate INVALID comparison', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { verification: 'path/to/v1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: {},
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(false);
+      expect(result.comparisonClass).toBe('INVALID');
+      expect(result.warningMessage).toContain('INVALID');
+      expect(result.issues.length).toBeGreaterThan(0);
+    });
+
+    it('should detect missing reconciliation artifacts', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: {},
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: {},
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.issues).toContain('From run (from1) has no reconciliation artifacts');
+      expect(result.issues).toContain('To run (to1) has no reconciliation artifacts');
+    });
+  });
+
+  describe('deterministic output', () => {
+    it('should produce deterministic warning messages', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { resolutionApply: 'path/to/a1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: { resolutionApply: 'path/to/a2.json' },
+      });
+
+      // Run validation multiple times
+      const results = Array.from({ length: 5 }, () =>
+        validateRunCandidates(fromEntry, toEntry)
+      );
+
+      // All results should be identical
+      const firstResult = JSON.stringify(results[0]);
+      for (const result of results) {
+        expect(JSON.stringify(result)).toBe(firstResult);
+      }
+    });
+  });
+});

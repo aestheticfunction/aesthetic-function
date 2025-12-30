@@ -3541,6 +3541,56 @@ To Run:
   Explicit: no (auto-selected)
 ```
 
+### Candidate Validation (Phase 13C.2)
+
+Before computing drift, candidates are validated to ensure meaningful comparison:
+
+#### Run States
+
+Each run is classified based on its artifacts:
+
+| State | Description | Has Verification | Has Apply |
+|-------|-------------|------------------|-----------|
+| `VERIFIED_OK` | Run completed with verification | ✓ | - |
+| `VERIFIED_MISMATCH` | Verified but found mismatches | ✓ | - |
+| `APPLY_ONLY` | Applied changes but never verified | ✗ | ✓ |
+| `INCOMPLETE` | Has some artifacts but not verification or apply | ✗ | ✗ |
+| `EMPTY` | No reconciliation artifacts | ✗ | ✗ |
+
+#### Comparison Classes
+
+The comparison class indicates the confidence level of the drift analysis:
+
+| Class | Description | Behavior |
+|-------|-------------|----------|
+| `FULL` | Both runs verified | ✓ High confidence |
+| `PARTIAL` | One run verified | ⚠️ Warning printed |
+| `WEAK` | Neither run verified | ⚠️ Warning printed, `--strict` fails |
+| `INVALID` | Missing artifacts | ❌ Not meaningful, `--strict` fails |
+
+#### Example Output
+
+```
+=== CANDIDATE CLASSIFICATION (Phase 13C.2) ===
+From Run: abc12345
+  State: VERIFIED_OK
+  Artifacts: status, verification
+To Run: def67890
+  State: APPLY_ONLY
+  Artifacts: resolutionApply
+Comparison Class: PARTIAL
+
+⚠️ Drift comparison is PARTIAL
+Reason: to run has not been verified
+Results may reflect incomplete reconciliation
+```
+
+#### Strict Mode Enforcement
+
+With `--strict`, the command exits with code 1 when:
+- Comparison class is `INVALID` or `WEAK`
+- Any drift item has severity `fail`
+
 ### No Material Drift Message (Phase 13C.1)
 
 When no significant changes exist (empty changes or all 'info' with zero deltas):

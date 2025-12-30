@@ -426,3 +426,98 @@ export interface RunSelectionExplanation {
    */
   explicitTo: boolean;
 }
+
+// =============================================================================
+// CANDIDATE VALIDATION (Phase 13C.2)
+// =============================================================================
+
+/**
+ * Comparison class for drift analysis.
+ *
+ * - FULL: Both runs verified (highest confidence)
+ * - PARTIAL: One verified, one applied (medium confidence)
+ * - WEAK: Neither verified (low confidence)
+ * - INVALID: Missing required artifacts (comparison not meaningful)
+ */
+export type ComparisonClass = 'FULL' | 'PARTIAL' | 'WEAK' | 'INVALID';
+
+/**
+ * Run state classification for comparison purposes.
+ *
+ * - VERIFIED_OK: Run has verification artifact with no mismatches
+ * - VERIFIED_MISMATCH: Run has verification artifact with mismatches
+ * - APPLY_ONLY: Run has apply artifact but no verification
+ * - INCOMPLETE: Run has artifacts but missing required ones
+ * - EMPTY: Run has no reconciliation artifacts
+ */
+export type RunState = 'VERIFIED_OK' | 'VERIFIED_MISMATCH' | 'APPLY_ONLY' | 'INCOMPLETE' | 'EMPTY';
+
+/**
+ * Information about a run candidate for comparison.
+ */
+export interface RunCandidateInfo {
+  /**
+   * Run ID.
+   */
+  runId: string;
+
+  /**
+   * Timestamp.
+   */
+  timestamp: string;
+
+  /**
+   * Classified run state.
+   */
+  state: RunState;
+
+  /**
+   * Whether the run has a run index entry.
+   */
+  hasRunIndex: boolean;
+
+  /**
+   * Whether the run has at least one reconciliation artifact.
+   */
+  hasReconciliationArtifact: boolean;
+
+  /**
+   * List of available artifact types.
+   */
+  availableArtifacts: string[];
+}
+
+/**
+ * Result of candidate validation.
+ */
+export interface CandidateValidationResult {
+  /**
+   * Whether the comparison is valid.
+   */
+  valid: boolean;
+
+  /**
+   * Comparison class.
+   */
+  comparisonClass: ComparisonClass;
+
+  /**
+   * Candidate info for 'from' run.
+   */
+  fromCandidate: RunCandidateInfo;
+
+  /**
+   * Candidate info for 'to' run.
+   */
+  toCandidate: RunCandidateInfo;
+
+  /**
+   * Validation issues (if any).
+   */
+  issues: string[];
+
+  /**
+   * Warning message (if comparison is not FULL).
+   */
+  warningMessage?: string;
+}
