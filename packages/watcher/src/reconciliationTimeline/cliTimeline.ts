@@ -2,7 +2,7 @@
 /**
  * @aesthetic-function/watcher - reconciliationTimeline/cliTimeline.ts
  *
- * Phase 13B: CLI for Design Drift Timeline.
+ * Phase 13B + 13B.2: CLI for Design Drift Timeline.
  *
  * WHY: Single command to view the time-ordered reconciliation history
  * for a source file, with explicit opt-in run recording.
@@ -17,6 +17,7 @@
  *   --write               Force write ledger artifact even if empty
  *   --record              Explicitly append a new run to the ledger
  *   --verbose             Show discovery paths
+ *   --help, -h            Show this help message and exit
  *
  * RECORDING:
  *   Runs are recorded ONLY when both:
@@ -24,12 +25,13 @@
  *   - RECONCILIATION_TIMELINE_ON=true
  *
  * EXIT CODES:
- *   0 - Always (diagnostic only)
+ *   0 - Success / help
  *   2 - Usage error
  */
 
 import { resolve } from 'node:path';
 import { join } from 'node:path';
+import { argv, exit, cwd } from 'node:process';
 
 import type { TimelineReadContext, TimelineRecordContext } from './types.js';
 import {
@@ -55,9 +57,66 @@ interface CliOptions {
 }
 
 /**
- * Parse CLI arguments.
+ * Result of parsing CLI arguments.
+ *
+ * Phase 13B.2: Structured result for testability and help priority.
  */
-function parseArgs(args: string[]): CliOptions {
+type ParseArgsResult =
+  | CliOptions
+  | { error: string };
+
+/**
+ * Print usage information.
+ */
+function printUsage(): void {
+  console.log(`
+Usage: figma:timeline <source-file> [options]
+
+View time-ordered reconciliation history for a source file.
+
+Arguments:
+  <source-file>           Source file to show timeline for (e.g., demo-app/src/App.tsx)
+
+Options:
+  --repo-root <path>      Repository root (default: auto-detect)
+  --json                  Output JSON format
+  --limit <n>             Maximum runs to show (default: 10)
+  --write                 Force write ledger artifact even if empty
+  --record                Explicitly append a new run to the ledger
+  --verbose, -v           Show discovery paths
+  --help, -h              Show this help message and exit
+
+Recording:
+  Runs are recorded ONLY when both:
+  - --record flag is present
+  - RECONCILIATION_TIMELINE_ON=true
+
+Exit Codes:
+  0                       Success / help
+  2                       Usage error
+
+Examples:
+  figma:timeline demo-app/src/App.tsx
+  figma:timeline demo-app/src/App.tsx --json
+  figma:timeline demo-app/src/App.tsx --limit 5
+  figma:timeline demo-app/src/App.tsx --record
+`.trim());
+}
+
+/**
+ * Parse CLI arguments.
+ *
+ * Phase 13B.2: Check --help/-h BEFORE positional validation.
+ * Returns structured result for testability.
+ */
+function parseArgs(args: string[]): ParseArgsResult {
+  // Phase 13B.2: Check for help flag FIRST, before any validation
+  // Help wins regardless of argument order or other flags
+  if (args.includes('--help') || args.includes('-h')) {
+    printUsage();
+    return { error: '' }; // Empty error signals help (exit 0)
+  }
+
   const options: CliOptions = {
     sourceFile: '',
     repoRoot: '', // Empty means auto-detect
@@ -90,36 +149,35 @@ function parseArgs(args: string[]): CliOptions {
     }
   }
 
+  // Validate source file (only if help was not requested)
+  if (!options.sourceFile) {
+    return { error: 'Source file is required' };
+  }
+
   return options;
 }
 
 /**
  * Main CLI entry point.
+ *
+ * Phase 13B.2: Accepts args for testability, returns exit code.
  */
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const options = parseArgs(args);
+export async function main(args: string[] = argv.slice(2)): Promise<number> {
+  const parsed = parseArgs(args);
 
-  // Validate source file
-  if (!options.sourceFile) {
-    console.error('Error: Source file is required');
-    console.error('');
-    console.error('Usage: pnpm figma:timeline <source-file> [options]');
-    console.error('');
-    console.error('Options:');
-    console.error('  --repo-root <path>  Repository root (default: auto-detect)');
-    console.error('  --json              Output JSON format');
-    console.error('  --limit <n>         Maximum runs to show (default: 10)');
-    console.error('  --write             Force write ledger artifact');
-    console.error('  --record            Explicitly append a new run to the ledger');
-    console.error('  --verbose, -v       Show discovery paths');
-    console.error('');
-    console.error('Recording:');
-    console.error('  Runs are recorded ONLY when both:');
-    console.error('  - --record flag is present');
-    console.error('  - RECONCILIATION_TIMELINE_ON=true');
-    process.exit(2);
+  // Handle parse result
+  if ('error' in parsed) {
+    if (parsed.error) {
+      // Usage error - print error and exit 2
+      console.error(`Error: ${parsed.error}`);
+      printUsage();
+      return 2;
+    }
+    // Help was requested - already printed, exit 0
+    return 0;
   }
+
+  const options = parsed;
 
   // Auto-detect repo root if not provided
   const repoRoot = options.repoRoot || getRepoRoot();
@@ -146,7 +204,7 @@ async function main(): Promise<void> {
         sourceFile: normalizedSource,
         repoRoot,
         command: 'figma:timeline --record',
-        cwd: process.cwd(),
+        cwd: cwd(),
       };
 
       const entry = await createRunEntry(recordContext);
@@ -198,12 +256,16 @@ async function main(): Promise<void> {
     console.log(formatTimeline(runs, normalizedSource, repoRoot, options.limit, !options.record));
   }
 
-  // Always exit 0 (diagnostic only)
-  process.exit(0);
+  // Success
+  return 0;
 }
 
-// Run
-main().catch((error) => {
-  console.error('Error:', error instanceof Error ? error.message : String(error));
-  process.exit(2);
-});
+// Run CLI only when invoked directly (not when imported for testing)
+// In ESM, we check if this file is the entry point
+const isMain = import.meta.url.endsWith(process.argv[1]?.replace(/^file:\/\//, '') ?? '');
+if (isMain || process.argv[1]?.includes('cliTimeline')) {
+  main().then(code => exit(code)).catch((error) => {
+    console.error('Error:', error instanceof Error ? error.message : String(error));
+    exit(2);
+  });
+}

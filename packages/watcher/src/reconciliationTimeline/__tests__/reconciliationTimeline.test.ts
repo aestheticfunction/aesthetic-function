@@ -6,7 +6,7 @@
  * Tests fixture-based, no demo-app dependency.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { mkdirSync, rmSync, writeFileSync, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -789,5 +789,110 @@ describe('Explicit Run Recording (Phase 13B.1)', () => {
         delete process.env.RECONCILIATION_TIMELINE_ON;
       }
     }
+  });
+});
+
+// =============================================================================
+// PHASE 13B.2: CLI HELP UX TESTS
+// =============================================================================
+
+describe('Phase 13B.2: CLI Help UX', () => {
+  // We test the main function directly by importing and calling it
+  // The main function returns exit code and uses console for output
+
+  let consoleLogSpy: ReturnType<typeof vi.spyOn>;
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    consoleLogSpy.mockRestore();
+    consoleErrorSpy.mockRestore();
+  });
+
+  describe('Help Paths (exit 0)', () => {
+    it('figma:timeline --help should exit 0 and show usage', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main(['--help']);
+
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(output).toContain('Usage:');
+      expect(output).toContain('figma:timeline');
+    });
+
+    it('figma:timeline -h should exit 0', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main(['-h']);
+
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(output).toContain('Usage:');
+    });
+
+    it('figma:timeline demo-app/src/App.tsx --help should exit 0', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main(['demo-app/src/App.tsx', '--help']);
+
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(output).toContain('Usage:');
+    });
+
+    it('figma:timeline --record --write --help should exit 0 with no ledger write', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main(['--record', '--write', '--help']);
+
+      expect(exitCode).toBe(0);
+      expect(consoleLogSpy).toHaveBeenCalled();
+      const output = consoleLogSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(output).toContain('Usage:');
+      // No error output should occur
+      expect(consoleErrorSpy).not.toHaveBeenCalled();
+    });
+
+    it('help should work with --help in any position', async () => {
+      const { main } = await import('../cliTimeline.js');
+
+      // --help at end
+      const code1 = await main(['demo-app/src/App.tsx', '--json', '--help']);
+      expect(code1).toBe(0);
+
+      // --help in middle
+      const code2 = await main(['--help', 'demo-app/src/App.tsx']);
+      expect(code2).toBe(0);
+
+      // --help first
+      const code3 = await main(['--help', '--json', '--verbose']);
+      expect(code3).toBe(0);
+    });
+  });
+
+  describe('Validation Error Paths (exit 2)', () => {
+    it('figma:timeline with no args should exit 2 with "Source file is required"', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main([]);
+
+      expect(exitCode).toBe(2);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const errorOutput = consoleErrorSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(errorOutput).toContain('Source file is required');
+    });
+
+    it('figma:timeline --json with no source file should exit 2', async () => {
+      const { main } = await import('../cliTimeline.js');
+      const exitCode = await main(['--json']);
+
+      expect(exitCode).toBe(2);
+      expect(consoleErrorSpy).toHaveBeenCalled();
+      const errorOutput = consoleErrorSpy.mock.calls.map((c: unknown[]) => c.join(' ')).join('\n');
+      expect(errorOutput).toContain('Source file is required');
+    });
   });
 });
