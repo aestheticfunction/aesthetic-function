@@ -69,9 +69,11 @@ function parseArgs(args: string[]): CliOptions {
 
 /**
  * Main CLI entry point.
+ *
+ * @param args - CLI arguments (defaults to process.argv.slice(2))
+ * @returns Exit code
  */
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export async function main(args: string[] = process.argv.slice(2)): Promise<number> {
   const options = parseArgs(args);
 
   // Validate source file
@@ -85,7 +87,7 @@ async function main(): Promise<void> {
     console.error('  --json              Output JSON format');
     console.error('  --write             Write run index artifact');
     console.error('  --verbose, -v       Show artifact discovery paths');
-    process.exit(2);
+    return 2;
   }
 
   // Auto-detect repo root if not provided
@@ -123,11 +125,14 @@ async function main(): Promise<void> {
   }
 
   // Always exit 0 (read-only indexing, never fails)
-  process.exit(0);
+  return 0;
 }
 
-// Run
-main().catch((error) => {
-  console.error('Error:', error instanceof Error ? error.message : String(error));
-  process.exit(2);
-});
+// Run when invoked directly
+const isMain = import.meta.url.endsWith(process.argv[1]?.replace(/^file:\/\//, '') ?? '');
+if (isMain || process.argv[1]?.includes('cliIndex')) {
+  main().then(code => process.exit(code)).catch((error) => {
+    console.error('Error:', error instanceof Error ? error.message : String(error));
+    process.exit(2);
+  });
+}

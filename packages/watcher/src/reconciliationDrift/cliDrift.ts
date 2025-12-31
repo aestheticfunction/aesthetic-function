@@ -380,5 +380,11 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   return 0;
 }
 
-// Run CLI
-main().then(code => exit(code));
+// Run when invoked directly
+const isMain = import.meta.url.endsWith(process.argv[1]?.replace(/^file:\/\//, '') ?? '');
+if (isMain || process.argv[1]?.includes('cliDrift')) {
+  main().then(code => exit(code)).catch((error) => {
+    console.error('Error:', error instanceof Error ? error.message : String(error));
+    exit(2);
+  });
+}
