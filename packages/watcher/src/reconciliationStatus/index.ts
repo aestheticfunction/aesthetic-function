@@ -66,3 +66,4 @@ export {
   writeReconciliationStatusArtifact,
   formatReconciliationStatus,
 } from './artifact.js';
+export type { WriteStatusArtifactOptions } from './artifact.js';

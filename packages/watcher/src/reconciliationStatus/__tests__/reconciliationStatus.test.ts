@@ -19,7 +19,10 @@
  * NO demo-app reads. Fixtures only.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, rmSync, existsSync, readFileSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { writeReconciliationStatusArtifact } from '../artifact.js';
 import { join } from 'node:path';
 import {
   computeReconciliationStatus,
@@ -815,5 +818,127 @@ describe('source path normalization (Phase 12J.2)', () => {
 
     expect(artifactPath).not.toContain('..__');
     expect(artifactPath).toBe('design-materializations/demo-app__src__App.figma-resolution-apply.json');
+  });
+});
+
+// =============================================================================
+// PHASE 12J.3: --write HONORS CLEAN STATUS TESTS
+// =============================================================================
+
+describe('Phase 12J.3: writeReconciliationStatusArtifact with force', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = mkdtempSync(join(tmpdir(), 'status-force-test-'));
+    mkdirSync(join(testDir, 'design-materializations'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('should write artifact even when CLEAN if force=true', async () => {
+    const cleanStatus: ReconciliationStatus = {
+      version: '1.0',
+      sourceFile: 'src/Component.tsx',
+      timestamp: '2025-12-31T12:00:00.000Z',
+      overallStatus: 'CLEAN',
+      ciVerdict: 'PASS',
+      phases: {},
+      explanation: 'No reconciliation artifacts found. File is clean.',
+    };
+
+    const context = {
+      sourceFile: 'src/Component.tsx',
+      repoRoot: testDir,
+    };
+
+    // Phase 12J.3: force=true should write even if CLEAN
+    const result = await writeReconciliationStatusArtifact(cleanStatus, context, { force: true });
+
+    expect(result.written).toBe(true);
+    expect(result.path).toBe('design-materializations/src__Component.figma-reconciliation-status.json');
+
+    // Verify file exists
+    const fullPath = join(testDir, result.path);
+    expect(existsSync(fullPath)).toBe(true);
+
+    // Verify content is correct
+    const content = JSON.parse(readFileSync(fullPath, 'utf-8'));
+    expect(content.overallStatus).toBe('CLEAN');
+    expect(content.sourceFile).toBe('src/Component.tsx');
+  });
+
+  it('should NOT write CLEAN status if force is not specified', async () => {
+    const cleanStatus: ReconciliationStatus = {
+      version: '1.0',
+      sourceFile: 'src/Component.tsx',
+      timestamp: '2025-12-31T12:00:00.000Z',
+      overallStatus: 'CLEAN',
+      ciVerdict: 'PASS',
+      phases: {},
+      explanation: 'No reconciliation artifacts found. File is clean.',
+    };
+
+    const context = {
+      sourceFile: 'src/Component.tsx',
+      repoRoot: testDir,
+    };
+
+    // Default: should NOT write CLEAN status
+    const result = await writeReconciliationStatusArtifact(cleanStatus, context);
+
+    expect(result.written).toBe(false);
+    expect(result.path).toBe('design-materializations/src__Component.figma-reconciliation-status.json');
+
+    // Verify file does NOT exist
+    const fullPath = join(testDir, result.path);
+    expect(existsSync(fullPath)).toBe(false);
+  });
+
+  it('should produce repo-root invariant artifact path', async () => {
+    // Run from different "working directories" but with same repo root
+    const context1 = { sourceFile: 'src/Component.tsx', repoRoot: testDir };
+    const context2 = { sourceFile: './src/Component.tsx', repoRoot: testDir };
+
+    // Normalize source files as the CLI would
+    const normalized1 = normalizeSourcePath(context1.sourceFile, context1.repoRoot);
+    const normalized2 = normalizeSourcePath(context2.sourceFile, context2.repoRoot);
+
+    expect(normalized1).toBe(normalized2);
+
+    // Artifact paths should be identical
+    const path1 = getStatusArtifactPath(normalized1);
+    const path2 = getStatusArtifactPath(normalized2);
+
+    expect(path1).toBe(path2);
+    expect(path1).toBe('design-materializations/src__Component.figma-reconciliation-status.json');
+  });
+
+  it('should produce deterministic JSON output', async () => {
+    const status: ReconciliationStatus = {
+      version: '1.0',
+      sourceFile: 'src/Component.tsx',
+      timestamp: '2025-12-31T12:00:00.000Z',
+      overallStatus: 'CLEAN',
+      ciVerdict: 'PASS',
+      phases: {},
+      explanation: 'No reconciliation artifacts found. File is clean.',
+    };
+
+    const context = {
+      sourceFile: 'src/Component.tsx',
+      repoRoot: testDir,
+    };
+
+    // Write twice
+    await writeReconciliationStatusArtifact(status, context, { force: true });
+    const content1 = readFileSync(join(testDir, 'design-materializations/src__Component.figma-reconciliation-status.json'), 'utf-8');
+
+    await writeReconciliationStatusArtifact(status, context, { force: true });
+    const content2 = readFileSync(join(testDir, 'design-materializations/src__Component.figma-reconciliation-status.json'), 'utf-8');
+
+    // Same input → identical output
+    expect(content1).toBe(content2);
   });
 });

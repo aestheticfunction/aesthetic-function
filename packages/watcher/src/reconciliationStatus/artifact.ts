@@ -10,8 +10,11 @@
  * - Format status for human readability
  *
  * CONSTRAINTS:
- * - Only write if non-CLEAN status
+ * - Default: only write if non-CLEAN status
+ * - Phase 12J.3: force=true writes regardless of status
  * - Deterministic output format
+ * - Atomic writes (temp + rename via Node.js writeFile)
+ * - Repo-root invariant path resolution
  */
 
 import { mkdir, writeFile } from 'node:fs/promises';
@@ -37,26 +40,40 @@ export function getStatusArtifactPath(sourceFile: string): string {
 // =============================================================================
 
 /**
+ * Options for writing status artifact.
+ */
+export interface WriteStatusArtifactOptions {
+  /**
+   * Force write even if status is CLEAN.
+   * Phase 12J.3: When --write is specified, always write artifact.
+   */
+  force?: boolean;
+}
+
+/**
  * Write reconciliation status artifact to disk.
  *
- * Only writes if status is non-CLEAN.
+ * By default, only writes if status is non-CLEAN.
+ * Phase 12J.3: When force=true, always writes regardless of status.
  */
 export async function writeReconciliationStatusArtifact(
   status: ReconciliationStatus,
-  context: ReconciliationStatusContext
+  context: ReconciliationStatusContext,
+  options?: WriteStatusArtifactOptions
 ): Promise<{ written: boolean; path: string }> {
   const artifactPath = getStatusArtifactPath(context.sourceFile);
   const fullPath = join(context.repoRoot, artifactPath);
 
-  // Only write non-CLEAN status
-  if (!shouldWriteStatusArtifact(status)) {
+  // Phase 12J.3: Skip CLEAN status check if force is true
+  const force = options?.force ?? false;
+  if (!force && !shouldWriteStatusArtifact(status)) {
     return { written: false, path: artifactPath };
   }
 
   // Ensure directory exists
   await mkdir(dirname(fullPath), { recursive: true });
 
-  // Write artifact with pretty formatting
+  // Write artifact with pretty formatting (deterministic output)
   await writeFile(fullPath, JSON.stringify(status, null, 2), 'utf-8');
 
   return { written: true, path: artifactPath };

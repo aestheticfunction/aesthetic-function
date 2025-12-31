@@ -12,7 +12,7 @@
  * OPTIONS:
  *   --repo-root <path>    Repository root (default: auto-detect)
  *   --json                Output JSON format
- *   --write               Write status artifact (only if non-CLEAN)
+ *   --write               Write status artifact (always, even if CLEAN)
  *   --verbose             Show artifact discovery paths
  *
  * EXIT CODES:
@@ -20,9 +20,10 @@
  *   1 - FAIL
  *
  * Phase 12J.1: Fixed to use correct artifact names and auto-detect repo root.
+ * Phase 12J.3: --write now always writes artifact, even when CLEAN.
  */
 
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
 
 import type { ReconciliationStatusContext } from './types.js';
 import {
@@ -150,10 +151,14 @@ async function main(): Promise<void> {
   const status = computeReconciliationStatus(artifacts, options.sourceFile);
 
   // Write artifact if requested
+  // Phase 12J.3: Always write when --write is specified, even if CLEAN
   if (options.write) {
-    const result = await writeReconciliationStatusArtifact(status, context);
-    if (result.written && !options.json) {
-      console.log(`Status artifact written: ${result.path}`);
+    const result = await writeReconciliationStatusArtifact(status, context, { force: true });
+    if (!options.json) {
+      console.log(`Wrote: ${result.path}`);
+      if (options.verbose) {
+        console.log(`  Full path: ${join(context.repoRoot, result.path)}`);
+      }
       console.log('');
     }
   }
