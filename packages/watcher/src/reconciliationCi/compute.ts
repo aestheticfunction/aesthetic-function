@@ -38,7 +38,11 @@ import type {
   FileTrend,
   TrendDirection,
   TrendSummary,
+  CiTrendPolicy,
 } from './types.js';
+
+import { determineCiVerdict } from './config.js';
+import { getCiVerdictMessage } from './types.js';
 
 // Re-export utilities for external use
 export { getRepoRoot, normalizeSourcePath, normalizeScanRoot };
@@ -49,21 +53,17 @@ export { getRepoRoot, normalizeSourcePath, normalizeScanRoot };
 
 /**
  * Default trend window size (number of recent runs per file).
+ * @deprecated Use DEFAULT_TREND_POLICY.window from types.ts instead.
  */
 export const DEFAULT_TREND_WINDOW = 5;
 
-/**
- * Threshold for considering a score change as "improving" or "worsening".
- * A delta >= +5 is improving, <= -5 is worsening, otherwise stable.
- */
-const TREND_THRESHOLD = 5;
-
 // =============================================================================
-// CONFIG HELPERS
+// CONFIG HELPERS (DEPRECATED - use config.ts instead)
 // =============================================================================
 
 /**
  * Get CI strict mode from environment.
+ * @deprecated Use isCiStrictModeFromEnv() from config.ts instead.
  */
 export function isCiStrictMode(): boolean {
   const value = process.env.RECONCILIATION_CI_STRICT;
@@ -72,6 +72,7 @@ export function isCiStrictMode(): boolean {
 
 /**
  * Get trend window size from environment.
+ * @deprecated Use resolveTrendPolicy() from config.ts instead.
  */
 export function getCiWindowSize(): number {
   const value = process.env.RECONCILIATION_CI_WINDOW;
@@ -114,13 +115,21 @@ function computeScoreFromRun(run: RunEntry): number {
 }
 
 /**
- * Determine trend direction from score delta.
+ * Determine trend direction from score delta using policy thresholds.
+ *
+ * @param scoreDelta - The change in stability score (end - start)
+ * @param improvingDelta - Threshold for considering a change as improving (must be > 0)
+ * @param worseningDelta - Threshold for considering a change as worsening (must be < 0)
  */
-function determineTrendDirection(scoreDelta: number): TrendDirection {
-  if (scoreDelta >= TREND_THRESHOLD) {
+function determineTrendDirection(
+  scoreDelta: number,
+  improvingDelta: number,
+  worseningDelta: number
+): TrendDirection {
+  if (scoreDelta >= improvingDelta) {
     return 'improving';
   }
-  if (scoreDelta <= -TREND_THRESHOLD) {
+  if (scoreDelta <= worseningDelta) {
     return 'worsening';
   }
   return 'stable';
@@ -132,12 +141,12 @@ function determineTrendDirection(scoreDelta: number): TrendDirection {
 async function computeFileTrend(
   sourceFile: string,
   repoRoot: string,
-  windowSize: number
+  policy: CiTrendPolicy
 ): Promise<FileTrend> {
   // Get recent runs (newest first)
   const recentRuns = await getRecentRuns(
     { sourceFile, repoRoot },
-    windowSize
+    policy.window
   );
 
   if (recentRuns.length < 2) {
@@ -163,7 +172,11 @@ async function computeFileTrend(
   return {
     sourceFile,
     runsInWindow: recentRuns.length,
-    direction: determineTrendDirection(scoreDelta),
+    direction: determineTrendDirection(
+      scoreDelta,
+      policy.improvingDelta,
+      policy.worseningDelta
+    ),
     startScore,
     endScore,
     scoreDelta,
@@ -176,16 +189,19 @@ async function computeFileTrend(
 async function computeTrendSummary(
   sourceFiles: string[],
   repoRoot: string,
-  windowSize: number
+  policy: CiTrendPolicy
 ): Promise<TrendSummary> {
+  // Apply maxFiles limit
+  const filesToEvaluate = sourceFiles.slice(0, policy.maxFiles);
+
   const fileTrends: FileTrend[] = [];
   let improving = 0;
   let stable = 0;
   let worsening = 0;
   let insufficientData = 0;
 
-  for (const sourceFile of sourceFiles) {
-    const trend = await computeFileTrend(sourceFile, repoRoot, windowSize);
+  for (const sourceFile of filesToEvaluate) {
+    const trend = await computeFileTrend(sourceFile, repoRoot, policy);
     fileTrends.push(trend);
 
     if (trend.runsInWindow < 2) {
@@ -214,7 +230,7 @@ async function computeTrendSummary(
     worsening,
     insufficientData,
     files: fileTrends,
-    windowSize,
+    windowSize: policy.window,
   };
 }
 
@@ -228,10 +244,15 @@ async function computeTrendSummary(
 export async function computeCiGate(
   context: CiGateContext
 ): Promise<ComputeCiGateResult> {
-  const { scanRoot, repoRoot, limit, window: windowSize, strict } = context;
+  const { scanRoot, repoRoot, limit, strict, trendPolicy } = context;
 
   // Normalize scan root
   const normalizedScanRoot = normalizeScanRoot(scanRoot, repoRoot);
+
+  // Import DEFAULT_PROJECT_THRESHOLDS dynamically to avoid circular deps
+  const { DEFAULT_PROJECT_THRESHOLDS } = await import(
+    '../reconciliationProjectDashboard/types.js'
+  );
 
   // First, compute the project dashboard (Phase 13E)
   const dashboardResult = await computeProjectDashboard({
@@ -247,6 +268,7 @@ export async function computeCiGate(
       maxDeltaIncrease: undefined,
     },
     strict,
+    projectThresholds: DEFAULT_PROJECT_THRESHOLDS,
   });
 
   if (!dashboardResult.ok) {
@@ -261,11 +283,21 @@ export async function computeCiGate(
   // Discover source files for trend computation
   const sourceFiles = discoverSourceFiles(normalizedScanRoot, repoRoot);
 
-  // Compute trend summary
-  const trend = await computeTrendSummary(sourceFiles, repoRoot, windowSize);
+  // Compute trend summary using policy
+  const trend = await computeTrendSummary(sourceFiles, repoRoot, trendPolicy);
 
-  // Determine exit code
-  const exitCode = strict && dashboard.projectVerdict === 'FAIL' ? 1 : 0;
+  // Determine verdict based on trend analysis and policy
+  const ciVerdict = determineCiVerdict(
+    trend.worsening,
+    strict,
+    trendPolicy.failOnWorsening
+  );
+
+  // Get verdict message for explanation
+  const verdictMessage = getCiVerdictMessage(ciVerdict, trend.worsening, strict);
+
+  // Determine exit code based on verdict
+  const exitCode = ciVerdict === 'FAIL' ? 1 : 0;
 
   // Build CI gate artifact
   const artifact: CiGateArtifact = {
@@ -279,9 +311,10 @@ export async function computeCiGate(
     trend,
     topSignals: dashboard.topSignals,
     files: dashboard.files,
-    verdict: dashboard.projectVerdict,
+    verdict: ciVerdict,
     exitCode: exitCode as 0 | 1,
-    explanation: dashboard.explanation,
+    explanation: verdictMessage.summary,
+    trendPolicy,
   };
 
   return { ok: true, artifact };

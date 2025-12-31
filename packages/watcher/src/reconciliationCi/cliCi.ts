@@ -2,19 +2,24 @@
 /**
  * @aesthetic-function/watcher - reconciliationCi/cliCi.ts
  *
- * Phase 13F: CLI for CI Gate Summary.
+ * Phase 13F + 13F.1: CLI for CI Gate Summary with Trend Policy.
  *
  * Usage:
  *   pnpm --filter @aesthetic-function/watcher figma:ci <dir> [options]
  *
  * Options:
- *   --limit <n>       Max runs to consider per file (default: 10)
- *   --window <n>      Trend window size (default: 5)
- *   --strict          CI strict mode (exit 1 on FAIL verdict)
- *   --json            Output JSON instead of formatted text
- *   --write           Write artifact to disk
- *   --verbose         Show detailed output (all files, all signals, all trends)
- *   --repo-root <path>  Explicit repository root
+ *   --limit <n>             Max runs to consider per file (default: 10)
+ *   --window <n>            Trend window size (default: 5)
+ *   --improving-delta <n>   Minimum delta to classify as improving (default: 5)
+ *   --worsening-delta <n>   Maximum delta to classify as worsening (default: -5)
+ *   --fail-on-worsening     Fail CI on worsening trends (default: true)
+ *   --no-fail-on-worsening  Don't fail CI on worsening trends
+ *   --max-files <n>         Maximum files to evaluate for trends (default: 20)
+ *   --strict                CI strict mode (exit 1 on FAIL verdict)
+ *   --json                  Output JSON instead of formatted text
+ *   --write                 Write artifact to disk
+ *   --verbose               Show detailed output (all files, all signals, all trends)
+ *   --repo-root <path>      Explicit repository root
  */
 
 import { argv, cwd, exit, stdout } from 'node:process';
@@ -22,15 +27,26 @@ import { argv, cwd, exit, stdout } from 'node:process';
 import {
   getRepoRoot,
   computeCiGate,
-  isCiStrictMode,
-  getCiWindowSize,
-  DEFAULT_TREND_WINDOW,
 } from './compute.js';
 
 import {
   formatCiGate,
   writeCiGateArtifact,
 } from './artifact.js';
+
+import {
+  resolveTrendPolicy,
+  formatTrendPolicy,
+  isCiStrictModeFromEnv,
+  ENV_TREND_WINDOW,
+  ENV_IMPROVING_DELTA,
+  ENV_WORSENING_DELTA,
+  ENV_FAIL_ON_WORSENING,
+  ENV_MAX_FILES,
+  ENV_CI_STRICT,
+} from './config.js';
+
+import { DEFAULT_TREND_POLICY } from './types.js';
 
 import { getDashboardLimit } from '../reconciliationDashboard/config.js';
 
@@ -47,7 +63,6 @@ function parseArgs(args: string[]): CiGateCliOptions | { error: string } {
   const options: CiGateCliOptions = {
     scanRoot: '',
     limit: getDashboardLimit(),
-    window: getCiWindowSize(),
   };
 
   let i = 0;
@@ -74,6 +89,40 @@ function parseArgs(args: string[]): CiGateCliOptions | { error: string } {
         return { error: '--window must be a positive integer' };
       }
       options.window = num;
+    } else if (arg === '--improving-delta') {
+      i++;
+      if (i >= args.length) {
+        return { error: '--improving-delta requires a number' };
+      }
+      const num = parseInt(args[i], 10);
+      if (isNaN(num)) {
+        return { error: '--improving-delta must be a number' };
+      }
+      options.improvingDelta = num;
+    } else if (arg === '--worsening-delta') {
+      i++;
+      if (i >= args.length) {
+        return { error: '--worsening-delta requires a number' };
+      }
+      const num = parseInt(args[i], 10);
+      if (isNaN(num)) {
+        return { error: '--worsening-delta must be a number' };
+      }
+      options.worseningDelta = num;
+    } else if (arg === '--fail-on-worsening') {
+      options.failOnWorsening = true;
+    } else if (arg === '--no-fail-on-worsening') {
+      options.failOnWorsening = false;
+    } else if (arg === '--max-files') {
+      i++;
+      if (i >= args.length) {
+        return { error: '--max-files requires a number' };
+      }
+      const num = parseInt(args[i], 10);
+      if (isNaN(num) || num < 1) {
+        return { error: '--max-files must be a positive integer' };
+      }
+      options.maxFiles = num;
     } else if (arg === '--repo-root') {
       i++;
       if (i >= args.length) {
@@ -88,6 +137,9 @@ function parseArgs(args: string[]): CiGateCliOptions | { error: string } {
       options.write = true;
     } else if (arg === '--verbose') {
       options.verbose = true;
+    } else if (arg === '-h' || arg === '--help') {
+      printUsage();
+      return { error: '' }; // Empty error triggers exit without error message
     } else if (arg.startsWith('--')) {
       return { error: `Unknown option: ${arg}` };
     } else if (!options.scanRoot) {
@@ -110,38 +162,52 @@ function parseArgs(args: string[]): CiGateCliOptions | { error: string } {
  * Print usage information.
  */
 function printUsage(): void {
+  const d = DEFAULT_TREND_POLICY;
   console.log(`
 Usage: figma:ci <dir> [options]
 
 CI gate command for project-level pass/warn/fail decision with trend window.
 
 Arguments:
-  <dir>               Directory to scan (e.g., demo-app/src)
+  <dir>                     Directory to scan (e.g., demo-app/src)
 
-Options:
-  --limit <n>         Max runs to consider per file (default: 10, env: DASHBOARD_LIMIT)
-  --window <n>        Trend window size (default: ${DEFAULT_TREND_WINDOW}, env: RECONCILIATION_CI_WINDOW)
-  --strict            CI strict mode - exit 1 on FAIL verdict (env: RECONCILIATION_CI_STRICT)
-  --json              Output JSON instead of formatted text
-  --write             Write artifact to disk
-  --verbose           Show detailed output (all files, all signals, all trends)
-  --repo-root <path>  Explicit repository root
+Trend Policy Options:
+  --window <n>              Trend window size (default: ${d.window})
+  --improving-delta <n>     Min delta to classify as improving (default: ${d.improvingDelta})
+  --worsening-delta <n>     Max delta to classify as worsening (default: ${d.worseningDelta})
+  --fail-on-worsening       Fail CI on worsening trends (default)
+  --no-fail-on-worsening    Don't fail CI on worsening trends
+  --max-files <n>           Max files to evaluate for trends (default: ${d.maxFiles})
+
+Other Options:
+  --limit <n>               Max runs to consider per file (default: 10)
+  --strict                  CI strict mode - exit 1 on FAIL verdict
+  --json                    Output JSON instead of formatted text
+  --write                   Write artifact to disk
+  --verbose                 Show detailed output
+  --repo-root <path>        Explicit repository root
 
 Environment Variables:
-  DASHBOARD_LIMIT               Max runs to consider (default: 10)
-  RECONCILIATION_CI_WINDOW      Trend window size (default: ${DEFAULT_TREND_WINDOW})
-  RECONCILIATION_CI_STRICT      Exit 1 on FAIL verdict (default: false)
+  ${ENV_TREND_WINDOW}       Trend window size (default: ${d.window})
+  ${ENV_IMPROVING_DELTA}    Improving delta threshold (default: ${d.improvingDelta})
+  ${ENV_WORSENING_DELTA}    Worsening delta threshold (default: ${d.worseningDelta})
+  ${ENV_FAIL_ON_WORSENING}  Fail on worsening (default: true)
+  ${ENV_MAX_FILES}          Max files to evaluate (default: ${d.maxFiles})
+  ${ENV_CI_STRICT}          Exit 1 on FAIL verdict (default: false)
+  DASHBOARD_LIMIT           Max runs to consider (default: 10)
 
 Exit Codes:
-  0                   Default (PASS or WARN)
-  1                   FAIL verdict with --strict flag
+  0                         Default (PASS or WARN in non-strict mode)
+  1                         FAIL verdict with --strict flag
+  2                         Invalid configuration
 
 Examples:
   figma:ci demo-app/src
   figma:ci demo-app/src --json
   figma:ci demo-app/src --write --verbose
   figma:ci demo-app/src --strict
-  figma:ci demo-app/src --window 10
+  figma:ci demo-app/src --window 10 --worsening-delta -10
+  figma:ci demo-app/src --no-fail-on-worsening
 `.trim());
 }
 
@@ -157,19 +223,40 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   const parsed = parseArgs(args);
 
   if ('error' in parsed) {
-    console.error(`Error: ${parsed.error}`);
-    printUsage();
-    return 1;
+    if (parsed.error) {
+      console.error(`Error: ${parsed.error}`);
+      printUsage();
+      return 2;
+    }
+    // Help was requested
+    return 0;
   }
 
   const options = parsed;
+
+  // Resolve trend policy (CLI > env > defaults)
+  const policyResult = resolveTrendPolicy(options);
+
+  if (!policyResult.ok) {
+    console.error(`Configuration error: ${policyResult.error}`);
+    printUsage();
+    return 2;
+  }
+
+  const trendPolicy = policyResult.policy;
 
   // Resolve repo root
   const startCwd = cwd();
   const repoRoot = options.repoRoot ?? getRepoRoot(startCwd);
 
   // Determine strict mode
-  const strict = options.strict ?? isCiStrictMode();
+  const strict = options.strict ?? isCiStrictModeFromEnv();
+
+  // Print trend policy banner (non-JSON mode)
+  if (!options.json) {
+    console.log(formatTrendPolicy(trendPolicy));
+    console.log('');
+  }
 
   // Verbose header
   if (options.verbose && !options.json) {
@@ -177,7 +264,6 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
     console.log(`Scan Root: ${options.scanRoot}`);
     console.log(`Working Directory: ${startCwd}`);
     console.log(`Limit: ${options.limit}`);
-    console.log(`Window: ${options.window}`);
     console.log(`Strict Mode: ${strict}`);
     console.log('');
   }
@@ -187,8 +273,8 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
     scanRoot: options.scanRoot,
     repoRoot,
     limit: options.limit,
-    window: options.window,
     strict,
+    trendPolicy,
   };
 
   // Compute CI gate

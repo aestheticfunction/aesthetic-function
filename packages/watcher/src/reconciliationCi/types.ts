@@ -31,6 +31,123 @@ import type {
 export type { CiVerdict, ProjectCounts, ProjectSignal, ProjectStabilityScore };
 
 // =============================================================================
+// TREND POLICY (Phase 13F.1)
+// =============================================================================
+
+/**
+ * Trend policy configuration for CI gate.
+ *
+ * WHY: Makes trend classification thresholds explicit and configurable,
+ * allowing operators to tune CI sensitivity without code changes.
+ *
+ * INVARIANTS:
+ * - improvingDelta > 0
+ * - worseningDelta < 0
+ * - maxFiles > 0
+ * - window > 0
+ */
+export interface CiTrendPolicy {
+  /**
+   * Number of recent runs to consider for trend analysis.
+   * @default 5
+   */
+  window: number;
+
+  /**
+   * Minimum positive delta to classify as "improving".
+   * A file with scoreDelta >= improvingDelta is IMPROVING.
+   * @default 5
+   */
+  improvingDelta: number;
+
+  /**
+   * Maximum negative delta to classify as "worsening".
+   * A file with scoreDelta <= worseningDelta is WORSENING.
+   * @default -5
+   */
+  worseningDelta: number;
+
+  /**
+   * Whether CI should fail (exit 1) when worsening trends are detected
+   * in strict mode.
+   * @default true
+   */
+  failOnWorsening: boolean;
+
+  /**
+   * Maximum number of files to evaluate for trends.
+   * Files beyond this limit are not included in trend analysis.
+   * @default 20
+   */
+  maxFiles: number;
+}
+
+/**
+ * Default trend policy values.
+ */
+export const DEFAULT_TREND_POLICY: CiTrendPolicy = {
+  window: 5,
+  improvingDelta: 5,
+  worseningDelta: -5,
+  failOnWorsening: true,
+  maxFiles: 20,
+};
+
+/**
+ * Result of resolving trend policy from CLI/env/defaults.
+ */
+export type ResolveTrendPolicyResult =
+  | { ok: true; policy: CiTrendPolicy }
+  | { ok: false; error: string };
+
+/**
+ * Verdict message for CI output.
+ */
+export interface CiVerdictMessage {
+  verdict: CiVerdict;
+  summary: string;
+  explanation: string;
+}
+
+/**
+ * Get verdict message for CI trend gate.
+ */
+export function getCiVerdictMessage(
+  verdict: CiVerdict,
+  worseningCount: number,
+  strict: boolean
+): CiVerdictMessage {
+  switch (verdict) {
+    case 'PASS':
+      return {
+        verdict: 'PASS',
+        summary: 'No worsening trends detected',
+        explanation: 'All files are stable or improving.',
+      };
+    case 'WARN':
+      return {
+        verdict: 'WARN',
+        summary: `Worsening trends detected (${worseningCount} file${worseningCount === 1 ? '' : 's'})`,
+        explanation: strict
+          ? 'Worsening trends detected but fail-on-worsening is disabled.'
+          : 'Non-strict mode: CI passes with warning.',
+      };
+    case 'FAIL':
+      return {
+        verdict: 'FAIL',
+        summary: `Worsening trends exceed CI policy (${worseningCount} file${worseningCount === 1 ? '' : 's'})`,
+        explanation: 'Strict mode with fail-on-worsening enabled.',
+      };
+    default:
+      return {
+        verdict,
+        summary: 'Unknown verdict',
+        explanation: 'Unexpected state.',
+      };
+  }
+}
+
+// =============================================================================
 // TREND DIRECTION
 // =============================================================================
 
@@ -191,6 +308,12 @@ export interface CiGateArtifact {
    * Human-readable explanation of the verdict.
    */
   explanation: string;
+
+  /**
+   * Resolved trend policy used for this gate (Phase 13F.1).
+   * Optional for backward compatibility.
+   */
+  trendPolicy?: CiTrendPolicy;
 }
 
 // =============================================================================
@@ -217,14 +340,14 @@ export interface CiGateContext {
   limit: number;
 
   /**
-   * Trend window size (how many recent runs to consider for trend).
-   */
-  window: number;
-
-  /**
    * Whether CI strict mode is enabled.
    */
   strict: boolean;
+
+  /**
+   * Resolved trend policy (Phase 13F.1).
+   */
+  trendPolicy: CiTrendPolicy;
 }
 
 /**
@@ -247,9 +370,29 @@ export interface CiGateCliOptions {
   limit: number;
 
   /**
-   * Trend window size.
+   * Trend window size (CLI override for trendPolicy.window).
    */
-  window: number;
+  window?: number;
+
+  /**
+   * Improving delta threshold (CLI override).
+   */
+  improvingDelta?: number;
+
+  /**
+   * Worsening delta threshold (CLI override).
+   */
+  worseningDelta?: number;
+
+  /**
+   * Whether to fail on worsening trends (CLI override).
+   */
+  failOnWorsening?: boolean;
+
+  /**
+   * Maximum files to evaluate for trends (CLI override).
+   */
+  maxFiles?: number;
 
   /**
    * Output as JSON.

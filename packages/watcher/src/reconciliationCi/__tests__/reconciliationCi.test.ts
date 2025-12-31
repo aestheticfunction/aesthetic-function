@@ -1,7 +1,7 @@
 /**
  * @aesthetic-function/watcher - reconciliationCi/__tests__/reconciliationCi.test.ts
  *
- * Phase 13F: CI Gate Summary + Trend Window Tests.
+ * Phase 13F + 13F.1: CI Gate Summary + Trend Window Tests.
  *
  * Coverage:
  * - Strict mode exit code behavior
@@ -10,6 +10,7 @@
  * - Artifact naming normalization
  * - No-data files excluded from mean but included in counts
  * - Trend direction classification
+ * - Phase 13F.1: Trend policy configuration
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -26,12 +27,44 @@ import {
 } from '../compute.js';
 
 import {
+  resolveTrendPolicy,
+  validateTrendPolicy,
+  formatTrendPolicy,
+  determineCiVerdict,
+} from '../config.js';
+
+import {
+  DEFAULT_TREND_POLICY,
+  getCiVerdictMessage,
+} from '../types.js';
+
+import type { CiTrendPolicy, CiGateContext } from '../types.js';
+
+import {
   getCiGateArtifactPath,
   writeCiGateArtifact,
   formatCiGate,
 } from '../artifact.js';
 
 import type { CiGateArtifact } from '../types.js';
+
+// =============================================================================
+// TEST HELPERS
+// =============================================================================
+
+/**
+ * Create a default CiGateContext for testing.
+ */
+function createTestContext(overrides: Partial<CiGateContext> = {}): CiGateContext {
+  return {
+    scanRoot: 'demo-app/src',
+    repoRoot: '/test-repo',
+    limit: 10,
+    strict: false,
+    trendPolicy: { ...DEFAULT_TREND_POLICY },
+    ...overrides,
+  };
+}
 
 // =============================================================================
 // TEST FIXTURES
@@ -227,13 +260,10 @@ describe('computeCiGate', () => {
   });
 
   it('should return error for empty directory', async () => {
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -246,13 +276,10 @@ describe('computeCiGate', () => {
     writeFileSync(join(tempDir, 'demo-app/src/App.tsx'), 'export const App = () => <div />;');
     writeFileSync(join(tempDir, 'demo-app/src/Card.tsx'), 'export const Card = () => <div />;');
 
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -274,22 +301,37 @@ describe('computeCiGate', () => {
       JSON.stringify(dashboard, null, 2)
     );
 
-    const result = await computeCiGate({
+    // Create run ledger with worsening trend (more failures in newer runs)
+    // Note: Ledger stores runs oldest-first, so older run (no failures) comes first
+    const ledger = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        { runId: 'run00000', sourceFile: 'demo-app/src/App.tsx', timestamp: new Date(Date.now() - 3600000).toISOString(), cwd: tempDir, repoRoot: tempDir, command: 'figma:status', artifacts: {}, summary: { verifyFailures: 0, conflicts: 0 } },
+        { runId: 'run00001', sourceFile: 'demo-app/src/App.tsx', timestamp: new Date().toISOString(), cwd: tempDir, repoRoot: tempDir, command: 'figma:status', artifacts: {}, summary: { verifyFailures: 5, conflicts: 0 } },
+      ],
+    };
+    writeFileSync(
+      join(tempDir, 'design-materializations/demo-app__src__App.figma-run-ledger.json'),
+      JSON.stringify(ledger, null, 2)
+    );
+
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
       strict: true,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
+      // Phase 13F.1: Verdict is based on worsening trends, not dashboard verdict
+      expect(result.artifact.trend.worsening).toBeGreaterThan(0);
       expect(result.artifact.verdict).toBe('FAIL');
       expect(result.artifact.exitCode).toBe(1);
     }
   });
 
-  it('should set exit code 0 when not strict even with FAIL verdict', async () => {
+  it('should set exit code 0 when not strict even with worsening trends', async () => {
     // Create test file
     writeFileSync(join(tempDir, 'demo-app/src/App.tsx'), 'export const App = () => <div />;');
 
@@ -300,17 +342,32 @@ describe('computeCiGate', () => {
       JSON.stringify(dashboard, null, 2)
     );
 
-    const result = await computeCiGate({
+    // Create run ledger with worsening trend (more failures in newer runs)
+    // Note: Ledger stores runs oldest-first, so older run (no failures) comes first
+    const ledger = {
+      version: 1,
+      sourceFile: 'demo-app/src/App.tsx',
+      runs: [
+        { runId: 'run00000', sourceFile: 'demo-app/src/App.tsx', timestamp: new Date(Date.now() - 3600000).toISOString(), cwd: tempDir, repoRoot: tempDir, command: 'figma:status', artifacts: {}, summary: { verifyFailures: 0, conflicts: 0 } },
+        { runId: 'run00001', sourceFile: 'demo-app/src/App.tsx', timestamp: new Date().toISOString(), cwd: tempDir, repoRoot: tempDir, command: 'figma:status', artifacts: {}, summary: { verifyFailures: 5, conflicts: 0 } },
+      ],
+    };
+    writeFileSync(
+      join(tempDir, 'design-materializations/demo-app__src__App.figma-run-ledger.json'),
+      JSON.stringify(ledger, null, 2)
+    );
+
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
       strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.artifact.verdict).toBe('FAIL');
+      // Phase 13F.1: Verdict is WARN in non-strict mode with worsening trends
+      expect(result.artifact.trend.worsening).toBeGreaterThan(0);
+      expect(result.artifact.verdict).toBe('WARN');
       expect(result.artifact.exitCode).toBe(0);
     }
   });
@@ -337,13 +394,10 @@ describe('trend computation', () => {
     // Create test file
     writeFileSync(join(tempDir, 'demo-app/src/App.tsx'), 'export const App = () => <div />;');
 
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -363,13 +417,10 @@ describe('trend computation', () => {
       JSON.stringify(ledger, null, 2)
     );
 
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -384,13 +435,10 @@ describe('trend computation', () => {
     writeFileSync(join(tempDir, 'demo-app/src/Alpha.tsx'), 'export const Alpha = () => <div />;');
     writeFileSync(join(tempDir, 'demo-app/src/Beta.tsx'), 'export const Beta = () => <div />;');
 
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -424,22 +472,16 @@ describe('repo-root invariance', () => {
 
   it('should produce same artifact structure regardless of invocation path', async () => {
     // Compute from repo root
-    const result1 = await computeCiGate({
+    const result1 = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     // Compute with absolute path
-    const result2 = await computeCiGate({
+    const result2 = await computeCiGate(createTestContext({
       scanRoot: join(tempDir, 'demo-app/src'),
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result1.ok).toBe(true);
     expect(result2.ok).toBe(true);
@@ -636,13 +678,10 @@ describe('no-data files handling', () => {
       JSON.stringify(dashboard, null, 2)
     );
 
-    const result = await computeCiGate({
+    const result = await computeCiGate(createTestContext({
       scanRoot: 'demo-app/src',
       repoRoot: tempDir,
-      limit: 10,
-      window: 5,
-      strict: false,
-    });
+    }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -655,6 +694,304 @@ describe('no-data files handling', () => {
       // Stability score should be based only on files with data
       expect(result.artifact.stabilityScore.filesIncluded).toBe(1);
       expect(result.artifact.stabilityScore.filesExcluded).toBe(2);
+    }
+  });
+});
+
+// =============================================================================
+// PHASE 13F.1: TREND POLICY CONFIGURATION TESTS
+// =============================================================================
+
+describe('Phase 13F.1: Trend Policy Configuration', () => {
+  describe('resolveTrendPolicy', () => {
+    const originalEnv = { ...process.env };
+
+    afterEach(() => {
+      // Restore original environment
+      process.env = { ...originalEnv };
+    });
+
+    it('should use defaults when no overrides provided', () => {
+      const result = resolveTrendPolicy();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.policy).toEqual(DEFAULT_TREND_POLICY);
+      }
+    });
+
+    it('should accept valid CLI overrides', () => {
+      const result = resolveTrendPolicy({
+        window: 10,
+        improvingDelta: 8,
+        worseningDelta: -8,
+        failOnWorsening: false,
+        maxFiles: 50,
+      });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.policy.window).toBe(10);
+        expect(result.policy.improvingDelta).toBe(8);
+        expect(result.policy.worseningDelta).toBe(-8);
+        expect(result.policy.failOnWorsening).toBe(false);
+        expect(result.policy.maxFiles).toBe(50);
+      }
+    });
+
+    it('should reject invalid improving delta (<= 0)', () => {
+      const result = resolveTrendPolicy({ improvingDelta: 0 });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('improving-delta');
+      }
+    });
+
+    it('should reject invalid worsening delta (>= 0)', () => {
+      const result = resolveTrendPolicy({ worseningDelta: 0 });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('worsening-delta');
+      }
+    });
+
+    it('should reject invalid window (< 1)', () => {
+      const result = resolveTrendPolicy({ window: 0 });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('window');
+      }
+    });
+
+    it('should reject invalid maxFiles (< 1)', () => {
+      const result = resolveTrendPolicy({ maxFiles: 0 });
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toContain('max-files');
+      }
+    });
+
+    it('should apply env overrides when set', () => {
+      process.env.RECONCILIATION_CI_TREND_WINDOW = '8';
+      process.env.RECONCILIATION_CI_IMPROVING_DELTA = '10';
+      process.env.RECONCILIATION_CI_WORSENING_DELTA = '-10';
+      process.env.RECONCILIATION_CI_FAIL_ON_WORSENING = 'false';
+      process.env.RECONCILIATION_CI_MAX_FILES = '30';
+
+      const result = resolveTrendPolicy();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.policy.window).toBe(8);
+        expect(result.policy.improvingDelta).toBe(10);
+        expect(result.policy.worseningDelta).toBe(-10);
+        expect(result.policy.failOnWorsening).toBe(false);
+        expect(result.policy.maxFiles).toBe(30);
+      }
+    });
+
+    it('should prioritize CLI over env', () => {
+      process.env.RECONCILIATION_CI_TREND_WINDOW = '8';
+
+      const result = resolveTrendPolicy({ window: 15 });
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.policy.window).toBe(15);
+      }
+    });
+  });
+
+  describe('validateTrendPolicy', () => {
+    it('should return undefined for valid policy', () => {
+      const error = validateTrendPolicy(DEFAULT_TREND_POLICY);
+      expect(error).toBeUndefined();
+    });
+
+    it('should reject positive worsening delta', () => {
+      const policy: CiTrendPolicy = { ...DEFAULT_TREND_POLICY, worseningDelta: 5 };
+      const error = validateTrendPolicy(policy);
+      expect(error).toContain('worsening-delta');
+    });
+
+    it('should reject non-positive improving delta', () => {
+      const policy: CiTrendPolicy = { ...DEFAULT_TREND_POLICY, improvingDelta: -1 };
+      const error = validateTrendPolicy(policy);
+      expect(error).toContain('improving-delta');
+    });
+  });
+
+  describe('determineCiVerdict', () => {
+    it('should return PASS when no worsening files', () => {
+      const verdict = determineCiVerdict(0, false, true);
+      expect(verdict).toBe('PASS');
+    });
+
+    it('should return PASS when no worsening files (strict)', () => {
+      const verdict = determineCiVerdict(0, true, true);
+      expect(verdict).toBe('PASS');
+    });
+
+    it('should return WARN when worsening files in non-strict mode', () => {
+      const verdict = determineCiVerdict(3, false, true);
+      expect(verdict).toBe('WARN');
+    });
+
+    it('should return FAIL when worsening files in strict + failOnWorsening', () => {
+      const verdict = determineCiVerdict(3, true, true);
+      expect(verdict).toBe('FAIL');
+    });
+
+    it('should return WARN when strict but !failOnWorsening', () => {
+      const verdict = determineCiVerdict(3, true, false);
+      expect(verdict).toBe('WARN');
+    });
+  });
+
+  describe('formatTrendPolicy', () => {
+    it('should format default policy correctly', () => {
+      const output = formatTrendPolicy(DEFAULT_TREND_POLICY);
+      expect(output).toContain('CI TREND POLICY');
+      expect(output).toContain('Window: 5 runs');
+      expect(output).toContain('Improving: ≥ +5');
+      expect(output).toContain('Worsening: ≤ -5');
+      expect(output).toContain('Fail on worsening: enabled');
+      expect(output).toContain('Max files evaluated: 20');
+    });
+
+    it('should format custom policy correctly', () => {
+      const policy: CiTrendPolicy = {
+        window: 10,
+        improvingDelta: 8,
+        worseningDelta: -8,
+        failOnWorsening: false,
+        maxFiles: 50,
+      };
+      const output = formatTrendPolicy(policy);
+      expect(output).toContain('Window: 10 runs');
+      expect(output).toContain('Improving: ≥ +8');
+      expect(output).toContain('Worsening: ≤ -8');
+      expect(output).toContain('Fail on worsening: disabled');
+      expect(output).toContain('Max files evaluated: 50');
+    });
+  });
+
+  describe('getCiVerdictMessage', () => {
+    it('should return correct message for PASS', () => {
+      const msg = getCiVerdictMessage('PASS', 0, false);
+      expect(msg.verdict).toBe('PASS');
+      expect(msg.summary).toContain('No worsening');
+    });
+
+    it('should return correct message for WARN', () => {
+      const msg = getCiVerdictMessage('WARN', 2, false);
+      expect(msg.verdict).toBe('WARN');
+      expect(msg.summary).toContain('Worsening trends detected');
+      expect(msg.summary).toContain('2 files');
+    });
+
+    it('should return correct message for FAIL', () => {
+      const msg = getCiVerdictMessage('FAIL', 3, true);
+      expect(msg.verdict).toBe('FAIL');
+      expect(msg.summary).toContain('exceed CI policy');
+      expect(msg.summary).toContain('3 files');
+    });
+  });
+});
+
+describe('Phase 13F.1: Trend Policy in Artifact', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ci-policy-test-'));
+    mkdirSync(join(tempDir, 'design-materializations'), { recursive: true });
+    mkdirSync(join(tempDir, 'demo-app/src'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should include trendPolicy in artifact', async () => {
+    writeFileSync(join(tempDir, 'demo-app/src/App.tsx'), 'export const App = () => <div />;');
+
+    const customPolicy: CiTrendPolicy = {
+      window: 10,
+      improvingDelta: 8,
+      worseningDelta: -8,
+      failOnWorsening: true,
+      maxFiles: 50,
+    };
+
+    const result = await computeCiGate(createTestContext({
+      scanRoot: 'demo-app/src',
+      repoRoot: tempDir,
+      trendPolicy: customPolicy,
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.artifact.trendPolicy).toBeDefined();
+      expect(result.artifact.trendPolicy?.window).toBe(10);
+      expect(result.artifact.trendPolicy?.improvingDelta).toBe(8);
+      expect(result.artifact.trendPolicy?.worseningDelta).toBe(-8);
+    }
+  });
+
+  it('should respect maxFiles limit', async () => {
+    // Create many test files
+    for (let i = 0; i < 25; i++) {
+      writeFileSync(
+        join(tempDir, `demo-app/src/Component${i.toString().padStart(2, '0')}.tsx`),
+        `export const Component${i} = () => <div />;`
+      );
+    }
+
+    const result = await computeCiGate(createTestContext({
+      scanRoot: 'demo-app/src',
+      repoRoot: tempDir,
+      trendPolicy: { ...DEFAULT_TREND_POLICY, maxFiles: 10 },
+    }));
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      // Only 10 files should be in trend analysis
+      expect(result.artifact.trend.files.length).toBe(10);
+      // But all files should still be counted
+      expect(result.artifact.counts.totalFiles).toBe(25);
+    }
+  });
+});
+
+describe('Phase 13F.1: Deterministic Output', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'ci-determinism-test-'));
+    mkdirSync(join(tempDir, 'design-materializations'), { recursive: true });
+    mkdirSync(join(tempDir, 'demo-app/src'), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('should produce identical output for identical inputs', async () => {
+    writeFileSync(join(tempDir, 'demo-app/src/App.tsx'), 'export const App = () => <div />;');
+    writeFileSync(join(tempDir, 'demo-app/src/Card.tsx'), 'export const Card = () => <div />;');
+
+    const context = createTestContext({
+      scanRoot: 'demo-app/src',
+      repoRoot: tempDir,
+    });
+
+    const result1 = await computeCiGate(context);
+    const result2 = await computeCiGate(context);
+
+    expect(result1.ok).toBe(true);
+    expect(result2.ok).toBe(true);
+
+    if (result1.ok && result2.ok) {
+      // Remove timestamps for comparison
+      const a1 = { ...result1.artifact, generatedAt: '' };
+      const a2 = { ...result2.artifact, generatedAt: '' };
+      expect(a1).toEqual(a2);
     }
   });
 });

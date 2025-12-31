@@ -12,15 +12,39 @@ export type {
   CiGateArtifact,
   CiGateCliOptions,
   CiGateContext,
+  CiTrendPolicy,
   CiVerdict,
+  CiVerdictMessage,
   ComputeCiGateResult,
   FileTrend,
   ProjectCounts,
   ProjectSignal,
   ProjectStabilityScore,
+  ResolveTrendPolicyResult,
   TrendDirection,
   TrendSummary,
 } from './types.js';
+
+export {
+  DEFAULT_TREND_POLICY,
+  getCiVerdictMessage,
+} from './types.js';
+
+// Config (Phase 13F.1)
+export {
+  determineCiVerdict,
+  ENV_CI_STRICT,
+  ENV_FAIL_ON_WORSENING,
+  ENV_IMPROVING_DELTA,
+  ENV_MAX_FILES,
+  ENV_TREND_WINDOW,
+  ENV_WORSENING_DELTA,
+  formatTrendPolicy,
+  isCiStrictModeFromEnv,
+  loadTrendPolicyFromEnv,
+  resolveTrendPolicy,
+  validateTrendPolicy,
+} from './config.js';
 
 // Compute
 export {
