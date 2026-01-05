@@ -4845,11 +4845,44 @@ pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
 **WARN conditions (CI still passes):**
 - PARTIAL drift comparison (missing apply/verify artifacts)
 - Dashboard warn count > 0
+- Cold-start conditions (see below)
 
 **FAIL conditions (CI blocks merge):**
 - Dashboard fail count > 0
 - INVALID drift classification
-- Any step failure in strict mode
+- Any step failure in strict mode (excluding cold-start skips)
+
+### Cold-Start Handling (Phase 14D.1)
+
+On **fresh checkouts** or **first CI runs**, the run ledger (`design-materializations/<file>.figma-run-ledger.json`) may not exist. This is a normal condition when:
+- Running CI for the first time on a new component
+- Cloning a repo where materializations were gitignored
+- Adding a new source file to the reconciliation matrix
+
+**Cold-start behavior:**
+- **Drift and Dashboard steps are skipped** (not failed)
+- **Overall verdict is WARN** (exit code 0, CI passes)
+- **Reason**: "Cold-start: skipped drift, dashboard (no ledger data yet)"
+
+**Example CI output (cold-start):**
+```
+⚠ VERDICT: WARN
+--- CI SUMMARY ---
+source=demo-app/src/Card.tsx
+profile=ci
+verdict=WARN
+ok=true
+--- STEPS ---
+status=ok
+index=ok
+timeline=ok
+drift=ok
+dashboard=ok
+reason=Cold-start: skipped drift, dashboard (no ledger data yet)
+Exit code: 0
+```
+
+**Resolution**: Run `figma:reconcile` with `--record` to populate the ledger. After 2+ recorded runs, drift and dashboard steps will execute normally.
 
 ---
 

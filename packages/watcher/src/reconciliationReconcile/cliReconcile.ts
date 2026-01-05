@@ -47,7 +47,6 @@ import {
   formatBundle,
   formatBundleVerbose,
   formatBundleCi,
-  getBundleArtifactPath,
 } from './artifact.js';
 import { resolveProfileConfig } from './profiles.js';
 

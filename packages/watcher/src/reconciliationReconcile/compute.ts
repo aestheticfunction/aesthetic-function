@@ -31,8 +31,10 @@ import type {
   ReconcileResult,
   ReconcileMode,
   ReconcileOverall,
-  ReconcileCiVerdict,
+  ColdStartInfo,
 } from './types.js';
+
+import { COLD_START_WARNINGS } from './types.js';
 
 import type { ComparisonClass } from '../reconciliationDrift/types.js';
 
@@ -45,6 +47,9 @@ import { main as dashboardMain } from '../reconciliationDashboard/cliDashboard.j
 
 // Timeline env check
 import { isTimelineEnabled } from '../reconciliationTimeline/compute.js';
+
+// Ledger loading for cold-start detection
+import { loadRunLedger } from '../reconciliationDrift/compute.js';
 
 // =============================================================================
 // REPO ROOT DETECTION
@@ -180,6 +185,47 @@ interface StepContext {
 }
 
 /**
+ * Detect cold-start conditions by checking ledger state.
+ * Exported for testing (Phase 14D.1).
+ */
+export async function detectColdStart(repoRoot: string, sourceFile: string): Promise<ColdStartInfo> {
+  const warnings: string[] = [];
+
+  // Check if design-materializations exists
+  const materializationsDir = join(repoRoot, 'design-materializations');
+  if (!existsSync(materializationsDir)) {
+    warnings.push(COLD_START_WARNINGS.NO_MATERIALIZATIONS);
+  }
+
+  // Try to load the ledger
+  const ledgerResult = await loadRunLedger(repoRoot, sourceFile);
+
+  if (!ledgerResult.ok) {
+    warnings.push(COLD_START_WARNINGS.NO_LEDGER);
+    return {
+      ledgerExists: false,
+      runCount: 0,
+      hasEnoughRuns: false,
+      warnings,
+    };
+  }
+
+  const runCount = ledgerResult.ledger.runs.length;
+
+  // Need at least 2 runs for meaningful drift comparison
+  if (runCount < 2) {
+    warnings.push(COLD_START_WARNINGS.NO_RUNS);
+  }
+
+  return {
+    ledgerExists: true,
+    runCount,
+    hasEnoughRuns: runCount >= 2,
+    warnings,
+  };
+}
+
+/**
  * Run the status step.
  */
 async function runStatusStep(ctx: StepContext): Promise<ReconcileStepResult> {
@@ -287,9 +333,30 @@ async function runTimelineStep(ctx: StepContext, recordEnabled: boolean): Promis
 
 /**
  * Run the drift step.
+ *
+ * Phase 14D.1: If cold-start conditions are detected (no ledger or insufficient runs),
+ * skip the step gracefully instead of failing.
  */
-async function runDriftStep(ctx: StepContext): Promise<ReconcileStepResult> {
+async function runDriftStep(ctx: StepContext, coldStart: ColdStartInfo): Promise<ReconcileStepResult> {
   const warnings: string[] = [];
+
+  // Phase 14D.1: Handle cold-start conditions
+  if (!coldStart.ledgerExists || !coldStart.hasEnoughRuns) {
+    // Skip drift step gracefully
+    return {
+      step: 'drift',
+      ok: true,
+      exitCode: 0,
+      skipped: true,
+      summary: 'Skipped: ' + (
+        !coldStart.ledgerExists
+          ? 'no run ledger (first run)'
+          : 'insufficient runs for comparison'
+      ),
+      warnings: coldStart.warnings,
+    };
+  }
+
   const args: string[] = [ctx.sourceFile, '--repo-root', ctx.repoRoot];
   if (ctx.write) args.push('--write');
   if (ctx.verbose) args.push('--verbose');
@@ -328,8 +395,24 @@ async function runDriftStep(ctx: StepContext): Promise<ReconcileStepResult> {
 
 /**
  * Run the dashboard step.
+ *
+ * Phase 14D.1: If cold-start conditions are detected (no ledger or no runs),
+ * skip the step gracefully instead of failing.
  */
-async function runDashboardStep(ctx: StepContext): Promise<ReconcileStepResult> {
+async function runDashboardStep(ctx: StepContext, coldStart: ColdStartInfo): Promise<ReconcileStepResult> {
+  // Phase 14D.1: Handle cold-start conditions
+  // Dashboard needs at least 1 run (unlike drift which needs 2)
+  if (!coldStart.ledgerExists || coldStart.runCount === 0) {
+    return {
+      step: 'dashboard',
+      ok: true,
+      exitCode: 0,
+      skipped: true,
+      summary: 'Skipped: no run ledger (first run)',
+      warnings: coldStart.warnings,
+    };
+  }
+
   const args: string[] = [ctx.sourceFile, '--repo-root', ctx.repoRoot];
   if (ctx.write) args.push('--write');
   if (ctx.verbose) args.push('--verbose');
@@ -373,6 +456,10 @@ async function runDashboardStep(ctx: StepContext): Promise<ReconcileStepResult> 
  * 4. drift
  * 5. dashboard
  *
+ * Phase 14D.1: Handles cold-start conditions gracefully.
+ * If no ledger or insufficient runs exist, drift/dashboard steps are skipped
+ * (not failed), and the overall verdict is WARN (not FAIL).
+ *
  * @param options - CLI options
  * @returns Bundle artifact and exit code
  */
@@ -400,6 +487,9 @@ export async function runReconcile(options: ReconcileCliOptions): Promise<Reconc
     limit: options.limit ?? 10,
   };
 
+  // Phase 14D.1: Detect cold-start conditions before running drift/dashboard
+  const coldStart = await detectColdStart(repoRoot, sourceFileCanonical);
+
   // Run steps in deterministic order
   const steps: ReconcileStepResult[] = [];
   const artifacts: Partial<Record<ReconcileStepId, string>> = {};
@@ -423,19 +513,19 @@ export async function runReconcile(options: ReconcileCliOptions): Promise<Reconc
   if (timelineResult.artifactPath) artifacts.timeline = timelineResult.artifactPath;
   if (timelineResult.warnings) allWarnings.push(...timelineResult.warnings);
 
-  // Drift
-  const driftResult = await runDriftStep(ctx);
+  // Drift (may skip on cold-start)
+  const driftResult = await runDriftStep(ctx, coldStart);
   steps.push(driftResult);
   if (driftResult.artifactPath) artifacts.drift = driftResult.artifactPath;
   if (driftResult.warnings) allWarnings.push(...driftResult.warnings);
 
-  // Dashboard
-  const dashboardResult = await runDashboardStep(ctx);
+  // Dashboard (may skip on cold-start)
+  const dashboardResult = await runDashboardStep(ctx, coldStart);
   steps.push(dashboardResult);
   if (dashboardResult.artifactPath) artifacts.dashboard = dashboardResult.artifactPath;
   if (dashboardResult.warnings) allWarnings.push(...dashboardResult.warnings);
 
-  // Compute overall result
+  // Compute overall result (Phase 14D.1: skipped steps don't cause FAIL)
   const overall = computeOverall(steps, options.strict ?? false);
 
   // Compute exit code based on Phase 14C verdict policy
@@ -571,6 +661,9 @@ async function extractCiData(
  *   - Drift is PARTIAL/WEAK with warnings
  * - PASS (exit 0) if:
  *   - All steps ok, no warnings
+ *
+ * Phase 14D.1: Skipped steps (cold-start) are treated as WARN, not FAIL.
+ * Skipped steps have ok=true, skipped=true, and exitCode=0.
  */
 function computeOverall(steps: ReconcileStepResult[], strict: boolean): ReconcileOverall {
   // Check for usage/config errors first
@@ -582,10 +675,15 @@ function computeOverall(steps: ReconcileStepResult[], strict: boolean): Reconcil
     };
   }
 
-  // In strict mode, any failure means overall failure
-  if (strict && steps.some(s => s.exitCode === 1)) {
+  // Phase 14D.1: Separate skipped steps from actual failures
+  // Skipped steps have ok=true and skipped=true, so they won't match exitCode === 1
+  const skippedSteps = steps.filter(s => s.skipped === true);
+  const nonSkippedSteps = steps.filter(s => s.skipped !== true);
+
+  // In strict mode, any actual failure (non-skipped) means overall failure
+  if (strict && nonSkippedSteps.some(s => s.exitCode === 1)) {
     // Find which step failed for better explanation
-    const failedStep = steps.find(s => s.exitCode === 1);
+    const failedStep = nonSkippedSteps.find(s => s.exitCode === 1);
     return {
       ok: false,
       ciVerdict: 'FAIL',
@@ -593,14 +691,26 @@ function computeOverall(steps: ReconcileStepResult[], strict: boolean): Reconcil
     };
   }
 
-  // Check for any non-strict failures (warnings)
+  // Check for any warnings (including skipped step warnings)
   const hasWarnings = steps.some(s => s.warnings && s.warnings.length > 0);
+  const hasSkipped = skippedSteps.length > 0;
+
+  // If we have skipped steps or warnings, return WARN
+  if (hasSkipped || hasWarnings) {
+    const skippedNames = skippedSteps.map(s => s.step).join(', ');
+    const explanation = hasSkipped
+      ? `Cold-start: skipped ${skippedNames} (no ledger data yet)`
+      : 'Reconcile completed with warnings';
+    return {
+      ok: true,
+      ciVerdict: 'WARN',
+      explanation,
+    };
+  }
 
   return {
     ok: true,
-    ciVerdict: hasWarnings ? 'WARN' : 'PASS',
-    explanation: hasWarnings
-      ? 'Reconcile completed with warnings'
-      : 'All steps completed successfully',
+    ciVerdict: 'PASS',
+    explanation: 'All steps completed successfully',
   };
 }

@@ -266,6 +266,14 @@ export interface ReconcileStepResult {
   exitCode: 0 | 1 | 2;
 
   /**
+   * Whether the step was skipped (e.g., due to cold-start conditions).
+   * Skipped steps are not failures - they indicate missing prerequisites.
+   *
+   * @default false
+   */
+  skipped?: boolean;
+
+  /**
    * Path to artifact written by this step (if any).
    */
   artifactPath?: string;
@@ -279,6 +287,39 @@ export interface ReconcileStepResult {
    * Warnings generated during step execution.
    */
   warnings?: string[];
+}
+
+// =============================================================================
+// COLD-START WARNINGS (Phase 14D.1)
+// =============================================================================
+
+/**
+ * Standard warning codes for cold-start conditions.
+ */
+export const COLD_START_WARNINGS = {
+  NO_LEDGER: 'NO_LEDGER: Run ledger does not exist (first run)',
+  NO_RUNS: 'NO_RUNS: Insufficient runs in ledger for comparison',
+  NO_MATERIALIZATIONS: 'NO_MATERIALIZATIONS: design-materializations directory does not exist',
+} as const;
+
+/**
+ * Type for cold-start warning keys.
+ */
+export type ColdStartWarningKey = keyof typeof COLD_START_WARNINGS;
+
+/**
+ * Cold-start detection result.
+ * Determines whether drift/dashboard steps should be skipped.
+ */
+export interface ColdStartInfo {
+  /** Whether the ledger exists */
+  ledgerExists: boolean;
+  /** Number of runs in the ledger (0 if ledger doesn't exist) */
+  runCount: number;
+  /** Whether we have enough runs for comparison (need at least 2) */
+  hasEnoughRuns: boolean;
+  /** Warnings to include in step results */
+  warnings: string[];
 }
 
 // =============================================================================

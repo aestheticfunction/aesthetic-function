@@ -41,9 +41,12 @@ export type {
   // Phase 14C types
   CiWritePolicy,
   OutputFormat,
+  // Phase 14D.1 cold-start types
+  ColdStartInfo,
+  ColdStartWarningKey,
 } from './types.js';
 
-export { RECONCILE_STEP_ORDER, VALID_PROFILES, DEFAULT_CI_WRITE_POLICY } from './types.js';
+export { RECONCILE_STEP_ORDER, VALID_PROFILES, DEFAULT_CI_WRITE_POLICY, COLD_START_WARNINGS } from './types.js';
 
 // Profiles
 export {
@@ -60,6 +63,7 @@ export {
   normalizeSourcePath,
   getGitSha,
   getShortGitSha,
+  detectColdStart,
 } from './compute.js';
 
 // Artifact

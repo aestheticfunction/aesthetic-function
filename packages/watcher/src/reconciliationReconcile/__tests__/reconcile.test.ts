@@ -39,12 +39,15 @@ import {
   mergeWithOverrides,
   resolveProfileConfig,
   DEFAULT_CI_WRITE_POLICY,
+  COLD_START_WARNINGS,
+  detectColdStart,
 } from '../index.js';
 import type {
   ReconcileBundleArtifact,
   ReconcileStepResult,
   ReconcileMode,
   ReconcileProfile,
+  ColdStartInfo,
 } from '../types.js';
 
 // =============================================================================
@@ -820,6 +823,157 @@ describe('CI Wiring (Phase 14C)', () => {
 
       expect(bundle.overall.ciVerdict).toBe('FAIL');
       expect(bundle.overall.ok).toBe(false);
+    });
+  });
+
+  // =============================================================================
+  // PHASE 14D.1: COLD-START TESTS
+  // =============================================================================
+
+  describe('Cold-Start Detection (Phase 14D.1)', () => {
+    describe('detectColdStart', () => {
+      it('returns cold-start info when no materializations directory exists', async () => {
+        // Create a temp dir WITHOUT design-materializations
+        const emptyTestDir = join(
+          tmpdir(),
+          `figma-coldstart-test-${Date.now()}-${Math.random().toString(36).slice(2)}`
+        );
+        mkdirSync(emptyTestDir, { recursive: true });
+        writeFileSync(join(emptyTestDir, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n');
+
+        try {
+          const result = await detectColdStart(emptyTestDir, 'src/App.tsx');
+
+          expect(result.ledgerExists).toBe(false);
+          expect(result.runCount).toBe(0);
+          expect(result.hasEnoughRuns).toBe(false);
+          expect(result.warnings.length).toBeGreaterThan(0);
+          expect(result.warnings.some(w => w.includes('NO_MATERIALIZATIONS'))).toBe(true);
+        } finally {
+          cleanupTestDir(emptyTestDir);
+        }
+      });
+
+      it('returns cold-start info when ledger does not exist', async () => {
+        // testDir has design-materializations but no ledger
+        const result = await detectColdStart(testDir, 'src/NonExistent.tsx');
+
+        expect(result.ledgerExists).toBe(false);
+        expect(result.runCount).toBe(0);
+        expect(result.hasEnoughRuns).toBe(false);
+        expect(result.warnings.some(w => w.includes('NO_LEDGER'))).toBe(true);
+      });
+
+      it('returns cold-start info with warning when ledger has insufficient runs', async () => {
+        // Create a ledger with just 1 run
+        const ledgerPath = join(testDir, 'design-materializations', 'src__Test.figma-run-ledger.json');
+        const ledger = {
+          version: '1.0',
+          sourceFile: 'src/Test.tsx',
+          runs: [
+            { sha: 'abc1234', timestamp: new Date().toISOString(), type: 'fresh' },
+          ],
+        };
+        writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+
+        try {
+          const result = await detectColdStart(testDir, 'src/Test.tsx');
+
+          expect(result.ledgerExists).toBe(true);
+          expect(result.runCount).toBe(1);
+          expect(result.hasEnoughRuns).toBe(false);
+          expect(result.warnings.some(w => w.includes('NO_RUNS'))).toBe(true);
+        } finally {
+          // Cleanup the test ledger
+          try {
+            rmSync(ledgerPath);
+          } catch {
+            // Ignore
+          }
+        }
+      });
+
+      it('returns no cold-start when ledger has sufficient runs', async () => {
+        // Create a ledger with 2+ runs
+        const ledgerPath = join(testDir, 'design-materializations', 'src__Healthy.figma-run-ledger.json');
+        const ledger = {
+          version: '1.0',
+          sourceFile: 'src/Healthy.tsx',
+          runs: [
+            { sha: 'abc1234', timestamp: new Date().toISOString(), type: 'fresh' },
+            { sha: 'def5678', timestamp: new Date().toISOString(), type: 'diff' },
+          ],
+        };
+        writeFileSync(ledgerPath, JSON.stringify(ledger, null, 2));
+
+        try {
+          const result = await detectColdStart(testDir, 'src/Healthy.tsx');
+
+          expect(result.ledgerExists).toBe(true);
+          expect(result.runCount).toBe(2);
+          expect(result.hasEnoughRuns).toBe(true);
+          // Should NOT have NO_LEDGER or NO_RUNS warnings
+          expect(result.warnings.some(w => w.includes('NO_LEDGER'))).toBe(false);
+          expect(result.warnings.some(w => w.includes('NO_RUNS'))).toBe(false);
+        } finally {
+          // Cleanup the test ledger
+          try {
+            rmSync(ledgerPath);
+          } catch {
+            // Ignore
+          }
+        }
+      });
+    });
+
+    describe('Cold-Start Warnings Constants', () => {
+      it('has all expected warning types', () => {
+        expect(COLD_START_WARNINGS).toHaveProperty('NO_LEDGER');
+        expect(COLD_START_WARNINGS).toHaveProperty('NO_RUNS');
+        expect(COLD_START_WARNINGS).toHaveProperty('NO_MATERIALIZATIONS');
+      });
+
+      it('warning messages include key names for easy identification', () => {
+        expect(COLD_START_WARNINGS.NO_LEDGER).toContain('NO_LEDGER');
+        expect(COLD_START_WARNINGS.NO_RUNS).toContain('NO_RUNS');
+        expect(COLD_START_WARNINGS.NO_MATERIALIZATIONS).toContain('NO_MATERIALIZATIONS');
+      });
+    });
+
+    describe('Cold-Start Step Results', () => {
+      it('skipped step has ok=true, skipped=true, exitCode=0', () => {
+        const skippedStep: ReconcileStepResult = {
+          step: 'drift',
+          ok: true,
+          exitCode: 0,
+          summary: 'Skipped: cold-start condition',
+          skipped: true,
+          warnings: [COLD_START_WARNINGS.NO_LEDGER],
+        };
+
+        expect(skippedStep.ok).toBe(true);
+        expect(skippedStep.skipped).toBe(true);
+        expect(skippedStep.exitCode).toBe(0);
+      });
+
+      it('skipped steps dont cause strict mode failure', () => {
+        const steps: ReconcileStepResult[] = [
+          { step: 'status', ok: true, exitCode: 0, summary: 'ok' },
+          { step: 'index', ok: true, exitCode: 0, summary: 'ok' },
+          { step: 'timeline', ok: true, exitCode: 0, summary: 'ok' },
+          { step: 'drift', ok: true, exitCode: 0, summary: 'skipped', skipped: true, warnings: [COLD_START_WARNINGS.NO_LEDGER] },
+          { step: 'dashboard', ok: true, exitCode: 0, summary: 'skipped', skipped: true, warnings: [COLD_START_WARNINGS.NO_LEDGER] },
+        ];
+
+        // In strict mode, skipped steps should NOT cause FAIL
+        // The overall should be WARN due to cold-start warnings
+        const skippedSteps = steps.filter(s => s.skipped === true);
+        const nonSkippedSteps = steps.filter(s => s.skipped !== true);
+        const hasActualFailure = nonSkippedSteps.some(s => s.exitCode === 1);
+
+        expect(skippedSteps.length).toBe(2);
+        expect(hasActualFailure).toBe(false); // No actual failures
+      });
     });
   });
 });
