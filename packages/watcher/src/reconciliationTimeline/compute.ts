@@ -209,6 +209,12 @@ function extractArtifactRefs(index: RunIndexArtifact): RunArtifactRefs {
   if (index.artifacts.status.found) {
     refs.status = (index.artifacts.status as ArtifactEntryFound).path;
   }
+  if (index.artifacts.driftDiff.found) {
+    refs.driftDiff = (index.artifacts.driftDiff as ArtifactEntryFound).path;
+  }
+  if (index.artifacts.driftDashboard.found) {
+    refs.driftDashboard = (index.artifacts.driftDashboard as ArtifactEntryFound).path;
+  }
 
   return refs;
 }

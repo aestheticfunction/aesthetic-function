@@ -43,6 +43,8 @@ import type {
   VerificationSummary,
   RollbackPreviewSummary,
   StatusSummary,
+  DriftDiffSummary,
+  DriftDashboardSummary,
 } from './types.js';
 
 // Re-export utilities from reconciliationStatus for external use
@@ -103,6 +105,14 @@ const ARTIFACT_CONFIGS: Record<IndexedArtifactType, ArtifactTypeConfig> = {
     // Legacy name variant
     legacySuffixes: ['.figma-status.json'],
     phase: '12J',
+  },
+  driftDiff: {
+    suffix: '.figma-drift-diff.json',
+    phase: '13C',
+  },
+  driftDashboard: {
+    suffix: '.figma-drift-dashboard.json',
+    phase: '13D',
   },
 };
 
@@ -318,12 +328,78 @@ function extractStatusSummary(content: Record<string, unknown>): StatusSummary |
 }
 
 /**
+ * Extract drift diff summary from artifact content.
+ */
+function extractDriftDiffSummary(content: Record<string, unknown>): DriftDiffSummary | undefined {
+  const summary = content.summary as Record<string, unknown> | undefined;
+  if (summary) {
+    return {
+      totalChanges: typeof summary.totalChanges === 'number' ? summary.totalChanges : 0,
+      failCount: typeof summary.failCount === 'number' ? summary.failCount : 0,
+      warnCount: typeof summary.warnCount === 'number' ? summary.warnCount : 0,
+    };
+  }
+
+  // Fallback: count changes array
+  const changes = content.changes as unknown[];
+  if (Array.isArray(changes)) {
+    return {
+      totalChanges: changes.length,
+      failCount: 0,
+      warnCount: 0,
+    };
+  }
+
+  return undefined;
+}
+
+/**
+ * Extract drift dashboard summary from artifact content.
+ */
+function extractDriftDashboardSummary(content: Record<string, unknown>): DriftDashboardSummary | undefined {
+  const stabilityScore = content.stabilityScore as Record<string, unknown> | undefined;
+  const ciVerdict = content.ciVerdict;
+  const counts = content.counts as Record<string, unknown> | undefined;
+
+  // Try extracting stabilityScore.score
+  const score = stabilityScore && typeof stabilityScore.score === 'number'
+    ? stabilityScore.score
+    : undefined;
+
+  // Fallback: try top-level score field
+  const fallbackScore = typeof content.score === 'number' ? content.score : undefined;
+
+  const runsConsidered = counts && typeof counts.runsConsidered === 'number'
+    ? counts.runsConsidered
+    : 0;
+
+  if (score !== undefined || fallbackScore !== undefined) {
+    return {
+      stabilityScore: score ?? fallbackScore ?? 0,
+      ciVerdict: typeof ciVerdict === 'string' ? ciVerdict : 'UNKNOWN',
+      runsConsidered,
+    };
+  }
+
+  // Minimal fallback if ciVerdict exists
+  if (typeof ciVerdict === 'string') {
+    return {
+      stabilityScore: 0,
+      ciVerdict,
+      runsConsidered,
+    };
+  }
+
+  return undefined;
+}
+
+/**
  * Extract summary based on artifact type.
  */
 function extractSummary(
   artifactType: IndexedArtifactType,
   content: Record<string, unknown>
-): DeltaSummary | DeltaSuggestionsSummary | ConflictsSummary | ResolutionPlanSummary | ResolutionApplySummary | VerificationSummary | RollbackPreviewSummary | StatusSummary | undefined {
+): DeltaSummary | DeltaSuggestionsSummary | ConflictsSummary | ResolutionPlanSummary | ResolutionApplySummary | VerificationSummary | RollbackPreviewSummary | StatusSummary | DriftDiffSummary | DriftDashboardSummary | undefined {
   switch (artifactType) {
     case 'delta':
       return extractDeltaSummary(content);
@@ -341,6 +417,10 @@ function extractSummary(
       return extractRollbackPreviewSummary(content);
     case 'status':
       return extractStatusSummary(content);
+    case 'driftDiff':
+      return extractDriftDiffSummary(content);
+    case 'driftDashboard':
+      return extractDriftDashboardSummary(content);
     default:
       return undefined;
   }
@@ -507,6 +587,8 @@ export async function computeRunIndex(
     verification: [],
     rollbackPreview: [],
     status: [],
+    driftDiff: [],
+    driftDashboard: [],
   };
 
   // Load all artifacts in parallel
@@ -519,6 +601,8 @@ export async function computeRunIndex(
     'verification',
     'rollbackPreview',
     'status',
+    'driftDiff',
+    'driftDashboard',
   ];
 
   const results = await Promise.all(
@@ -535,6 +619,8 @@ export async function computeRunIndex(
     verification: { found: false },
     rollbackPreview: { found: false },
     status: { found: false },
+    driftDiff: { found: false },
+    driftDashboard: { found: false },
   };
 
   for (let i = 0; i < artifactTypes.length; i++) {

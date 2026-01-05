@@ -122,7 +122,7 @@ export function writeBundleArtifact(
  * Format a bundle artifact for human-readable output.
  *
  * Shows:
- * - Repo root, source file canonical, mode
+ * - Repo root, source file canonical, profile, mode
  * - Per-step: ok/fail + artifact path if present
  * - Overall result + exit code
  *
@@ -140,6 +140,7 @@ export function formatBundle(bundle: ReconcileBundleArtifact): string {
 
   // Metadata
   lines.push(`Source:     ${bundle.sourceFileCanonical}`);
+  lines.push(`Profile:    ${bundle.profile}`);
   lines.push(`Mode:       ${bundle.mode}`);
   lines.push(`Timestamp:  ${bundle.timestamp}`);
   lines.push('');
@@ -195,6 +196,7 @@ export function formatBundleVerbose(bundle: ReconcileBundleArtifact): string {
   lines.push(`Repo Root:        ${bundle.repoRoot}`);
   lines.push(`Source (input):   ${bundle.sourceFileInput}`);
   lines.push(`Source (canon):   ${bundle.sourceFileCanonical}`);
+  lines.push(`Profile:          ${bundle.profile}`);
   lines.push(`Mode:             ${bundle.mode}`);
   lines.push(`Timestamp:        ${bundle.timestamp}`);
   lines.push('');

@@ -3,6 +3,7 @@
  * @aesthetic-function/watcher - reconciliationReconcile/cliReconcile.ts
  *
  * Phase 14A: Single-Entry Reconcile CLI.
+ * Phase 14B: Profile support (deterministic flag presets).
  *
  * WHY: One command that runs the core Phase 12-13 read-only analysis sequence
  * for a single source file, producing a single bundle artifact.
@@ -11,9 +12,10 @@
  *   pnpm figma:reconcile <source-file> [options]
  *
  * OPTIONS:
+ *   --profile <name>      Profile preset: local, record, ci (default: local)
  *   --repo-root <path>    Repository root (default: auto-detect)
  *   --json                Output JSON format
- *   --write               Write bundle artifact (default: true)
+ *   --write               Write bundle artifact (default: profile-dependent)
  *   --no-write            Do not write bundle artifact
  *   --record              Record timeline run (requires RECONCILIATION_TIMELINE_ON=true)
  *   --strict              Exit 1 on strict-enabled step failures
@@ -21,22 +23,29 @@
  *   --limit <n>           Limit for dashboard/drift runs (default: 10)
  *   --help, -h            Show this help message
  *
+ * PROFILES:
+ *   local                 Human inspection: read-only, no recording (default)
+ *   record                Intentional capture: write enabled, recording (requires env)
+ *   ci                    CI gate: strict mode, read-only
+ *
  * EXIT CODES:
  *   0 - Success (even if "no data / clean")
  *   1 - Strict mode failure (only if --strict and a step fails)
  *   2 - Usage/config error
  */
 
-import { argv, exit } from 'node:process';
+import { argv, exit, env } from 'node:process';
 import { resolve } from 'node:path';
 
-import type { ReconcileCliOptions } from './types.js';
+import type { ReconcileCliOptions, ReconcileProfile } from './types.js';
+import { VALID_PROFILES } from './types.js';
 import { runReconcile } from './compute.js';
 import {
   writeBundleArtifact,
   formatBundle,
   formatBundleVerbose,
 } from './artifact.js';
+import { resolveProfileConfig } from './profiles.js';
 
 // =============================================================================
 // USAGE
@@ -55,15 +64,24 @@ Arguments:
   <source-file>           Source file to reconcile (e.g., demo-app/src/App.tsx)
 
 Options:
+  --profile <name>        Profile preset: local, record, ci (default: local)
   --repo-root <path>      Repository root (default: auto-detect)
   --json                  Output JSON format
-  --write                 Write bundle artifact (default: true)
-  --no-write              Do not write bundle artifact
-  --record                Record timeline run (requires RECONCILIATION_TIMELINE_ON=true)
-  --strict                Exit 1 on strict-enabled step failures (drift, dashboard)
+  --write                 Write bundle artifact (overrides profile default)
+  --no-write              Do not write bundle artifact (overrides profile default)
+  --record                Record timeline run (overrides profile, requires env)
+  --strict                Enable strict mode (overrides profile default)
   --verbose, -v           Show step invocations and discovery
   --limit <n>             Limit for dashboard/drift runs (default: 10)
   --help, -h              Show this help message
+
+Profiles:
+  local                   Human inspection: read-only, no recording (default)
+  record                  Intentional capture: write + recording (requires env)
+  ci                      CI gate: strict mode, read-only
+
+  CLI flags override profile defaults. For example:
+    --profile ci --no-strict   # ci profile but without strict mode
 
 Steps (run in order):
   1. status     - Compute reconciliation status
@@ -79,9 +97,10 @@ Exit Codes:
 
 Examples:
   figma:reconcile demo-app/src/App.tsx
-  figma:reconcile demo-app/src/App.tsx --json
-  figma:reconcile demo-app/src/App.tsx --strict --write
-  figma:reconcile demo-app/src/App.tsx --record --verbose
+  figma:reconcile demo-app/src/App.tsx --profile ci
+  figma:reconcile demo-app/src/App.tsx --profile record
+  figma:reconcile demo-app/src/App.tsx --profile ci --no-strict
+  figma:reconcile demo-app/src/App.tsx --json --verbose
 `.trim());
 }
 
@@ -97,7 +116,19 @@ type ParseArgsResult =
   | { error: string };
 
 /**
+ * Track which CLI flags were explicitly set (vs profile defaults).
+ */
+interface CliOverrides {
+  strict?: boolean;
+  record?: boolean;
+  write?: boolean;
+}
+
+/**
  * Parse CLI arguments.
+ *
+ * Parses raw args and applies profile expansion with CLI overrides.
+ * CLI flags always win over profile defaults.
  */
 function parseArgs(args: string[]): ParseArgsResult {
   // Check for help flag first
@@ -106,27 +137,41 @@ function parseArgs(args: string[]): ParseArgsResult {
     return { error: '' }; // Empty error signals help (exit 0)
   }
 
+  // Track explicit CLI overrides (undefined = not set, use profile default)
+  const overrides: CliOverrides = {};
+  let profileName: ReconcileProfile = 'local';
+
   const options: ReconcileCliOptions = {
     sourceFile: '',
-    write: true, // Default true
   };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
-    if (arg === '--repo-root' && args[i + 1]) {
+    if (arg === '--profile' && args[i + 1]) {
+      const p = args[i + 1] as ReconcileProfile;
+      if (!VALID_PROFILES.includes(p)) {
+        return { error: `Invalid profile: ${p}. Valid profiles: ${VALID_PROFILES.join(', ')}` };
+      }
+      profileName = p;
+      i++;
+    } else if (arg === '--repo-root' && args[i + 1]) {
       options.repoRoot = resolve(args[i + 1]);
       i++;
     } else if (arg === '--json') {
       options.json = true;
     } else if (arg === '--write') {
-      options.write = true;
+      overrides.write = true;
     } else if (arg === '--no-write') {
-      options.write = false;
+      overrides.write = false;
     } else if (arg === '--record') {
-      options.record = true;
+      overrides.record = true;
+    } else if (arg === '--no-record') {
+      overrides.record = false;
     } else if (arg === '--strict') {
-      options.strict = true;
+      overrides.strict = true;
+    } else if (arg === '--no-strict') {
+      overrides.strict = false;
     } else if (arg === '--verbose' || arg === '-v') {
       options.verbose = true;
     } else if (arg === '--limit' && args[i + 1]) {
@@ -148,6 +193,22 @@ function parseArgs(args: string[]): ParseArgsResult {
   // Validate source file
   if (!options.sourceFile) {
     return { error: 'Source file is required' };
+  }
+
+  // Resolve profile config with CLI overrides
+  const resolved = resolveProfileConfig(profileName, overrides);
+
+  // Apply resolved config to options
+  options.profile = profileName;
+  options.strict = resolved.strict;
+  options.record = resolved.record;
+  options.write = resolved.write;
+
+  // Validate record profile requires env
+  if (options.record && env.RECONCILIATION_TIMELINE_ON !== 'true') {
+    return {
+      error: 'Recording requires RECONCILIATION_TIMELINE_ON=true environment variable',
+    };
   }
 
   return options;
@@ -182,7 +243,9 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
 
   // Run reconcile
   if (options.verbose) {
+    const profileInfo = options.profile ?? 'local';
     console.log(`Running reconcile for: ${options.sourceFile}`);
+    console.log(`Profile: ${profileInfo} (strict=${options.strict}, record=${options.record}, write=${options.write})`);
     console.log('');
   }
 

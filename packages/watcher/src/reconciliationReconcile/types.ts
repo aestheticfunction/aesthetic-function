@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationReconcile/types.ts
  *
  * Phase 14A: Single-Entry Reconcile CLI Types.
+ * Phase 14B: Reconcile Profiles (Deterministic Flag Presets).
  *
  * WHY: Defines types for the orchestration inputs/outputs and bundle artifact
  * format that aggregates all Phase 12-13 read-only analysis for a single source file.
@@ -10,12 +11,53 @@
  * - Orchestration only (no new inference, no new semantics)
  * - Links to existing phase artifacts
  * - Deterministic step ordering
+ * - Profile-based flag presets (Phase 14B)
  *
  * CONSTRAINTS:
  * - Read-only by default (no AST/markers/overrides/Figma mutations)
  * - Repo-root invariant
  * - Deterministic output
  */
+
+// =============================================================================
+// PROFILES (Phase 14B)
+// =============================================================================
+
+/**
+ * Named reconcile profiles for deterministic flag presets.
+ *
+ * - local: Default human inspection (read-only, no recording, no strict)
+ * - record: Intentional run capture (requires RECONCILIATION_TIMELINE_ON=true)
+ * - ci: CI gate (strict mode, read-only)
+ */
+export type ReconcileProfile = 'local' | 'record' | 'ci';
+
+/**
+ * Valid profile names for validation.
+ */
+export const VALID_PROFILES: readonly ReconcileProfile[] = ['local', 'record', 'ci'] as const;
+
+/**
+ * Configuration derived from a profile.
+ *
+ * These are the flags that a profile expands into.
+ */
+export interface ReconcileProfileConfig {
+  /**
+   * Whether to use strict mode.
+   */
+  strict: boolean;
+
+  /**
+   * Whether to record timeline.
+   */
+  record: boolean;
+
+  /**
+   * Whether to write bundle artifact.
+   */
+  write: boolean;
+}
 
 // =============================================================================
 // STEP IDENTIFIERS
@@ -68,6 +110,19 @@ export interface ReconcileCliOptions {
    * Source file to reconcile (e.g., demo-app/src/App.tsx).
    */
   sourceFile: string;
+
+  /**
+   * Named profile to use for flag presets.
+   * Profiles expand to {strict, record, write} combinations.
+   * CLI flags override profile defaults.
+   *
+   * - local: Human inspection (default)
+   * - record: Intentional run capture (requires env)
+   * - ci: CI gate (strict mode)
+   *
+   * @default 'local'
+   */
+  profile?: ReconcileProfile;
 
   /**
    * Explicit repository root path.
@@ -217,6 +272,12 @@ export interface ReconcileBundleArtifact {
    * Execution mode.
    */
   mode: ReconcileMode;
+
+  /**
+   * Profile used for this run.
+   * @default 'local'
+   */
+  profile: ReconcileProfile;
 
   /**
    * Results from each step in locked order.

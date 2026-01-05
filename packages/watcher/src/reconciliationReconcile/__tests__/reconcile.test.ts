@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationReconcile/__tests__/reconcile.test.ts
  *
  * Phase 14A: Single-Entry Reconcile CLI Tests.
+ * Phase 14B: Profile Support Tests.
  *
  * Test strategy:
  * - Fixtures only, no demo-app reads
@@ -14,6 +15,7 @@
  * C) Strict semantics
  * D) Deterministic ordering
  * E) Bundle artifact writing
+ * F) Profile expansion
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -28,11 +30,17 @@ import {
   writeBundleArtifact,
   formatBundle,
   RECONCILE_STEP_ORDER,
+  VALID_PROFILES,
+  PROFILE_CONFIGS,
+  expandProfile,
+  mergeWithOverrides,
+  resolveProfileConfig,
 } from '../index.js';
 import type {
   ReconcileBundleArtifact,
   ReconcileStepResult,
   ReconcileMode,
+  ReconcileProfile,
 } from '../types.js';
 
 // =============================================================================
@@ -96,6 +104,7 @@ function createMockBundle(
     sourceFileInput: sourceFile,
     sourceFileCanonical: sourceFile,
     mode: 'read-only' as ReconcileMode,
+    profile: 'local',
     steps: RECONCILE_STEP_ORDER.map((step) => createMockStepResult(step)),
     artifacts: {},
     overall: {
@@ -466,5 +475,128 @@ describe('Bundle formatting', () => {
 
     expect(formatted).toContain('⚠');
     expect(formatted).toContain('Test warning message');
+  });
+
+  it('formatBundle shows profile', () => {
+    const bundle = createMockBundle('src/App.tsx', testDir, {
+      profile: 'ci',
+    });
+    const formatted = formatBundle(bundle);
+
+    expect(formatted).toContain('Profile:');
+    expect(formatted).toContain('ci');
+  });
+});
+
+// =============================================================================
+// F) PROFILE EXPANSION
+// =============================================================================
+
+describe('Profile expansion', () => {
+  it('VALID_PROFILES contains all three profiles', () => {
+    expect(VALID_PROFILES).toEqual(['local', 'record', 'ci']);
+  });
+
+  it('PROFILE_CONFIGS defines all profiles', () => {
+    expect(Object.keys(PROFILE_CONFIGS)).toEqual(['local', 'record', 'ci']);
+  });
+
+  it('local profile has expected defaults', () => {
+    expect(PROFILE_CONFIGS.local).toEqual({
+      strict: false,
+      record: false,
+      write: false,
+    });
+  });
+
+  it('record profile has expected defaults', () => {
+    expect(PROFILE_CONFIGS.record).toEqual({
+      strict: false,
+      record: true,
+      write: true,
+    });
+  });
+
+  it('ci profile has expected defaults', () => {
+    expect(PROFILE_CONFIGS.ci).toEqual({
+      strict: true,
+      record: false,
+      write: false,
+    });
+  });
+
+  it('expandProfile returns correct config for each profile', () => {
+    const profiles: ReconcileProfile[] = ['local', 'record', 'ci'];
+    for (const profile of profiles) {
+      expect(expandProfile(profile)).toEqual(PROFILE_CONFIGS[profile]);
+    }
+  });
+
+  it('mergeWithOverrides applies undefined overrides as no-op', () => {
+    const base = { strict: true, record: false, write: true };
+    const merged = mergeWithOverrides(base, {});
+    expect(merged).toEqual(base);
+  });
+
+  it('mergeWithOverrides applies explicit overrides', () => {
+    const base = { strict: false, record: false, write: false };
+    const merged = mergeWithOverrides(base, {
+      strict: true,
+      write: true,
+    });
+    expect(merged).toEqual({
+      strict: true,
+      record: false,
+      write: true,
+    });
+  });
+
+  it('mergeWithOverrides allows overriding to false', () => {
+    const base = { strict: true, record: true, write: true };
+    const merged = mergeWithOverrides(base, {
+      strict: false,
+      record: false,
+    });
+    expect(merged).toEqual({
+      strict: false,
+      record: false,
+      write: true,
+    });
+  });
+
+  it('resolveProfileConfig defaults to local profile', () => {
+    const resolved = resolveProfileConfig();
+    expect(resolved).toEqual(PROFILE_CONFIGS.local);
+  });
+
+  it('resolveProfileConfig with explicit profile', () => {
+    const resolved = resolveProfileConfig('ci');
+    expect(resolved).toEqual(PROFILE_CONFIGS.ci);
+  });
+
+  it('resolveProfileConfig merges CLI overrides over profile', () => {
+    // ci profile: strict=true, record=false, write=false
+    // Override: strict=false
+    const resolved = resolveProfileConfig('ci', { strict: false });
+    expect(resolved).toEqual({
+      strict: false, // Overridden
+      record: false, // From profile
+      write: false,  // From profile
+    });
+  });
+
+  it('resolveProfileConfig cli overrides take precedence', () => {
+    // local profile: strict=false, record=false, write=false
+    // Override all
+    const resolved = resolveProfileConfig('local', {
+      strict: true,
+      record: true,
+      write: true,
+    });
+    expect(resolved).toEqual({
+      strict: true,
+      record: true,
+      write: true,
+    });
   });
 });

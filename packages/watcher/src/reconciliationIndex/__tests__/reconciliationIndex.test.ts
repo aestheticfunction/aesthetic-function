@@ -466,6 +466,8 @@ describe('formatRunIndex', () => {
         verification: { found: false },
         rollbackPreview: { found: false },
         status: { found: false },
+        driftDiff: { found: false },
+        driftDashboard: { found: false },
       },
       notes: [],
     };
@@ -505,6 +507,8 @@ describe('formatRunIndex', () => {
         verification: { found: false },
         rollbackPreview: { found: false },
         status: { found: false },
+        driftDiff: { found: false },
+        driftDashboard: { found: false },
       },
       notes: [],
     };
@@ -532,6 +536,8 @@ describe('formatRunIndex', () => {
         verification: { found: false },
         rollbackPreview: { found: false },
         status: { found: false },
+        driftDiff: { found: false },
+        driftDashboard: { found: false },
       },
       notes: [
         { level: 'warn', message: 'Multiple apply artifacts found; chose newest by timestamp.' },
@@ -667,5 +673,223 @@ describe('delta suggestions artifact support', () => {
         suggestions: 3,
       });
     }
+  });
+});
+
+// =============================================================================
+// DRIFT DIFF ARTIFACT TESTS (Phase 13A.2)
+// =============================================================================
+
+describe('drift diff artifact support', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should find drift-diff artifact and extract summary', async () => {
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      summary: {
+        totalChanges: 5,
+        failCount: 1,
+        warnCount: 2,
+        infoCount: 2,
+        insufficientHistory: false,
+        message: 'Drift detected',
+      },
+      changes: [],
+    });
+
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDiff.found).toBe(true);
+    if (result.index.artifacts.driftDiff.found) {
+      expect(result.index.artifacts.driftDiff.summary).toEqual({
+        totalChanges: 5,
+        failCount: 1,
+        warnCount: 2,
+      });
+    }
+  });
+
+  it('should extract driftDiff summary from changes array fallback', async () => {
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      changes: [{}, {}, {}],
+    });
+
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDiff.found).toBe(true);
+    if (result.index.artifacts.driftDiff.found) {
+      expect(result.index.artifacts.driftDiff.summary).toEqual({
+        totalChanges: 3,
+        failCount: 0,
+        warnCount: 0,
+      });
+    }
+  });
+
+  it('should report driftDiff as not found when artifact missing', async () => {
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDiff.found).toBe(false);
+  });
+});
+
+// =============================================================================
+// DRIFT DASHBOARD ARTIFACT TESTS (Phase 13A.2)
+// =============================================================================
+
+describe('drift dashboard artifact support', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should find drift-dashboard artifact and extract summary', async () => {
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      stabilityScore: { score: 85, rationale: ['stable'] },
+      ciVerdict: 'PASS',
+      counts: { runsConsidered: 10, bySeverity: { info: 1, warn: 0, fail: 0 } },
+      topSignals: [],
+      recentRuns: [],
+    });
+
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDashboard.found).toBe(true);
+    if (result.index.artifacts.driftDashboard.found) {
+      expect(result.index.artifacts.driftDashboard.summary).toEqual({
+        stabilityScore: 85,
+        ciVerdict: 'PASS',
+        runsConsidered: 10,
+      });
+    }
+  });
+
+  it('should extract driftDashboard summary with ciVerdict fallback', async () => {
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      ciVerdict: 'WARN',
+      counts: { runsConsidered: 5 },
+    });
+
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDashboard.found).toBe(true);
+    if (result.index.artifacts.driftDashboard.found) {
+      expect(result.index.artifacts.driftDashboard.summary).toEqual({
+        stabilityScore: 0,
+        ciVerdict: 'WARN',
+        runsConsidered: 5,
+      });
+    }
+  });
+
+  it('should report driftDashboard as not found when artifact missing', async () => {
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    expect(result.index.artifacts.driftDashboard.found).toBe(false);
+  });
+});
+
+// =============================================================================
+// DRIFT ARTIFACT DETERMINISTIC ORDERING (Phase 13A.2)
+// =============================================================================
+
+describe('drift artifact deterministic ordering', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  it('should include driftDiff and driftDashboard in deterministic artifact order', async () => {
+    // Write all artifacts
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-delta', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      deltas: [{}],
+    });
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-reconciliation-status', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      overallStatus: 'CLEAN',
+      ciVerdict: 'PASS',
+    });
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      summary: { totalChanges: 1, failCount: 0, warnCount: 0 },
+    });
+    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+      generatedAt: '2025-12-30T10:00:00.000Z',
+      stabilityScore: { score: 100 },
+      ciVerdict: 'PASS',
+      counts: { runsConsidered: 1 },
+    });
+
+    const context: RunIndexContext = {
+      sourceFile: 'demo-app/src/App.tsx',
+      repoRoot: testDir,
+    };
+
+    const result = await computeRunIndex(context);
+
+    // Check all four are found
+    expect(result.index.artifacts.delta.found).toBe(true);
+    expect(result.index.artifacts.status.found).toBe(true);
+    expect(result.index.artifacts.driftDiff.found).toBe(true);
+    expect(result.index.artifacts.driftDashboard.found).toBe(true);
+
+    // Check ordering in discovery.checkedPaths keys
+    const keys = Object.keys(result.discovery.checkedPaths);
+    expect(keys).toContain('driftDiff');
+    expect(keys).toContain('driftDashboard');
+    expect(keys.indexOf('driftDiff')).toBe(8); // After status
+    expect(keys.indexOf('driftDashboard')).toBe(9);
   });
 });

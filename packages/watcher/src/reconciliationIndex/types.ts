@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationIndex/types.ts
  *
  * Phase 13A: Reconciliation Run Index Types.
+ * Phase 13A.2: Extended to index Phase 13 artifacts (drift-diff, drift-dashboard).
  *
  * WHY: Defines types for the run index artifact that summarizes what
  * reconciliation artifacts exist for a given source file.
@@ -33,6 +34,8 @@
  * - verification: *.figma-verification.json (12G)
  * - rollbackPreview: *.figma-rollback-preview.json (12I)
  * - status: *.figma-reconciliation-status.json (12J)
+ * - driftDiff: *.figma-drift-diff.json (13C)
+ * - driftDashboard: *.figma-drift-dashboard.json (13D)
  */
 export type IndexedArtifactType =
   | 'delta'
@@ -42,7 +45,9 @@ export type IndexedArtifactType =
   | 'resolutionApply'
   | 'verification'
   | 'rollbackPreview'
-  | 'status';
+  | 'status'
+  | 'driftDiff'
+  | 'driftDashboard';
 
 // =============================================================================
 // ARTIFACT SUMMARIES
@@ -113,6 +118,30 @@ export interface StatusSummary {
 }
 
 /**
+ * Summary for drift diff artifact (13C).
+ */
+export interface DriftDiffSummary {
+  /** Number of changes detected between runs */
+  totalChanges: number;
+  /** Number of fail-level changes */
+  failCount: number;
+  /** Number of warn-level changes */
+  warnCount: number;
+}
+
+/**
+ * Summary for drift dashboard artifact (13D).
+ */
+export interface DriftDashboardSummary {
+  /** Stability score (0-100) */
+  stabilityScore: number;
+  /** CI verdict (PASS, WARN, FAIL) */
+  ciVerdict: string;
+  /** Number of runs considered */
+  runsConsidered: number;
+}
+
+/**
  * Union of all artifact summaries.
  */
 export type ArtifactSummary =
@@ -123,7 +152,9 @@ export type ArtifactSummary =
   | ResolutionApplySummary
   | VerificationSummary
   | RollbackPreviewSummary
-  | StatusSummary;
+  | StatusSummary
+  | DriftDiffSummary
+  | DriftDashboardSummary;
 
 // =============================================================================
 // ARTIFACT ENTRY
@@ -167,6 +198,8 @@ export interface IndexedArtifacts {
   verification: ArtifactEntry;
   rollbackPreview: ArtifactEntry;
   status: ArtifactEntry;
+  driftDiff: ArtifactEntry;
+  driftDashboard: ArtifactEntry;
 }
 
 // =============================================================================

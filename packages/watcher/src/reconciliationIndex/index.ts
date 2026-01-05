@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationIndex/index.ts
  *
  * Phase 13A: Reconciliation Run Index.
+ * Phase 13A.2: Extended to index Phase 13 artifacts (drift-diff, drift-dashboard).
  *
  * WHY: Provides a single, deterministic artifact summarizing what
  * reconciliation artifacts exist for a given source file.
@@ -9,6 +10,7 @@
  * WHAT:
  * - Indexes artifacts from Phases 12A-12J (delta, suggestions, conflicts,
  *   resolution plan, resolution apply, verification, rollback preview, status)
+ * - Indexes Phase 13 artifacts (drift-diff, drift-dashboard)
  * - Extracts key metadata (timestamps, modes, counts)
  * - Produces deterministic output for CI and human inspection
  *
@@ -37,6 +39,8 @@ export type {
   VerificationSummary,
   RollbackPreviewSummary,
   StatusSummary,
+  DriftDiffSummary,
+  DriftDashboardSummary,
   IndexedArtifacts,
   IndexNote,
   NoteLevel,

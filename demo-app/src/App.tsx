@@ -22,13 +22,13 @@ import React from 'react';
 // LOGIN BUTTON
 // =============================================================================
 
-// @figma node=LoginButton text="Login" fill=#3B82F6
+// @figma node=LoginButton text="Login" fill=#0000FF
 // @figma node=LoginButton::hover text="Hover" fill=#2563EB
 export function LoginButton() {
   return (
     <button
       style={{
-        backgroundColor: '#3B82F6', // Primary/Blue500
+        backgroundColor: '#0000FF', // Primary/Blue500
         color: 'white',
         padding: '12px 24px',
         borderRadius: '8px',

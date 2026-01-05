@@ -46,6 +46,7 @@ import type {
   RunState,
   RunCandidateInfo,
   CandidateValidationResult,
+  ComparableSignalKey,
 } from './types.js';
 
 // Re-export utilities for external use
@@ -217,7 +218,7 @@ export function selectRuns(
 }
 
 // =============================================================================
-// CANDIDATE VALIDATION (Phase 13C.2)
+// CANDIDATE VALIDATION (Phase 13C.2 + 13C.3)
 // =============================================================================
 
 /**
@@ -233,6 +234,60 @@ const RECONCILIATION_ARTIFACT_TYPES = [
   'resolutionPlan',
   'rollbackPreview',
 ] as const;
+
+/**
+ * Mapping from artifact type to comparable signal key.
+ * Used to determine what signals are available from artifacts.
+ */
+const ARTIFACT_TO_SIGNAL_MAP: Record<string, ComparableSignalKey[]> = {
+  status: ['status'],
+  conflicts: ['conflictsTotal'],
+  resolutionPlan: ['resolutionDecisionsTotal'],
+  delta: ['deltasTotal'],
+  resolutionApply: ['applyOpsTotal'],
+  verification: ['verifyTotal', 'verifyMismatch'],
+  rollbackPreview: ['rollbackActions'],
+};
+
+/**
+ * Get comparable signal keys from a run entry's artifacts.
+ *
+ * WHY: Phase 13C.3 requires deterministic comparability check based on
+ * which signals are available for diffing between runs.
+ */
+export function getComparableSignalKeys(runEntry: RunEntry): ComparableSignalKey[] {
+  const artifacts = runEntry.artifacts;
+  const signals: ComparableSignalKey[] = [];
+
+  for (const [artifactType, signalKeys] of Object.entries(ARTIFACT_TO_SIGNAL_MAP)) {
+    if ((artifacts as Record<string, string | undefined>)[artifactType]) {
+      signals.push(...signalKeys);
+    }
+  }
+
+  // Return in deterministic order (matches ARTIFACT_TO_SIGNAL_MAP order)
+  return signals;
+}
+
+/**
+ * Check if runs are comparable (share at least one signal key).
+ *
+ * Returns the intersection of signal keys that can be compared.
+ */
+export function getSharedSignals(
+  fromSignals: ComparableSignalKey[],
+  toSignals: ComparableSignalKey[]
+): ComparableSignalKey[] {
+  const toSet = new Set(toSignals);
+  return fromSignals.filter(key => toSet.has(key));
+}
+
+/**
+ * Check if a run has only status signal (minimal comparison).
+ */
+export function isStatusOnlyRun(signals: ComparableSignalKey[]): boolean {
+  return signals.length === 1 && signals[0] === 'status';
+}
 
 /**
  * Classify a run's state based on its artifacts.
@@ -266,6 +321,7 @@ export function classifyRunState(runEntry: RunEntry): RunState {
   }
 
   // Has artifacts but not verification or apply
+  // Phase 13C.3: INCOMPLETE is NOT automatically INVALID
   return 'INCOMPLETE';
 }
 
@@ -279,6 +335,8 @@ export function buildRunCandidateInfo(runEntry: RunEntry): RunCandidateInfo {
     (type) => !!(artifacts as Record<string, string | undefined>)[type]
   );
 
+  const comparableSignalKeys = getComparableSignalKeys(runEntry);
+
   return {
     runId: runEntry.runId,
     timestamp: runEntry.timestamp,
@@ -286,73 +344,155 @@ export function buildRunCandidateInfo(runEntry: RunEntry): RunCandidateInfo {
     hasRunIndex: !!artifacts.runIndex,
     hasReconciliationArtifact: availableArtifacts.length > 0,
     availableArtifacts,
+    comparableSignalKeys,
   };
 }
 
 /**
- * Classify the comparison based on two run states.
+ * Classify the comparison based on run candidates and shared signals.
+ *
+ * Phase 13C.3 Classification Rules:
+ * - INVALID: Either run is EMPTY, or no shared signals between runs
+ * - FULL: Both runs verified (highest confidence)
+ * - PARTIAL: Runs are comparable (shared signals) but not FULL
+ * - WEAK: Runs are comparable but both status-only (minimal comparison)
  */
-export function classifyComparison(fromState: RunState, toState: RunState): ComparisonClass {
-  // INVALID: Either run is EMPTY or INCOMPLETE
+export function classifyComparison(
+  fromCandidate: RunCandidateInfo,
+  toCandidate: RunCandidateInfo,
+  sharedSignals: ComparableSignalKey[]
+): ComparisonClass {
+  const fromState = fromCandidate.state;
+  const toState = toCandidate.state;
+
+  // INVALID: Either run is EMPTY
   if (fromState === 'EMPTY' || toState === 'EMPTY') {
     return 'INVALID';
   }
-  if (fromState === 'INCOMPLETE' || toState === 'INCOMPLETE') {
+
+  // INVALID: No shared comparable signals
+  if (sharedSignals.length === 0) {
     return 'INVALID';
   }
 
-  // FULL: Both runs verified
+  // Check verification status
   const fromVerified = fromState === 'VERIFIED_OK' || fromState === 'VERIFIED_MISMATCH';
   const toVerified = toState === 'VERIFIED_OK' || toState === 'VERIFIED_MISMATCH';
 
+  // FULL: Both runs verified
   if (fromVerified && toVerified) {
     return 'FULL';
   }
 
-  // PARTIAL: One verified, one applied
-  if (fromVerified || toVerified) {
-    return 'PARTIAL';
+  // WEAK: Both runs are status-only (minimal comparison)
+  const fromStatusOnly = isStatusOnlyRun(fromCandidate.comparableSignalKeys);
+  const toStatusOnly = isStatusOnlyRun(toCandidate.comparableSignalKeys);
+  if (fromStatusOnly && toStatusOnly) {
+    return 'WEAK';
   }
 
-  // WEAK: Neither verified (both APPLY_ONLY)
-  return 'WEAK';
+  // PARTIAL: Comparable but not FULL (has shared signals, not verified)
+  return 'PARTIAL';
 }
 
 /**
- * Get warning message for a comparison class.
+ * Get warning messages for a comparison classification.
+ *
+ * Phase 13C.3: Emit warnings explaining why comparison is PARTIAL/WEAK.
+ */
+function getComparisonWarnings(
+  comparisonClass: ComparisonClass,
+  fromCandidate: RunCandidateInfo,
+  toCandidate: RunCandidateInfo,
+  sharedSignals: ComparableSignalKey[]
+): string[] {
+  const warnings: string[] = [];
+
+  if (comparisonClass === 'FULL') {
+    return warnings; // No warnings for FULL comparison
+  }
+
+  // Check for missing apply artifacts
+  const fromHasApply = fromCandidate.availableArtifacts.includes('resolutionApply');
+  const toHasApply = toCandidate.availableArtifacts.includes('resolutionApply');
+  if (!fromHasApply || !toHasApply) {
+    const missing = [];
+    if (!fromHasApply) missing.push('from');
+    if (!toHasApply) missing.push('to');
+    warnings.push(`Missing apply artifact in ${missing.join(' and ')} run`);
+  }
+
+  // Check for missing verify artifacts
+  const fromHasVerify = fromCandidate.availableArtifacts.includes('verification');
+  const toHasVerify = toCandidate.availableArtifacts.includes('verification');
+  if (!fromHasVerify || !toHasVerify) {
+    const missing = [];
+    if (!fromHasVerify) missing.push('from');
+    if (!toHasVerify) missing.push('to');
+    warnings.push(`Missing verify artifact in ${missing.join(' and ')} run`);
+  }
+
+  // Explain comparison class
+  if (comparisonClass === 'PARTIAL') {
+    warnings.push(`Comparison is PARTIAL: ${sharedSignals.length} shared signal(s): ${sharedSignals.join(', ')}`);
+  } else if (comparisonClass === 'WEAK') {
+    warnings.push('Comparison is WEAK: both runs have only status signal');
+  } else if (comparisonClass === 'INVALID') {
+    if (fromCandidate.state === 'EMPTY' || toCandidate.state === 'EMPTY') {
+      warnings.push('Comparison is INVALID: one or both runs have no artifacts');
+    } else {
+      warnings.push('Comparison is INVALID: no overlapping comparable signals');
+    }
+  }
+
+  return warnings;
+}
+
+/**
+ * Get warning message for a comparison class (legacy format for CLI display).
  */
 function getComparisonWarning(
   comparisonClass: ComparisonClass,
-  fromState: RunState,
-  toState: RunState
+  fromCandidate: RunCandidateInfo,
+  toCandidate: RunCandidateInfo,
+  sharedSignals: ComparableSignalKey[]
 ): string | undefined {
   switch (comparisonClass) {
     case 'FULL':
       return undefined; // No warning for full comparison
 
     case 'PARTIAL': {
-      // Determine which run is unverified
-      const fromVerified = fromState === 'VERIFIED_OK' || fromState === 'VERIFIED_MISMATCH';
-      const toVerified = toState === 'VERIFIED_OK' || toState === 'VERIFIED_MISMATCH';
-      const unverified = !fromVerified ? 'from' : !toVerified ? 'to' : 'unknown';
-      return `⚠️ Drift comparison is PARTIAL\nReason: ${unverified} run has not been verified\nResults may reflect incomplete reconciliation`;
+      // Determine what's missing
+      const fromVerified = fromCandidate.state === 'VERIFIED_OK' || fromCandidate.state === 'VERIFIED_MISMATCH';
+      const toVerified = toCandidate.state === 'VERIFIED_OK' || toCandidate.state === 'VERIFIED_MISMATCH';
+      let reason = '';
+      if (!fromVerified && !toVerified) {
+        reason = 'Neither run has been verified';
+      } else {
+        const unverified = !fromVerified ? 'from' : 'to';
+        reason = `${unverified} run has not been verified`;
+      }
+      return `⚠️ Drift comparison is PARTIAL\nReason: ${reason}\nShared signals: ${sharedSignals.join(', ')}\nResults are meaningful but may not reflect full reconciliation`;
     }
 
     case 'WEAK':
-      return `⚠️ Drift comparison is WEAK\nReason: Neither run has been verified\nResults may reflect incomplete reconciliation`;
+      return `⚠️ Drift comparison is WEAK\nReason: Both runs have only status signal\nResults are minimal; run apply/verify for better comparison`;
 
     case 'INVALID':
-      return `⚠️ Drift comparison is INVALID\nReason: One or both runs are missing required artifacts\nComparison is not meaningful`;
+      if (fromCandidate.state === 'EMPTY' || toCandidate.state === 'EMPTY') {
+        return `⚠️ Drift comparison is INVALID\nReason: One or both runs have no artifacts\nComparison is not possible`;
+      }
+      return `⚠️ Drift comparison is INVALID\nReason: No overlapping comparable signals between runs\nComparison is not possible`;
   }
 }
 
 /**
  * Validate that two run candidates are meaningfully comparable.
  *
- * Validation rules:
- * - Same canonical source file (implied by ledger)
- * - Same repo root (implied by ledger)
- * - Both runs must have at least one reconciliation artifact
+ * Phase 13C.3 Validation Rules:
+ * - INVALID only when truly non-comparable (EMPTY runs or no shared signals)
+ * - PARTIAL/WEAK comparisons are valid and should not fail --strict
+ * - Emit warnings explaining missing artifacts
  */
 export function validateRunCandidates(
   fromEntry: RunEntry,
@@ -371,14 +511,23 @@ export function validateRunCandidates(
     issues.push(`To run (${toCandidate.runId}) has no reconciliation artifacts`);
   }
 
-  // Classify comparison
-  const comparisonClass = classifyComparison(fromCandidate.state, toCandidate.state);
+  // Get shared signals for comparability check
+  const sharedSignals = getSharedSignals(
+    fromCandidate.comparableSignalKeys,
+    toCandidate.comparableSignalKeys
+  );
 
-  // Determine validity
+  // Classify comparison using new Phase 13C.3 rules
+  const comparisonClass = classifyComparison(fromCandidate, toCandidate, sharedSignals);
+
+  // Determine validity: only INVALID is invalid
   const valid = comparisonClass !== 'INVALID';
 
-  // Get warning message
-  const warningMessage = getComparisonWarning(comparisonClass, fromCandidate.state, toCandidate.state);
+  // Get warnings explaining the classification
+  const warnings = getComparisonWarnings(comparisonClass, fromCandidate, toCandidate, sharedSignals);
+
+  // Get legacy warning message for CLI display
+  const warningMessage = getComparisonWarning(comparisonClass, fromCandidate, toCandidate, sharedSignals);
 
   return {
     valid,
@@ -386,6 +535,8 @@ export function validateRunCandidates(
     fromCandidate,
     toCandidate,
     issues,
+    warnings,
+    sharedSignals,
     warningMessage,
   };
 }

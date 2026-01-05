@@ -51,6 +51,8 @@ export interface RunArtifactRefs {
   verification?: string;
   rollbackPreview?: string;
   status?: string;
+  driftDiff?: string;
+  driftDashboard?: string;
   runIndex?: string;
 }
 

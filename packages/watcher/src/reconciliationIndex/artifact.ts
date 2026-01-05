@@ -32,6 +32,8 @@ import type {
   VerificationSummary,
   RollbackPreviewSummary,
   StatusSummary,
+  DriftDiffSummary,
+  DriftDashboardSummary,
 } from './types.js';
 
 // =============================================================================
@@ -93,6 +95,8 @@ const ARTIFACT_DISPLAY_NAMES: Record<IndexedArtifactType, string> = {
   verification: 'verification',
   rollbackPreview: 'rollback-preview',
   status: 'status',
+  driftDiff: 'drift-diff',
+  driftDashboard: 'drift-dashboard',
 };
 
 /**
@@ -170,6 +174,28 @@ function formatStatusSummary(summary: StatusSummary): string {
 }
 
 /**
+ * Format summary for a drift diff artifact.
+ */
+function formatDriftDiffSummary(summary: DriftDiffSummary): string {
+  const parts: string[] = [];
+  parts.push(`${summary.totalChanges} change${summary.totalChanges !== 1 ? 's' : ''}`);
+  if (summary.failCount > 0) {
+    parts.push(`${summary.failCount} fail`);
+  }
+  if (summary.warnCount > 0) {
+    parts.push(`${summary.warnCount} warn`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * Format summary for a drift dashboard artifact.
+ */
+function formatDriftDashboardSummary(summary: DriftDashboardSummary): string {
+  return `score=${summary.stabilityScore}, ${summary.ciVerdict}, ${summary.runsConsidered} runs`;
+}
+
+/**
  * Format artifact summary based on type.
  */
 function formatSummary(
@@ -195,6 +221,10 @@ function formatSummary(
       return formatRollbackPreviewSummary(summary as RollbackPreviewSummary);
     case 'status':
       return formatStatusSummary(summary as StatusSummary);
+    case 'driftDiff':
+      return formatDriftDiffSummary(summary as DriftDiffSummary);
+    case 'driftDashboard':
+      return formatDriftDashboardSummary(summary as DriftDashboardSummary);
     default:
       return '';
   }
@@ -236,6 +266,8 @@ export function formatRunIndex(index: RunIndexArtifact): string {
     'verification',
     'rollbackPreview',
     'status',
+    'driftDiff',
+    'driftDashboard',
   ];
 
   for (const type of artifactTypes) {
@@ -294,6 +326,8 @@ export function formatDiscovery(
     'verification',
     'rollbackPreview',
     'status',
+    'driftDiff',
+    'driftDashboard',
   ];
 
   for (const type of artifactTypes) {

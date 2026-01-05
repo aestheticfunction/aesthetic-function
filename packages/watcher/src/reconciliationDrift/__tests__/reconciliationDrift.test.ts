@@ -880,7 +880,7 @@ describe('Phase 13C.1: Repo-root Invariance', () => {
   });
 });
 // =============================================================================
-// PHASE 13C.2: CANDIDATE VALIDATION TESTS
+// PHASE 13C.2 + 13C.3: CANDIDATE VALIDATION TESTS
 // =============================================================================
 
 import {
@@ -888,9 +888,14 @@ import {
   buildRunCandidateInfo,
   classifyComparison,
   validateRunCandidates,
+  getComparableSignalKeys,
+  getSharedSignals,
+  isStatusOnlyRun,
 } from '../compute.js';
 
-describe('Phase 13C.2: Candidate Validation', () => {
+import type { ComparableSignalKey } from '../types.js';
+
+describe('Phase 13C.2 + 13C.3: Candidate Validation', () => {
   describe('classifyRunState', () => {
     it('should classify run with verification artifact as VERIFIED_OK', () => {
       const entry = createMockRunEntry({
@@ -937,6 +942,87 @@ describe('Phase 13C.2: Candidate Validation', () => {
     });
   });
 
+  describe('getComparableSignalKeys (Phase 13C.3)', () => {
+    it('should extract status signal from status artifact', () => {
+      const entry = createMockRunEntry({
+        artifacts: { status: 'path/to/status.json' },
+      });
+      const signals = getComparableSignalKeys(entry);
+      expect(signals).toContain('status');
+    });
+
+    it('should extract conflictsTotal from conflicts artifact', () => {
+      const entry = createMockRunEntry({
+        artifacts: { conflicts: 'path/to/conflicts.json' },
+      });
+      const signals = getComparableSignalKeys(entry);
+      expect(signals).toContain('conflictsTotal');
+    });
+
+    it('should extract multiple signals from multiple artifacts', () => {
+      const entry = createMockRunEntry({
+        artifacts: {
+          status: 'path/to/status.json',
+          conflicts: 'path/to/conflicts.json',
+          resolutionPlan: 'path/to/plan.json',
+        },
+      });
+      const signals = getComparableSignalKeys(entry);
+      expect(signals).toContain('status');
+      expect(signals).toContain('conflictsTotal');
+      expect(signals).toContain('resolutionDecisionsTotal');
+    });
+
+    it('should extract verification signals', () => {
+      const entry = createMockRunEntry({
+        artifacts: { verification: 'path/to/verify.json' },
+      });
+      const signals = getComparableSignalKeys(entry);
+      expect(signals).toContain('verifyTotal');
+      expect(signals).toContain('verifyMismatch');
+    });
+  });
+
+  describe('getSharedSignals (Phase 13C.3)', () => {
+    it('should return intersection of signal keys', () => {
+      const fromSignals: ComparableSignalKey[] = ['status', 'conflictsTotal'];
+      const toSignals: ComparableSignalKey[] = ['status', 'resolutionDecisionsTotal'];
+      const shared = getSharedSignals(fromSignals, toSignals);
+      expect(shared).toEqual(['status']);
+    });
+
+    it('should return empty array when no shared signals', () => {
+      const fromSignals: ComparableSignalKey[] = ['status'];
+      const toSignals: ComparableSignalKey[] = ['conflictsTotal'];
+      const shared = getSharedSignals(fromSignals, toSignals);
+      expect(shared).toEqual([]);
+    });
+
+    it('should return all signals when identical', () => {
+      const signals: ComparableSignalKey[] = ['status', 'conflictsTotal', 'resolutionDecisionsTotal'];
+      const shared = getSharedSignals(signals, signals);
+      expect(shared).toEqual(signals);
+    });
+  });
+
+  describe('isStatusOnlyRun (Phase 13C.3)', () => {
+    it('should return true for status-only signals', () => {
+      expect(isStatusOnlyRun(['status'])).toBe(true);
+    });
+
+    it('should return false for multiple signals', () => {
+      expect(isStatusOnlyRun(['status', 'conflictsTotal'])).toBe(false);
+    });
+
+    it('should return false for non-status signals', () => {
+      expect(isStatusOnlyRun(['conflictsTotal'])).toBe(false);
+    });
+
+    it('should return false for empty signals', () => {
+      expect(isStatusOnlyRun([])).toBe(false);
+    });
+  });
+
   describe('buildRunCandidateInfo', () => {
     it('should build candidate info with all artifacts', () => {
       const entry = createMockRunEntry({
@@ -956,6 +1042,8 @@ describe('Phase 13C.2: Candidate Validation', () => {
       expect(info.hasReconciliationArtifact).toBe(true);
       expect(info.availableArtifacts).toContain('verification');
       expect(info.availableArtifacts).toContain('status');
+      expect(info.comparableSignalKeys).toContain('status');
+      expect(info.comparableSignalKeys).toContain('verifyTotal');
     });
 
     it('should detect run index presence', () => {
@@ -971,31 +1059,51 @@ describe('Phase 13C.2: Candidate Validation', () => {
     });
   });
 
-  describe('classifyComparison', () => {
+  describe('classifyComparison (Phase 13C.3)', () => {
+    // Helper to create candidate for testing
+    const makeCandidate = (state: string, signals: ComparableSignalKey[], artifacts: string[] = []) => ({
+      runId: 'test',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      state: state as any,
+      hasRunIndex: false,
+      hasReconciliationArtifact: artifacts.length > 0 || signals.length > 0,
+      availableArtifacts: artifacts,
+      comparableSignalKeys: signals,
+    });
+
     it('should return FULL when both runs are verified', () => {
-      expect(classifyComparison('VERIFIED_OK', 'VERIFIED_OK')).toBe('FULL');
-      expect(classifyComparison('VERIFIED_OK', 'VERIFIED_MISMATCH')).toBe('FULL');
-      expect(classifyComparison('VERIFIED_MISMATCH', 'VERIFIED_OK')).toBe('FULL');
+      const from = makeCandidate('VERIFIED_OK', ['status', 'verifyTotal', 'verifyMismatch'], ['verification']);
+      const to = makeCandidate('VERIFIED_OK', ['status', 'verifyTotal', 'verifyMismatch'], ['verification']);
+      const shared: ComparableSignalKey[] = ['status', 'verifyTotal', 'verifyMismatch'];
+      expect(classifyComparison(from, to, shared)).toBe('FULL');
     });
 
-    it('should return PARTIAL when one run is verified', () => {
-      expect(classifyComparison('VERIFIED_OK', 'APPLY_ONLY')).toBe('PARTIAL');
-      expect(classifyComparison('APPLY_ONLY', 'VERIFIED_OK')).toBe('PARTIAL');
+    it('should return PARTIAL when runs have shared signals but are not verified', () => {
+      const from = makeCandidate('INCOMPLETE', ['status', 'conflictsTotal', 'resolutionDecisionsTotal'], ['status', 'conflicts', 'resolutionPlan']);
+      const to = makeCandidate('INCOMPLETE', ['status', 'conflictsTotal', 'resolutionDecisionsTotal'], ['status', 'conflicts', 'resolutionPlan']);
+      const shared: ComparableSignalKey[] = ['status', 'conflictsTotal', 'resolutionDecisionsTotal'];
+      expect(classifyComparison(from, to, shared)).toBe('PARTIAL');
     });
 
-    it('should return WEAK when neither run is verified', () => {
-      expect(classifyComparison('APPLY_ONLY', 'APPLY_ONLY')).toBe('WEAK');
+    it('should return WEAK when both runs are status-only', () => {
+      const from = makeCandidate('INCOMPLETE', ['status'], ['status']);
+      const to = makeCandidate('INCOMPLETE', ['status'], ['status']);
+      const shared: ComparableSignalKey[] = ['status'];
+      expect(classifyComparison(from, to, shared)).toBe('WEAK');
     });
 
     it('should return INVALID when either run is EMPTY', () => {
-      expect(classifyComparison('EMPTY', 'VERIFIED_OK')).toBe('INVALID');
-      expect(classifyComparison('VERIFIED_OK', 'EMPTY')).toBe('INVALID');
-      expect(classifyComparison('EMPTY', 'EMPTY')).toBe('INVALID');
+      const from = makeCandidate('EMPTY', [], []);
+      const to = makeCandidate('VERIFIED_OK', ['status'], ['status']);
+      const shared: ComparableSignalKey[] = [];
+      expect(classifyComparison(from, to, shared)).toBe('INVALID');
     });
 
-    it('should return INVALID when either run is INCOMPLETE', () => {
-      expect(classifyComparison('INCOMPLETE', 'VERIFIED_OK')).toBe('INVALID');
-      expect(classifyComparison('APPLY_ONLY', 'INCOMPLETE')).toBe('INVALID');
+    it('should return INVALID when no shared signals', () => {
+      const from = makeCandidate('INCOMPLETE', ['status'], ['status']);
+      const to = makeCandidate('APPLY_ONLY', ['applyOpsTotal'], ['resolutionApply']);
+      const shared: ComparableSignalKey[] = [];
+      expect(classifyComparison(from, to, shared)).toBe('INVALID');
     });
   });
 
@@ -1016,16 +1124,26 @@ describe('Phase 13C.2: Candidate Validation', () => {
       expect(result.comparisonClass).toBe('FULL');
       expect(result.warningMessage).toBeUndefined();
       expect(result.issues).toHaveLength(0);
+      expect(result.sharedSignals).toContain('verifyTotal');
     });
 
-    it('should validate PARTIAL comparison with warning', () => {
+    it('should validate PARTIAL comparison with shared signals (Phase 13C.3)', () => {
+      // Both runs have status + conflicts + resolutionPlan (no apply/verify)
       const fromEntry = createMockRunEntry({
         runId: 'from1',
-        artifacts: { verification: 'path/to/v1.json' },
+        artifacts: {
+          status: 'path/to/s1.json',
+          conflicts: 'path/to/c1.json',
+          resolutionPlan: 'path/to/p1.json',
+        },
       });
       const toEntry = createMockRunEntry({
         runId: 'to1',
-        artifacts: { resolutionApply: 'path/to/a1.json' },
+        artifacts: {
+          status: 'path/to/s2.json',
+          conflicts: 'path/to/c2.json',
+          resolutionPlan: 'path/to/p2.json',
+        },
       });
 
       const result = validateRunCandidates(fromEntry, toEntry);
@@ -1033,17 +1151,20 @@ describe('Phase 13C.2: Candidate Validation', () => {
       expect(result.valid).toBe(true);
       expect(result.comparisonClass).toBe('PARTIAL');
       expect(result.warningMessage).toContain('PARTIAL');
-      expect(result.warningMessage).toContain('to run has not been verified');
+      expect(result.sharedSignals).toContain('status');
+      expect(result.sharedSignals).toContain('conflictsTotal');
+      expect(result.sharedSignals).toContain('resolutionDecisionsTotal');
+      expect(result.warnings.length).toBeGreaterThan(0);
     });
 
-    it('should validate WEAK comparison with warning', () => {
+    it('should validate WEAK comparison (status-only)', () => {
       const fromEntry = createMockRunEntry({
         runId: 'from1',
-        artifacts: { resolutionApply: 'path/to/a1.json' },
+        artifacts: { status: 'path/to/s1.json' },
       });
       const toEntry = createMockRunEntry({
         runId: 'to1',
-        artifacts: { resolutionApply: 'path/to/a2.json' },
+        artifacts: { status: 'path/to/s2.json' },
       });
 
       const result = validateRunCandidates(fromEntry, toEntry);
@@ -1051,10 +1172,10 @@ describe('Phase 13C.2: Candidate Validation', () => {
       expect(result.valid).toBe(true);
       expect(result.comparisonClass).toBe('WEAK');
       expect(result.warningMessage).toContain('WEAK');
-      expect(result.warningMessage).toContain('Neither run has been verified');
+      expect(result.sharedSignals).toEqual(['status']);
     });
 
-    it('should invalidate INVALID comparison', () => {
+    it('should invalidate INVALID comparison (EMPTY run)', () => {
       const fromEntry = createMockRunEntry({
         runId: 'from1',
         artifacts: { verification: 'path/to/v1.json' },
@@ -1072,6 +1193,23 @@ describe('Phase 13C.2: Candidate Validation', () => {
       expect(result.issues.length).toBeGreaterThan(0);
     });
 
+    it('should invalidate INVALID comparison (no shared signals)', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: { status: 'path/to/s1.json' },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: { resolutionApply: 'path/to/a1.json' },
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(false);
+      expect(result.comparisonClass).toBe('INVALID');
+      expect(result.sharedSignals).toEqual([]);
+    });
+
     it('should detect missing reconciliation artifacts', () => {
       const fromEntry = createMockRunEntry({
         runId: 'from1',
@@ -1086,6 +1224,29 @@ describe('Phase 13C.2: Candidate Validation', () => {
 
       expect(result.issues).toContain('From run (from1) has no reconciliation artifacts');
       expect(result.issues).toContain('To run (to1) has no reconciliation artifacts');
+    });
+
+    it('should emit warnings for missing apply/verify artifacts (Phase 13C.3)', () => {
+      const fromEntry = createMockRunEntry({
+        runId: 'from1',
+        artifacts: {
+          status: 'path/to/s1.json',
+          conflicts: 'path/to/c1.json',
+        },
+      });
+      const toEntry = createMockRunEntry({
+        runId: 'to1',
+        artifacts: {
+          status: 'path/to/s2.json',
+          conflicts: 'path/to/c2.json',
+        },
+      });
+
+      const result = validateRunCandidates(fromEntry, toEntry);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some(w => w.includes('Missing apply artifact'))).toBe(true);
+      expect(result.warnings.some(w => w.includes('Missing verify artifact'))).toBe(true);
     });
   });
 

@@ -241,22 +241,34 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
       console.log(`  to:   ${toRunId} (${toTimestamp})`);
     }
 
-    // Phase 13C.2: Print candidate classification
+    // Phase 13C.2 + 13C.3: Print candidate classification
     if (candidateValidation) {
       console.log('');
-      console.log('=== CANDIDATE CLASSIFICATION (Phase 13C.2) ===');
+      console.log('=== CANDIDATE CLASSIFICATION (Phase 13C.3) ===');
       console.log(`From Run: ${candidateValidation.fromCandidate.runId}`);
       console.log(`  State: ${candidateValidation.fromCandidate.state}`);
       console.log(`  Artifacts: ${candidateValidation.fromCandidate.availableArtifacts.join(', ') || 'none'}`);
+      console.log(`  Signals: ${candidateValidation.fromCandidate.comparableSignalKeys.join(', ') || 'none'}`);
       console.log(`To Run: ${candidateValidation.toCandidate.runId}`);
       console.log(`  State: ${candidateValidation.toCandidate.state}`);
       console.log(`  Artifacts: ${candidateValidation.toCandidate.availableArtifacts.join(', ') || 'none'}`);
+      console.log(`  Signals: ${candidateValidation.toCandidate.comparableSignalKeys.join(', ') || 'none'}`);
+      console.log(`Shared Signals: ${candidateValidation.sharedSignals.join(', ') || 'none'}`);
       console.log(`Comparison Class: ${candidateValidation.comparisonClass}`);
 
       // Print warning banner if comparison is not FULL
       if (candidateValidation.warningMessage) {
         console.log('');
         console.log(candidateValidation.warningMessage);
+      }
+
+      // Phase 13C.3: Print warnings
+      if (candidateValidation.warnings.length > 0) {
+        console.log('');
+        console.log('Warnings:');
+        for (const warning of candidateValidation.warnings) {
+          console.log(`  ⚠️ ${warning}`);
+        }
       }
 
       // Print validation issues if any
@@ -353,16 +365,16 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
     }
   }
 
-  // Determine exit code (Phase 13C.1 + 13C.2)
+  // Determine exit code (Phase 13C.1 + 13C.2 + 13C.3)
   // Default: 0
   // With --strict:
   //   - exit 1 if any drift item has severity 'fail'
-  //   - exit 1 if comparison class is INVALID or WEAK (Phase 13C.2)
+  //   - exit 1 if comparison class is INVALID (Phase 13C.3: not for PARTIAL or WEAK)
   if (options.strict) {
-    // Phase 13C.2: Check comparison class
+    // Phase 13C.3: Check comparison class - only INVALID fails strict mode
     if (candidateValidation) {
       const { comparisonClass } = candidateValidation;
-      if (comparisonClass === 'INVALID' || comparisonClass === 'WEAK') {
+      if (comparisonClass === 'INVALID') {
         if (!options.json) {
           console.log('');
           console.log(`✗ Strict mode failed: comparison class is ${comparisonClass}`);

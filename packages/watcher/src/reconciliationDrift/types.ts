@@ -428,16 +428,51 @@ export interface RunSelectionExplanation {
 }
 
 // =============================================================================
-// CANDIDATE VALIDATION (Phase 13C.2)
+// COMPARABLE SIGNALS (Phase 13C.3)
+// =============================================================================
+
+/**
+ * Signal keys that can be compared between runs.
+ *
+ * These are the metrics/fields already used in drift output.
+ * A comparison is valid if BOTH runs share at least one of these.
+ */
+export type ComparableSignalKey =
+  | 'status'             // overallStatus from status artifact
+  | 'conflictsTotal'     // from conflicts artifact
+  | 'resolutionDecisionsTotal' // from resolutionPlan artifact
+  | 'deltasTotal'        // from delta artifact
+  | 'applyOpsTotal'      // from resolutionApply artifact
+  | 'verifyTotal'        // from verification artifact
+  | 'verifyMismatch'     // from verification artifact
+  | 'rollbackActions';   // from rollbackPreview artifact
+
+/**
+ * Signals extracted from a run snapshot for comparability check.
+ */
+export interface ComparableSignals {
+  /**
+   * Signal keys that have defined values in this snapshot.
+   */
+  keys: Set<ComparableSignalKey>;
+
+  /**
+   * Whether the run has only status signal (minimal comparison).
+   */
+  statusOnly: boolean;
+}
+
+// =============================================================================
+// CANDIDATE VALIDATION (Phase 13C.2 + 13C.3)
 // =============================================================================
 
 /**
  * Comparison class for drift analysis.
  *
  * - FULL: Both runs verified (highest confidence)
- * - PARTIAL: One verified, one applied (medium confidence)
- * - WEAK: Neither verified (low confidence)
- * - INVALID: Missing required artifacts (comparison not meaningful)
+ * - PARTIAL: Runs are comparable but not FULL (medium confidence)
+ * - WEAK: Runs are comparable but status-only (low confidence)
+ * - INVALID: Runs are not comparable (no shared signals, or either is EMPTY)
  */
 export type ComparisonClass = 'FULL' | 'PARTIAL' | 'WEAK' | 'INVALID';
 
@@ -485,6 +520,11 @@ export interface RunCandidateInfo {
    * List of available artifact types.
    */
   availableArtifacts: string[];
+
+  /**
+   * Comparable signals present in this run (Phase 13C.3).
+   */
+  comparableSignalKeys: ComparableSignalKey[];
 }
 
 /**
@@ -515,6 +555,16 @@ export interface CandidateValidationResult {
    * Validation issues (if any).
    */
   issues: string[];
+
+  /**
+   * Warning messages explaining why comparison is not FULL (Phase 13C.3).
+   */
+  warnings: string[];
+
+  /**
+   * Signal keys shared between both runs (Phase 13C.3).
+   */
+  sharedSignals: ComparableSignalKey[];
 
   /**
    * Warning message (if comparison is not FULL).

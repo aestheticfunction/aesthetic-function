@@ -419,6 +419,7 @@ export async function runReconcile(options: ReconcileCliOptions): Promise<Reconc
     sourceFileInput: options.sourceFile,
     sourceFileCanonical,
     mode,
+    profile: options.profile ?? 'local',
     steps,
     artifacts,
     overall,
