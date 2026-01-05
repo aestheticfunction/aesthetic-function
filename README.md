@@ -6,7 +6,7 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 
 ---
 
-## What Works Today (Phase 13F)
+## What Works Today (Phase 14F)
 
 | Feature | Status |
 |---------|--------|
@@ -342,6 +342,14 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Structured outputs ($GITHUB_OUTPUT) | ✅ |
 | Job summary with verdict | ✅ |
 | Copy/paste CI recipe documented | ✅ |
+| **Multi-Source CI (Phase 14F)** | |
+| Deterministic source discovery | ✅ |
+| Manifest file (reconcile.sources.json) | ✅ |
+| Glob pattern discovery | ✅ |
+| Deterministic chunking for matrix CI | ✅ |
+| Aggregated verdict (PASS/WARN/FAIL) | ✅ |
+| Matrix workflow (figma-reconcile-ci-matrix.yml) | ✅ |
+| CLI `figma:sources` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -4457,6 +4465,197 @@ Quick-start scripts for demos and development:
 
 ---
 
+## Reconciliation System (Phase 14)
+
+The reconciliation system provides a unified CLI for analyzing design ↔ code drift. **All Phase 12–13 analysis is now reachable through `figma:reconcile`.**
+
+### Entry Point
+
+The primary orchestration command is:
+
+```bash
+pnpm --filter @aesthetic-function/watcher figma:reconcile <source-file> [options]
+```
+
+This single command runs the complete Phase 12–13 read-only analysis sequence:
+
+| Step | Phase | Command Equivalent | Description |
+|------|-------|-------------------|-------------|
+| 1. status | 12J | `figma:status` | Compute reconciliation status |
+| 2. index | 13A | `figma:index` | Index existing artifacts |
+| 3. timeline | 13B | `figma:timeline` | Load/record timeline ledger |
+| 4. drift | 13C | `figma:drift` | Compute run-to-run drift diffs |
+| 5. dashboard | 13D | `figma:dashboard` | Generate drift summary dashboard |
+
+Each step is deterministic and read-only by default. The command produces a single **bundle artifact** that links all outputs.
+
+### Profiles (Authoritative Table)
+
+Profiles are deterministic flag presets. CLI flags always override profile defaults.
+
+| Profile | `strict` | `record` | `write` | `alwaysWriteBundle` | Intended Use |
+|---------|----------|----------|---------|---------------------|--------------|
+| `local` | `false` | `false` | `false` | `false` | Human inspection |
+| `record` | `false` | `true` | `true` | `true` | Run capture |
+| `ci` | `true` | `false` | `false` | `true` | CI gate |
+
+**Key behaviors:**
+
+- **local** (default): Safe for iterative development. No side effects.
+- **record**: Captures timeline runs. Requires `RECONCILIATION_TIMELINE_ON=true`.
+- **ci**: Strict mode. Always writes bundle artifact for attribution, even though `write=false`.
+
+**Precedence:** CLI flags > Profile defaults
+
+```bash
+# Use ci profile but disable strict mode
+figma:reconcile demo-app/src/App.tsx --profile ci --no-strict
+```
+
+### Output Formats
+
+| Format | Flag | When to Use |
+|--------|------|-------------|
+| `human` | `--format human` (default) | Local development, human inspection |
+| `json` | `--format json` or `--json` | Programmatic processing, debugging |
+| `ci` | `--format ci` | GitHub Actions, CI pipelines |
+
+**CI format guarantees stable key=value output for parsing:**
+
+```
+✓ VERDICT: PASS
+
+--- CI SUMMARY ---
+source=demo-app/src/App.tsx
+profile=ci
+verdict=PASS
+ok=true
+timestamp=2026-01-05T15:28:19.046Z
+git_sha=8a2a519
+bundle_path=design-materializations/demo-app__src__App.figma-reconcile.json
+dashboard_info=1
+dashboard_warn=1
+dashboard_fail=0
+stability_score=88
+
+--- STEPS ---
+status=ok
+index=ok
+timeline=ok
+drift=ok
+dashboard=ok
+
+reason=All steps completed successfully
+```
+
+### Exit Code Contract
+
+| Exit Code | Meaning | CI Behavior |
+|-----------|---------|-------------|
+| `0` | PASS or WARN | CI passes |
+| `1` | FAIL (strict violation) | CI fails |
+| `2` | Usage or configuration error | CI fails |
+
+**Important:** `WARN` never fails CI. Exit code 0 includes both PASS and WARN verdicts.
+
+### Verdict Semantics
+
+| Verdict | Condition | Exit Code |
+|---------|-----------|-----------|
+| **PASS** | All steps OK, no warnings | 0 |
+| **WARN** | Steps OK but: PARTIAL drift comparison, missing artifacts, dashboard warn > 0 | 0 |
+| **FAIL** | Strict mode AND: dashboard fail > 0, INVALID drift, step failure | 1 |
+
+### Artifact Model
+
+All artifacts are written to `design-materializations/` with deterministic naming:
+
+```
+design-materializations/<source-path>.figma-<artifact-type>.json
+```
+
+Where `<source-path>` has `/` replaced with `__` and the file extension removed.
+
+Example: `demo-app/src/App.tsx` → `demo-app__src__App`
+
+**Artifact Types by Phase:**
+
+| Artifact | Phase | Description |
+|----------|-------|-------------|
+| `.figma-delta.json` | 12A | Figma → Code deltas detected |
+| `.figma-delta-suggestions.json` | 12B | Suggested delta applications |
+| `.figma-conflicts.json` | 12D | Conflict analysis |
+| `.figma-resolution-plan.json` | 12E | Guided resolution decisions |
+| `.figma-resolution-apply.json` | 12F | Resolution application results |
+| `.figma-verification.json` | 12G | Post-apply verification |
+| `.figma-rollback-preview.json` | 12I | Rollback preview |
+| `.figma-reconciliation-status.json` | 12J | Overall status |
+| `.figma-run-index.json` | 13A | Run artifact index |
+| `.figma-run-ledger.json` | 13B | Append-only timeline ledger |
+| `.figma-drift-diff.json` | 13C | Run-to-run drift diff |
+| `.figma-drift-dashboard.json` | 13D | Drift summary dashboard |
+| `.figma-reconcile.json` | 14A | Bundle artifact (links all outputs) |
+
+**Bundle Artifact (`figma-reconcile.json`):**
+
+- **Always written** in CI profile (`alwaysWriteBundle=true`)
+- Contains: version, timestamp, repoRoot, sourceFile, profile, mode, steps, artifacts, overall verdict
+- Includes git SHA for attribution
+- Provides deterministic naming for CI artifact upload
+
+### CLI Reference
+
+```
+Usage: figma:reconcile <source-file> [options]
+
+Arguments:
+  <source-file>           Source file to reconcile (e.g., demo-app/src/App.tsx)
+
+Options:
+  --profile <name>        Profile preset: local, record, ci (default: local)
+  --repo-root <path>      Repository root (default: auto-detect)
+  --format <format>       Output format: human, json, ci (default: human)
+  --json                  Output JSON format (shorthand for --format json)
+  --write                 Write bundle artifact (overrides profile default)
+  --no-write              Do not write bundle artifact (overrides profile default)
+  --record                Record timeline run (overrides profile, requires env)
+  --strict                Enable strict mode (overrides profile default)
+  --verbose, -v           Show step invocations and discovery
+  --limit <n>             Limit for dashboard/drift runs (default: 10)
+  --help, -h              Show this help message
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `RECONCILIATION_TIMELINE_ON` | `false` | Enable timeline recording (required for `--record`) |
+| `RECONCILIATION_CI_WINDOW` | `5` | Window size for CI trend analysis |
+| `RECONCILIATION_DASHBOARD_FAIL_SCORE` | `50` | Score threshold for FAIL verdict |
+| `RECONCILIATION_DASHBOARD_WARN_SCORE` | `75` | Score threshold for WARN verdict |
+
+### Examples
+
+```bash
+# Local inspection (default)
+pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx
+
+# CI mode with CI-friendly output
+pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci
+
+# Record a run (requires RECONCILIATION_TIMELINE_ON=true)
+RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile record
+
+# JSON output for debugging
+pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --json --verbose
+
+# From watcher directory
+cd packages/watcher
+pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci
+```
+
+---
+
 ## Quick Start (Demo)
 
 ### Prerequisites
@@ -4571,108 +4770,35 @@ USE_OVERRIDES=false pnpm dev:watcher
 
 ---
 
-## CI Usage (Phase 14D)
+## CI Integration (Phase 14D)
 
-The reconciliation pipeline integrates with GitHub Actions for automated design ↔ code drift detection.
+This section covers GitHub Actions integration. For the complete `figma:reconcile` reference, see [Reconciliation System (Phase 14)](#reconciliation-system-phase-14).
 
-### CI Command
-
-Run reconcile in CI mode from the watcher package:
+### Required Command
 
 ```bash
-pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
-```
-
-Or from within the watcher directory:
-
-```bash
-cd packages/watcher
-pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
-```
-
-### Profiles
-
-| Profile | Behavior |
-|---------|----------|
-| `local` | Human inspection: read-only, no recording (default) |
-| `record` | Intentional capture: write + recording (requires env) |
-| `ci` | CI gate: strict mode, always writes bundle (Phase 14C) |
-
-### Output Formats
-
-| Format | Description |
-|--------|-------------|
-| `human` | Human-readable formatted output (default) |
-| `json` | Full bundle artifact as JSON |
-| `ci` | CI-friendly key=value pairs for GitHub Actions |
-
-### Exit Codes
-
-| Code | Meaning |
-|------|---------|
-| `0` | Success (PASS or WARN verdict) |
-| `1` | Failure (FAIL verdict in strict mode) |
-| `2` | Usage/config error |
-
-### Verdicts
-
-| Verdict | Description |
-|---------|-------------|
-| **PASS** | All reconciliation steps completed successfully |
-| **WARN** | Completed with warnings (e.g., PARTIAL drift comparison, missing artifacts) |
-| **FAIL** | Strict mode failure (dashboard fail > 0 or INVALID drift) |
-
-### CI Output Format
-
-The `--format ci` flag produces parseable output:
-
-```
-✓ VERDICT: PASS
-
---- CI SUMMARY ---
-source=demo-app/src/App.tsx
-profile=ci
-verdict=PASS
-ok=true
-timestamp=2026-01-05T15:28:19.046Z
-git_sha=8a2a519
-bundle_path=design-materializations/demo-app__src__App.figma-reconcile.json
-dashboard_info=1
-dashboard_warn=1
-dashboard_fail=0
-stability_score=88
-
---- STEPS ---
-status=ok
-index=ok
-timeline=ok
-drift=ok
-dashboard=ok
-
-reason=All steps completed successfully
+pnpm --filter @aesthetic-function/watcher figma:reconcile <source-file> --profile ci --format ci --verbose
 ```
 
 ### GitHub Actions Workflow
 
-The workflow is defined in [`.github/workflows/figma-reconcile-ci.yml`](.github/workflows/figma-reconcile-ci.yml).
+The workflow is defined in [.github/workflows/figma-reconcile-ci.yml](.github/workflows/figma-reconcile-ci.yml).
 
 **Triggers:**
 - Push to `main` branch
 - Pull requests targeting `main`
 
-**Outputs:**
+**Job Outputs (available via `$GITHUB_OUTPUT`):**
 - `verdict` — PASS, WARN, or FAIL
 - `bundle_path` — Path to the reconcile bundle artifact
 - `stability_score` — Stability score (0-100)
 - `git_sha` — Git commit SHA for traceability
 
-**Artifacts:**
-- **Bundle artifact** — Always uploaded: `figma-reconcile-<run_id>-<sha>`
-- **All materializations** — Optionally uploaded: `figma-reconcile-all-<run_id>-<sha>`
+**Uploaded Artifacts:**
+- `figma-reconcile-<run_id>-<sha>` — Always uploaded (bundle artifact)
+- `figma-reconcile-all-<run_id>-<sha>` — Optionally uploaded (all materializations)
 
 ### Running CI Locally
-
-To run the exact same command CI uses:
 
 ```bash
 # From repo root
@@ -4683,27 +4809,128 @@ cd packages/watcher
 pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
 ```
 
-### Artifact Locations
+### Interpreting CI Results
 
-After a CI run, artifacts are available in the GitHub Actions UI:
+| Verdict | Exit Code | CI Behavior | Action |
+|---------|-----------|-------------|--------|
+| **PASS** | 0 | Passes | Merge with confidence |
+| **WARN** | 0 | Passes | Review warnings, but CI passes |
+| **FAIL** | 1 | Fails | CI blocks merge; investigate dashboard fail count or INVALID drift |
 
-| Artifact Name | Contents |
-|---------------|----------|
-| `figma-reconcile-<run>-<sha>` | The reconcile bundle JSON |
-| `figma-reconcile-all-<run>-<sha>` | All design-materializations for the source file |
+**WARN conditions (CI still passes):**
+- PARTIAL drift comparison (missing apply/verify artifacts)
+- Dashboard warn count > 0
 
-Bundle path (deterministic): `design-materializations/demo-app__src__App.figma-reconcile.json`
+**FAIL conditions (CI blocks merge):**
+- Dashboard fail count > 0
+- INVALID drift classification
+- Any step failure in strict mode
 
-### Interpreting Results
+---
 
-1. **PASS** (exit 0): All good. Merge with confidence.
-2. **WARN** (exit 0): Review warnings but CI passes. Check for:
-   - PARTIAL drift comparison (missing apply/verify artifacts)
-   - Missing expected artifacts
-3. **FAIL** (exit 1): CI blocks merge. Check for:
-   - Dashboard fail count > 0
-   - INVALID drift classification
-   - Strict mode violations
+## Multi-Source CI (Phase 14F)
+
+Phase 14F extends single-file reconciliation to multiple sources using GitHub Actions matrix strategy. This enables running `figma:reconcile` across all component files in parallel with aggregated verdict.
+
+### Source Discovery
+
+Sources can be specified via:
+1. **Manifest file** (`reconcile.sources.json`) — Explicit list of files
+2. **Glob patterns** — Match files by pattern (e.g., `**/*.tsx`)
+3. **CLI arguments** — Direct `--source` flags
+
+Discovery order: explicit > glob > manifest > default glob (`**/*.tsx`)
+
+#### Manifest Format
+
+```json
+{
+  "version": 1,
+  "sources": [
+    "demo-app/src/App.tsx",
+    "demo-app/src/Card.tsx"
+  ],
+  "ignore": [
+    "**/internal/**"
+  ]
+}
+```
+
+#### CLI Commands
+
+```bash
+# Discover all sources (outputs JSON)
+pnpm figma:sources
+
+# With custom glob
+pnpm figma:sources --glob "src/**/*.tsx"
+
+# Get chunk 0 for matrix job
+pnpm figma:sources --chunk-size 5 --chunk-index 0
+
+# Output matrix indices for GitHub Actions
+pnpm figma:sources --matrix-indices --chunk-size 10
+
+# Just count
+pnpm figma:sources --output count
+```
+
+### Chunking
+
+Sources are chunked for parallel matrix execution:
+- Default chunk size: 10
+- Deterministic ordering (lexicographic sort)
+- Balanced distribution (avoids tiny final chunks)
+
+Example: 27 sources with chunk size 10 → 3 chunks of [9, 9, 9]
+
+### Matrix Workflow
+
+The matrix workflow is defined in [.github/workflows/figma-reconcile-ci-matrix.yml](.github/workflows/figma-reconcile-ci-matrix.yml).
+
+**Jobs:**
+1. **discover** — Find sources, calculate chunks, output matrix indices
+2. **reconcile** — Matrix job running reconcile for each chunk
+3. **aggregate** — Combine verdicts, produce overall PASS/WARN/FAIL
+
+**Triggers:**
+- Pull requests touching `.tsx` files
+- Manual `workflow_dispatch` with glob/chunk-size inputs
+
+### Aggregation
+
+Verdicts are aggregated with precedence:
+- **FAIL** > **WARN** > **PASS**
+- Any FAIL → overall FAIL
+- Any WARN (no FAIL) → overall WARN
+- All PASS → overall PASS
+
+### CLI Reference
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--repo-root <path>` | Repository root | `cwd` |
+| `--glob <pattern>` | Glob pattern for sources | `**/*.tsx` |
+| `--manifest <path>` | Manifest file path | `reconcile.sources.json` |
+| `--source <path>` | Explicit source (repeatable) | — |
+| `--ignore <pattern>` | Ignore pattern (repeatable) | node_modules, dist, etc. |
+| `--chunk-size <n>` | Sources per chunk | 10 |
+| `--chunk-index <n>` | Get specific chunk | — |
+| `--matrix-indices` | Output chunk indices only | false |
+| `--output <format>` | Output format: json, list, count | json |
+
+### Module Structure
+
+```
+packages/watcher/src/reconciliationSources/
+├── types.ts        # Type definitions
+├── discover.ts     # Source discovery logic
+├── chunk.ts        # Chunking logic
+├── aggregate.ts    # Verdict aggregation
+├── cliSources.ts   # CLI entry point
+├── index.ts        # Public exports
+└── __tests__/      # Unit tests
+```
 
 ---
 
@@ -4814,6 +5041,22 @@ aesthetic-function/
 | `pnpm --filter @aesthetic-function/watcher ast:report <file>` | Run AST diff report |
 | `pnpm --filter @aesthetic-function/watcher feasibility:report <file>` | Run feasibility analysis |
 
+### Reconciliation Commands (Phase 12-14)
+
+| Command | Description |
+|---------|-------------|
+| `pnpm --filter @aesthetic-function/watcher figma:reconcile <file>` | **Primary entry point** — Run full reconciliation analysis |
+| `pnpm --filter @aesthetic-function/watcher figma:sources` | Discover sources for multi-file reconciliation (Phase 14F) |
+| `pnpm --filter @aesthetic-function/watcher figma:status <file>` | Compute reconciliation status (Phase 12J) |
+| `pnpm --filter @aesthetic-function/watcher figma:index <file>` | Index existing artifacts (Phase 13A) |
+| `pnpm --filter @aesthetic-function/watcher figma:timeline <file>` | Show/record timeline ledger (Phase 13B) |
+| `pnpm --filter @aesthetic-function/watcher figma:drift <file>` | Compute drift diffs (Phase 13C) |
+| `pnpm --filter @aesthetic-function/watcher figma:dashboard <file>` | Generate drift dashboard (Phase 13D) |
+| `pnpm --filter @aesthetic-function/watcher figma:project-dashboard <dir>` | Project-level dashboard (Phase 13E) |
+| `pnpm --filter @aesthetic-function/watcher figma:ci <dir>` | CI gate summary (Phase 13F) |
+
+**Note:** `figma:reconcile` orchestrates all Phase 12-13 steps in sequence. Use individual commands only when debugging specific steps.
+
 ---
 
 ## Protocol Version
@@ -4821,3 +5064,4 @@ aesthetic-function/
 Current: `0.1.0`
 
 All messages include a `protocolVersion` field for compatibility checking.
+

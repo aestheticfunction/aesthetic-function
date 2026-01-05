@@ -39,6 +39,7 @@
     "figma:project-dashboard": "tsx src/reconciliationProjectDashboard/cliProjectDashboard.ts",
     "figma:ci": "tsx src/reconciliationCi/cliCi.ts",
     "figma:reconcile": "tsx src/reconciliationReconcile/cliReconcile.ts",
+    "figma:sources": "tsx src/reconciliationSources/cliSources.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
     "typecheck": "tsc --noEmit",

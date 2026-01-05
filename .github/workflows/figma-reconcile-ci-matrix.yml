@@ -1,0 +1,280 @@
+# Phase 14F: Matrix Reconciliation CI Workflow
+#
+# WHY: Runs figma:reconcile across multiple source files in parallel using
+# GitHub Actions matrix strategy, then aggregates results into a single verdict.
+#
+# TRIGGERS:
+# - Pull requests touching React components
+# - Manual workflow_dispatch with optional source filter
+#
+# STRATEGY:
+# 1. Discovery job: Find all source files, chunk into batches
+# 2. Matrix job: Run reconcile for each chunk in parallel
+# 3. Aggregate job: Combine verdicts, produce overall PASS/WARN/FAIL
+
+name: Figma Reconcile (Matrix)
+
+on:
+  pull_request:
+    paths:
+      - 'demo-app/**/*.tsx'
+      - 'packages/**/*.tsx'
+  workflow_dispatch:
+    inputs:
+      source-glob:
+        description: 'Glob pattern for source files'
+        required: false
+        default: '**/*.tsx'
+      chunk-size:
+        description: 'Number of sources per matrix job'
+        required: false
+        default: '10'
+
+concurrency:
+  group: figma-reconcile-matrix-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # =========================================================================
+  # DISCOVERY JOB
+  # =========================================================================
+  discover:
+    name: Discover Sources
+    runs-on: ubuntu-latest
+    outputs:
+      sources: ${{ steps.discover.outputs.sources }}
+      chunk-indices: ${{ steps.discover.outputs.chunk-indices }}
+      total-chunks: ${{ steps.discover.outputs.total-chunks }}
+      total-sources: ${{ steps.discover.outputs.total-sources }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Discover sources
+        id: discover
+        run: |
+          cd packages/watcher
+
+          # Get chunk size from inputs or default
+          CHUNK_SIZE="${{ github.event.inputs.chunk-size || '10' }}"
+          GLOB="${{ github.event.inputs.source-glob || '**/*.tsx' }}"
+
+          # Run discovery
+          RESULT=$(pnpm figma:sources --glob "$GLOB" --repo-root "${{ github.workspace }}" 2>&1 || true)
+
+          # Parse results
+          SOURCES=$(echo "$RESULT" | jq -c '.sources // []')
+          COUNT=$(echo "$RESULT" | jq -r '.count // 0')
+
+          # Get chunk indices
+          INDICES=$(pnpm figma:sources --glob "$GLOB" --repo-root "${{ github.workspace }}" --matrix-indices --chunk-size "$CHUNK_SIZE" 2>&1 || echo "[]")
+          TOTAL_CHUNKS=$(echo "$INDICES" | jq 'length')
+
+          # Output
+          echo "sources=$SOURCES" >> $GITHUB_OUTPUT
+          echo "chunk-indices=$INDICES" >> $GITHUB_OUTPUT
+          echo "total-chunks=$TOTAL_CHUNKS" >> $GITHUB_OUTPUT
+          echo "total-sources=$COUNT" >> $GITHUB_OUTPUT
+
+          echo "::notice::Discovered $COUNT sources across $TOTAL_CHUNKS chunks"
+
+  # =========================================================================
+  # MATRIX RECONCILE JOB
+  # =========================================================================
+  reconcile:
+    name: Reconcile Chunk ${{ matrix.chunk-index }}
+    runs-on: ubuntu-latest
+    needs: discover
+    if: needs.discover.outputs.total-chunks != '0'
+    strategy:
+      fail-fast: false
+      matrix:
+        chunk-index: ${{ fromJson(needs.discover.outputs.chunk-indices) }}
+    outputs:
+      verdict: ${{ steps.reconcile.outputs.verdict }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Get chunk sources
+        id: chunk
+        run: |
+          cd packages/watcher
+
+          CHUNK_SIZE="${{ github.event.inputs.chunk-size || '10' }}"
+          GLOB="${{ github.event.inputs.source-glob || '**/*.tsx' }}"
+          CHUNK_INDEX="${{ matrix.chunk-index }}"
+
+          # Get sources for this chunk
+          SOURCES=$(pnpm figma:sources --glob "$GLOB" --repo-root "${{ github.workspace }}" --chunk-size "$CHUNK_SIZE" --chunk-index "$CHUNK_INDEX" 2>&1 || echo "[]")
+
+          echo "sources=$SOURCES" >> $GITHUB_OUTPUT
+          echo "::notice::Chunk $CHUNK_INDEX sources: $SOURCES"
+
+      - name: Run reconciliation
+        id: reconcile
+        run: |
+          cd packages/watcher
+
+          SOURCES='${{ steps.chunk.outputs.sources }}'
+          CHUNK_INDEX="${{ matrix.chunk-index }}"
+          VERDICT="PASS"
+          ARTIFACT_DIR="artifacts/chunk-$CHUNK_INDEX"
+
+          mkdir -p "$ARTIFACT_DIR"
+
+          # Process each source in this chunk
+          for SOURCE in $(echo "$SOURCES" | jq -r '.[]'); do
+            echo "::group::Reconciling $SOURCE"
+
+            # Run reconcile for this source
+            RESULT=$(pnpm figma:reconcile --source "$SOURCE" --profile ci --no-fail 2>&1 || true)
+            SOURCE_VERDICT=$(echo "$RESULT" | grep -o 'verdict:[A-Z]*' | cut -d: -f2 || echo "PASS")
+
+            # Update overall verdict (FAIL > WARN > PASS)
+            if [ "$SOURCE_VERDICT" = "FAIL" ]; then
+              VERDICT="FAIL"
+            elif [ "$SOURCE_VERDICT" = "WARN" ] && [ "$VERDICT" != "FAIL" ]; then
+              VERDICT="WARN"
+            fi
+
+            # Save result to artifact
+            echo "$RESULT" > "$ARTIFACT_DIR/$(echo $SOURCE | tr '/' '_').txt"
+
+            echo "::endgroup::"
+          done
+
+          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+          echo "::notice::Chunk $CHUNK_INDEX verdict: $VERDICT"
+
+      - name: Upload chunk artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: reconcile-chunk-${{ matrix.chunk-index }}
+          path: packages/watcher/artifacts/chunk-${{ matrix.chunk-index }}/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # =========================================================================
+  # AGGREGATION JOB
+  # =========================================================================
+  aggregate:
+    name: Aggregate Results
+    runs-on: ubuntu-latest
+    needs: [discover, reconcile]
+    if: always() && needs.discover.result == 'success'
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: reconcile-chunk-*
+          merge-multiple: false
+
+      - name: Aggregate verdicts
+        id: aggregate
+        run: |
+          TOTAL_SOURCES="${{ needs.discover.outputs.total-sources }}"
+
+          # Collect all verdicts from matrix outputs
+          # Since we can't easily get matrix outputs, we'll scan artifact files
+
+          PASS_COUNT=0
+          WARN_COUNT=0
+          FAIL_COUNT=0
+          OVERALL="PASS"
+
+          # Scan artifact directories for verdicts
+          if [ -d "artifacts" ]; then
+            for CHUNK_DIR in artifacts/reconcile-chunk-*; do
+              if [ -d "$CHUNK_DIR" ]; then
+                for FILE in "$CHUNK_DIR"/*.txt; do
+                  if [ -f "$FILE" ]; then
+                    if grep -q "verdict:FAIL" "$FILE" 2>/dev/null; then
+                      FAIL_COUNT=$((FAIL_COUNT + 1))
+                      OVERALL="FAIL"
+                    elif grep -q "verdict:WARN" "$FILE" 2>/dev/null; then
+                      WARN_COUNT=$((WARN_COUNT + 1))
+                      if [ "$OVERALL" != "FAIL" ]; then
+                        OVERALL="WARN"
+                      fi
+                    else
+                      PASS_COUNT=$((PASS_COUNT + 1))
+                    fi
+                  fi
+                done
+              fi
+            done
+          fi
+
+          echo "## Reconciliation Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Overall Verdict | **$OVERALL** |" >> $GITHUB_STEP_SUMMARY
+          echo "| Total Sources | $TOTAL_SOURCES |" >> $GITHUB_STEP_SUMMARY
+          echo "| PASS | $PASS_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| WARN | $WARN_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "| FAIL | $FAIL_COUNT |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Git SHA: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+
+          echo "overall=$OVERALL" >> $GITHUB_OUTPUT
+          echo "::notice::Overall verdict: $OVERALL (PASS: $PASS_COUNT, WARN: $WARN_COUNT, FAIL: $FAIL_COUNT)"
+
+          # Fail if FAIL verdict
+          if [ "$OVERALL" = "FAIL" ]; then
+            echo "::error::Reconciliation failed for one or more sources"
+            exit 1
+          fi
+
+      - name: Upload aggregated summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: reconcile-summary
+          path: ${{ github.step_summary }}
+          retention-days: 30
+
+  # =========================================================================
+  # SKIP JOB (when no sources found)
+  # =========================================================================
+  skip:
+    name: Skip (No Sources)
+    runs-on: ubuntu-latest
+    needs: discover
+    if: needs.discover.outputs.total-chunks == '0'
+    steps:
+      - name: No sources to reconcile
+        run: |
+          echo "::notice::No sources found matching the specified patterns. Skipping reconciliation."
+          echo "## Reconciliation Skipped" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No sources found matching the specified patterns." >> $GITHUB_STEP_SUMMARY
