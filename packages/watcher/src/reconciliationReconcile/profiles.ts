@@ -7,6 +7,8 @@
  * Profiles are syntax sugar: `--profile record` expands to explicit flags.
  * CLI flags always override profile defaults.
  *
+ * Phase 14C: CI profile always writes bundle for attributable runs.
+ *
  * @module reconciliationReconcile/profiles
  */
 
@@ -22,7 +24,7 @@ import type { ReconcileProfile, ReconcileProfileConfig } from './types.js';
  * Each profile expands to a base set of flags:
  * - local: Human inspection, read-only, no recording
  * - record: Intentional run capture, write enabled
- * - ci: CI gate, strict mode, read-only
+ * - ci: CI gate, strict mode, always writes bundle (Phase 14C)
  *
  * CLI flags override these defaults.
  */
@@ -50,19 +52,24 @@ export const PROFILE_CONFIGS: Record<ReconcileProfile, ReconcileProfileConfig> =
     strict: false,
     record: true,
     write: true,
+    ciWritePolicy: 'bundle+all',
   },
 
   /**
    * CI profile.
    *
-   * CI gate mode - strict validation, read-only.
-   * Fails on any strict-enabled step issues.
-   * Used in CI pipelines to gate deployments.
+   * CI gate mode - strict validation, always writes bundle for attribution.
+   * Phase 14C: Even though write=false (don't write step artifacts),
+   * alwaysWriteBundle=true ensures the bundle artifact is always produced.
+   * This provides CI with a single artifact to upload and a deterministic
+   * decision summary.
    */
   ci: {
     strict: true,
     record: false,
     write: false,
+    alwaysWriteBundle: true, // Phase 14C: CI must always produce attributable artifact
+    ciWritePolicy: 'bundle',
   },
 } as const;
 
@@ -98,6 +105,8 @@ export function mergeWithOverrides(
     strict: overrides.strict ?? profile.strict,
     record: overrides.record ?? profile.record,
     write: overrides.write ?? profile.write,
+    ciWritePolicy: overrides.ciWritePolicy ?? profile.ciWritePolicy,
+    alwaysWriteBundle: overrides.alwaysWriteBundle ?? profile.alwaysWriteBundle,
   };
 }
 

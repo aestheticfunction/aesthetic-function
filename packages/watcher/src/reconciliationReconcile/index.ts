@@ -3,6 +3,7 @@
  *
  * Phase 14A: Single-Entry Reconcile CLI - Public API.
  * Phase 14B: Profile support (deterministic flag presets).
+ * Phase 14C: CI Wiring (Deterministic Gate + Run Capture).
  *
  * WHY: Provides a single command that runs the core Phase 12-13 read-only
  * analysis sequence for a single source file, producing a bundle artifact.
@@ -12,6 +13,7 @@
  * - Produces single bundle artifact linking all outputs
  * - Deterministic step ordering
  * - Named profiles for common flag presets
+ * - CI-specific capture and verdict semantics (Phase 14C)
  * - Repo-root invariant
  *
  * SCOPE:
@@ -36,9 +38,12 @@ export type {
   ReconcileOverall,
   ReconcileBundleArtifact,
   ReconcileResult,
+  // Phase 14C types
+  CiWritePolicy,
+  OutputFormat,
 } from './types.js';
 
-export { RECONCILE_STEP_ORDER, VALID_PROFILES } from './types.js';
+export { RECONCILE_STEP_ORDER, VALID_PROFILES, DEFAULT_CI_WRITE_POLICY } from './types.js';
 
 // Profiles
 export {
@@ -53,6 +58,8 @@ export {
   runReconcile,
   getRepoRoot,
   normalizeSourcePath,
+  getGitSha,
+  getShortGitSha,
 } from './compute.js';
 
 // Artifact
@@ -61,6 +68,7 @@ export {
   writeBundleArtifact,
   formatBundle,
   formatBundleVerbose,
+  formatBundleCi,
 } from './artifact.js';
 
 export type { WriteBundleResult } from './artifact.js';

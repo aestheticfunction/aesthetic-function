@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationReconcile/compute.ts
  *
  * Phase 14A: Single-Entry Reconcile Computation.
+ * Phase 14C: CI Wiring (Deterministic Gate + Run Capture).
  *
  * WHY: Runs the core Phase 12-13 read-only analysis sequence for a single
  * source file, producing a single bundle artifact that links all outputs.
@@ -10,6 +11,7 @@
  * - Orchestration + artifact plumbing only
  * - No new inference, no new semantics, no new mutation behaviors
  * - Deterministic step order
+ * - CI-specific capture and verdict semantics (Phase 14C)
  *
  * CONSTRAINTS:
  * - Same inputs + same artifacts present → same bundle output
@@ -19,6 +21,7 @@
 
 import { dirname, join, relative, resolve } from 'node:path';
 import { existsSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 import type {
   ReconcileCliOptions,
@@ -28,7 +31,10 @@ import type {
   ReconcileResult,
   ReconcileMode,
   ReconcileOverall,
+  ReconcileCiVerdict,
 } from './types.js';
+
+import type { ComparisonClass } from '../reconciliationDrift/types.js';
 
 // Step runners - import main functions from CLI modules
 import { main as statusMain } from '../reconciliationStatus/cliStatus.js';
@@ -125,6 +131,35 @@ export function normalizeSourcePath(sourceFile: string, repoRoot: string): strin
   }
 
   return normalized;
+}
+
+// =============================================================================
+// GIT SHA HELPER (Phase 14C)
+// =============================================================================
+
+/**
+ * Get the current git SHA for traceability.
+ * Returns undefined if not in a git repo or git command fails.
+ */
+export function getGitSha(repoRoot: string): string | undefined {
+  try {
+    const sha = execSync('git rev-parse HEAD', {
+      cwd: repoRoot,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    return sha || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Get the short git SHA (first 7 characters).
+ */
+export function getShortGitSha(repoRoot: string): string | undefined {
+  const sha = getGitSha(repoRoot);
+  return sha ? sha.slice(0, 7) : undefined;
 }
 
 // =============================================================================
@@ -403,15 +438,21 @@ export async function runReconcile(options: ReconcileCliOptions): Promise<Reconc
   // Compute overall result
   const overall = computeOverall(steps, options.strict ?? false);
 
-  // Compute exit code
+  // Compute exit code based on Phase 14C verdict policy
   let exitCode: 0 | 1 | 2 = 0;
   if (steps.some(s => s.exitCode === 2)) {
     exitCode = 2;
-  } else if (options.strict && steps.some(s => s.exitCode === 1)) {
+  } else if (overall.ciVerdict === 'FAIL') {
     exitCode = 1;
   }
 
-  // Build bundle artifact
+  // Phase 14C: Capture git SHA for traceability
+  const gitSha = getGitSha(repoRoot);
+
+  // Phase 14C: Try to extract CI-specific data from artifacts
+  const ciData = await extractCiData(sourceFileCanonical, repoRoot);
+
+  // Build bundle artifact with CI-specific fields
   const bundle: ReconcileBundleArtifact = {
     version: '1.0',
     timestamp: new Date().toISOString(),
@@ -423,13 +464,113 @@ export async function runReconcile(options: ReconcileCliOptions): Promise<Reconc
     steps,
     artifacts,
     overall,
+    // Phase 14C: CI-specific fields
+    gitSha,
+    comparisonClass: ciData.comparisonClass,
+    comparisonWarnings: ciData.comparisonWarnings,
+    dashboardCounts: ciData.dashboardCounts,
+    stabilityScore: ciData.stabilityScore,
+    signals: ciData.signals,
   };
 
   return { bundle, exitCode };
 }
 
+// =============================================================================
+// CI DATA EXTRACTION (Phase 14C)
+// =============================================================================
+
+/**
+ * CI-specific data extracted from artifacts.
+ */
+interface CiData {
+  comparisonClass?: ComparisonClass;
+  comparisonWarnings?: string[];
+  dashboardCounts?: { info: number; warn: number; fail: number };
+  stabilityScore?: number;
+  signals?: string[];
+}
+
+/**
+ * Extract CI-specific data from existing artifacts.
+ * 
+ * This reads the drift-diff and drift-dashboard artifacts to extract
+ * comparison class, counts, and signals for CI summary.
+ */
+async function extractCiData(
+  sourceFileCanonical: string,
+  repoRoot: string
+): Promise<CiData> {
+  const { readFile } = await import('node:fs/promises');
+  const result: CiData = {};
+
+  const normalized = sourceFileCanonical.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');
+
+  // Try to read drift-diff artifact
+  try {
+    const driftPath = join(repoRoot, 'design-materializations', `${normalized}.figma-drift-diff.json`);
+    const driftContent = await readFile(driftPath, 'utf-8');
+    const drift = JSON.parse(driftContent);
+
+    // Extract comparison class and warnings
+    if (drift.comparisonClass) {
+      result.comparisonClass = drift.comparisonClass as ComparisonClass;
+    }
+    if (drift.comparisonWarnings && Array.isArray(drift.comparisonWarnings)) {
+      result.comparisonWarnings = drift.comparisonWarnings;
+    }
+  } catch {
+    // Drift artifact not available - not an error
+  }
+
+  // Try to read drift-dashboard artifact
+  try {
+    const dashboardPath = join(repoRoot, 'design-materializations', `${normalized}.figma-drift-dashboard.json`);
+    const dashboardContent = await readFile(dashboardPath, 'utf-8');
+    const dashboard = JSON.parse(dashboardContent);
+
+    // Extract counts
+    if (dashboard.counts?.bySeverity) {
+      result.dashboardCounts = {
+        info: dashboard.counts.bySeverity.info ?? 0,
+        warn: dashboard.counts.bySeverity.warn ?? 0,
+        fail: dashboard.counts.bySeverity.fail ?? 0,
+      };
+    }
+
+    // Extract stability score
+    if (dashboard.stabilityScore?.value !== undefined) {
+      result.stabilityScore = dashboard.stabilityScore.value;
+    } else if (dashboard.stabilityScore?.score !== undefined) {
+      result.stabilityScore = dashboard.stabilityScore.score;
+    }
+
+    // Extract top signals as strings
+    if (dashboard.topSignals && Array.isArray(dashboard.topSignals)) {
+      result.signals = dashboard.topSignals.slice(0, 5).map((s: { label?: string; key?: string }) =>
+        s.label ?? s.key ?? 'unknown'
+      );
+    }
+  } catch {
+    // Dashboard artifact not available - not an error
+  }
+
+  return result;
+}
+
 /**
  * Compute overall result from step results.
+ *
+ * Phase 14C Verdict Policy:
+ * - FAIL (exit 1) if:
+ *   - Any step has exit code 2 (config/usage error)
+ *   - In strict mode: drift INVALID or dashboard fail > 0
+ *   - Any step returns exit code 1 in strict mode
+ * - WARN (exit 0) if:
+ *   - Dashboard has warn > 0 but no fails
+ *   - Drift is PARTIAL/WEAK with warnings
+ * - PASS (exit 0) if:
+ *   - All steps ok, no warnings
  */
 function computeOverall(steps: ReconcileStepResult[], strict: boolean): ReconcileOverall {
   // Check for usage/config errors first
@@ -443,10 +584,12 @@ function computeOverall(steps: ReconcileStepResult[], strict: boolean): Reconcil
 
   // In strict mode, any failure means overall failure
   if (strict && steps.some(s => s.exitCode === 1)) {
+    // Find which step failed for better explanation
+    const failedStep = steps.find(s => s.exitCode === 1);
     return {
       ok: false,
       ciVerdict: 'FAIL',
-      explanation: 'Strict mode failure in one or more steps',
+      explanation: `Strict mode failure: ${failedStep?.step ?? 'unknown step'} failed`,
     };
   }
 

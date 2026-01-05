@@ -3,6 +3,7 @@
  *
  * Phase 14A: Single-Entry Reconcile CLI Types.
  * Phase 14B: Reconcile Profiles (Deterministic Flag Presets).
+ * Phase 14C: CI Wiring (Deterministic Gate + Run Capture).
  *
  * WHY: Defines types for the orchestration inputs/outputs and bundle artifact
  * format that aggregates all Phase 12-13 read-only analysis for a single source file.
@@ -12,12 +13,47 @@
  * - Links to existing phase artifacts
  * - Deterministic step ordering
  * - Profile-based flag presets (Phase 14B)
+ * - CI-specific capture and verdict semantics (Phase 14C)
  *
  * CONSTRAINTS:
  * - Read-only by default (no AST/markers/overrides/Figma mutations)
  * - Repo-root invariant
  * - Deterministic output
  */
+
+// Import comparison types from drift
+import type { ComparisonClass } from '../reconciliationDrift/types.js';
+
+// =============================================================================
+// CI WRITE POLICY (Phase 14C)
+// =============================================================================
+
+/**
+ * CI write policy for controlling what artifacts are written.
+ *
+ * - bundle: Only write the bundle artifact (minimal, always attributable)
+ * - bundle+status+index: Write bundle + status + index (for traceability)
+ * - bundle+all: Write bundle + all step artifacts (richest CI output)
+ */
+export type CiWritePolicy = 'bundle' | 'bundle+status+index' | 'bundle+all';
+
+/**
+ * Default CI write policy.
+ */
+export const DEFAULT_CI_WRITE_POLICY: CiWritePolicy = 'bundle';
+
+// =============================================================================
+// OUTPUT FORMAT (Phase 14C)
+// =============================================================================
+
+/**
+ * Output format for the reconcile command.
+ *
+ * - human: Human-readable formatted output (default)
+ * - json: JSON output (existing --json flag)
+ * - ci: CI-friendly one-line verdict + key/value pairs
+ */
+export type OutputFormat = 'human' | 'json' | 'ci';
 
 // =============================================================================
 // PROFILES (Phase 14B)
@@ -57,6 +93,20 @@ export interface ReconcileProfileConfig {
    * Whether to write bundle artifact.
    */
   write: boolean;
+
+  /**
+   * CI write policy for controlling artifact writes (Phase 14C).
+   * Only used when write=true.
+   * @default 'bundle+all'
+   */
+  ciWritePolicy?: CiWritePolicy;
+
+  /**
+   * Whether bundle should always be written, even if write=false.
+   * CI profile sets this to true for attributable runs.
+   * @default false
+   */
+  alwaysWriteBundle?: boolean;
 }
 
 // =============================================================================
@@ -166,6 +216,29 @@ export interface ReconcileCliOptions {
    * @default false
    */
   json?: boolean;
+
+  /**
+   * Output format for CI-friendly output (Phase 14C).
+   * - human: Default human-readable
+   * - json: JSON output (same as --json)
+   * - ci: CI-friendly one-line verdict + key/value pairs
+   * @default 'human'
+   */
+  format?: OutputFormat;
+
+  /**
+   * CI write policy (Phase 14C).
+   * Controls which artifacts are written in CI mode.
+   * @default 'bundle'
+   */
+  ciWritePolicy?: CiWritePolicy;
+
+  /**
+   * Whether bundle should always be written (Phase 14C).
+   * CI profile sets this to true.
+   * @default false
+   */
+  alwaysWriteBundle?: boolean;
 }
 
 // =============================================================================
@@ -293,6 +366,48 @@ export interface ReconcileBundleArtifact {
    * Overall result.
    */
   overall: ReconcileOverall;
+
+  // ==========================================================================
+  // CI-SPECIFIC FIELDS (Phase 14C)
+  // ==========================================================================
+
+  /**
+   * Git SHA of the current commit (if available).
+   * Provides traceability for CI runs.
+   */
+  gitSha?: string;
+
+  /**
+   * Drift comparison classification from Phase 13C.
+   * FULL, PARTIAL, WEAK, or INVALID.
+   */
+  comparisonClass?: ComparisonClass;
+
+  /**
+   * Warnings from drift comparison (if any).
+   */
+  comparisonWarnings?: string[];
+
+  /**
+   * Dashboard severity counts.
+   * Extracted from drift dashboard (Phase 13D).
+   */
+  dashboardCounts?: {
+    info: number;
+    warn: number;
+    fail: number;
+  };
+
+  /**
+   * Dashboard stability score (0-100).
+   */
+  stabilityScore?: number;
+
+  /**
+   * Key signals for CI summary output.
+   * Deterministic list of the most important signals.
+   */
+  signals?: string[];
 }
 
 // =============================================================================

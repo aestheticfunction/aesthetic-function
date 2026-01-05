@@ -1,0 +1,191 @@
+# .github/workflows/figma-reconcile-ci.yml
+#
+# Phase 14D: GitHub Actions CI Integration for Figma Reconcile
+#
+# This workflow runs the reconciliation pipeline in CI mode and:
+# - Produces deterministic verdict output (PASS/WARN/FAIL)
+# - Always uploads bundle artifact for attribution
+# - Emits structured outputs to $GITHUB_OUTPUT
+#
+# Exit codes:
+#   0 = PASS or WARN (success, CI passes)
+#   1 = FAIL (strict mode failure, CI fails)
+#   2 = Usage/config error
+
+name: Figma Reconcile CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  reconcile:
+    name: Reconcile Design ↔ Code
+    runs-on: ubuntu-latest
+    
+    outputs:
+      verdict: ${{ steps.reconcile.outputs.verdict }}
+      bundle_path: ${{ steps.reconcile.outputs.bundle_path }}
+      stability_score: ${{ steps.reconcile.outputs.stability_score }}
+      git_sha: ${{ steps.reconcile.outputs.git_sha }}
+
+    steps:
+      # ─────────────────────────────────────────────────────────────────────
+      # 1. Checkout
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 2. Setup Node.js
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 3. Setup pnpm
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 4. Get pnpm store directory (for caching)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 5. Setup pnpm cache
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 6. Install dependencies
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 7. Run Figma Reconcile (CI Mode)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Run Figma Reconcile
+        id: reconcile
+        working-directory: packages/watcher
+        run: |
+          set +e  # Don't exit on error, we'll handle it
+          
+          # Run reconcile in CI mode with verbose output
+          OUTPUT=$(pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose 2>&1)
+          EXIT_CODE=$?
+          
+          echo "--- Reconcile Output ---"
+          echo "$OUTPUT"
+          echo "--- End Output ---"
+          echo ""
+          echo "Exit code: $EXIT_CODE"
+          
+          # Parse key-value pairs from CI format output
+          # Expected format lines like: verdict=PASS, bundle_path=..., etc.
+          VERDICT=$(echo "$OUTPUT" | grep "^verdict=" | cut -d= -f2 | head -1)
+          BUNDLE_PATH=$(echo "$OUTPUT" | grep "^bundle_path=" | cut -d= -f2 | head -1)
+          STABILITY_SCORE=$(echo "$OUTPUT" | grep "^stability_score=" | cut -d= -f2 | head -1)
+          GIT_SHA=$(echo "$OUTPUT" | grep "^git_sha=" | cut -d= -f2 | head -1)
+          
+          # Default values if parsing fails
+          VERDICT=${VERDICT:-UNKNOWN}
+          BUNDLE_PATH=${BUNDLE_PATH:-design-materializations/demo-app__src__App.figma-reconcile.json}
+          STABILITY_SCORE=${STABILITY_SCORE:-0}
+          GIT_SHA=${GIT_SHA:-${{ github.sha }}}
+          
+          # Write outputs
+          echo "verdict=$VERDICT" >> $GITHUB_OUTPUT
+          echo "bundle_path=$BUNDLE_PATH" >> $GITHUB_OUTPUT
+          echo "stability_score=$STABILITY_SCORE" >> $GITHUB_OUTPUT
+          echo "git_sha=$GIT_SHA" >> $GITHUB_OUTPUT
+          
+          # Log summary
+          echo ""
+          echo "=== CI Summary ==="
+          echo "Verdict: $VERDICT"
+          echo "Bundle: $BUNDLE_PATH"
+          echo "Stability: $STABILITY_SCORE"
+          echo "Git SHA: $GIT_SHA"
+          echo "Exit Code: $EXIT_CODE"
+          
+          # Exit with reconcile's exit code
+          exit $EXIT_CODE
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 8. Upload Bundle Artifact (Always)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Upload Reconcile Bundle
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: figma-reconcile-${{ github.run_id }}-${{ github.sha }}
+          path: design-materializations/demo-app__src__App.figma-reconcile.json
+          retention-days: 30
+          if-no-files-found: warn
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 9. Upload All Artifacts (Optional, Non-Fatal)
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Upload All Design Materializations
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: figma-reconcile-all-${{ github.run_id }}-${{ github.sha }}
+          path: design-materializations/demo-app__src__App.*.json
+          retention-days: 30
+          if-no-files-found: ignore
+
+      # ─────────────────────────────────────────────────────────────────────
+      # 10. Summary Report
+      # ─────────────────────────────────────────────────────────────────────
+      - name: Generate Summary
+        if: always()
+        run: |
+          VERDICT="${{ steps.reconcile.outputs.verdict }}"
+          STABILITY="${{ steps.reconcile.outputs.stability_score }}"
+          BUNDLE="${{ steps.reconcile.outputs.bundle_path }}"
+          
+          # Verdict emoji
+          case "$VERDICT" in
+            PASS) EMOJI="✅" ;;
+            WARN) EMOJI="⚠️" ;;
+            FAIL) EMOJI="❌" ;;
+            *)    EMOJI="❓" ;;
+          esac
+          
+          # Write job summary
+          echo "## Figma Reconcile Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Verdict** | $EMOJI $VERDICT |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Stability Score** | $STABILITY/100 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Bundle Path** | \`$BUNDLE\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Git SHA** | \`${{ steps.reconcile.outputs.git_sha }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Verdict Guide" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ **PASS**: All reconciliation steps completed successfully" >> $GITHUB_STEP_SUMMARY
+          echo "- ⚠️ **WARN**: Completed with warnings (e.g., PARTIAL drift comparison)" >> $GITHUB_STEP_SUMMARY
+          echo "- ❌ **FAIL**: Strict mode failure (dashboard fail > 0 or INVALID drift)" >> $GITHUB_STEP_SUMMARY

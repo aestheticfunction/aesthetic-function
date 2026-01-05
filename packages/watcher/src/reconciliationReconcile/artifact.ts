@@ -2,6 +2,7 @@
  * @aesthetic-function/watcher - reconciliationReconcile/artifact.ts
  *
  * Phase 14A: Bundle Artifact Writer.
+ * Phase 14C: CI Wiring (Deterministic Gate + Run Capture).
  *
  * WHY: Writes the single bundle artifact that links all reconcile step outputs.
  *
@@ -9,6 +10,7 @@
  * - Artifact path generation
  * - Atomic write (temp + rename)
  * - Human-readable formatting
+ * - CI-friendly output format (Phase 14C)
  *
  * CONSTRAINTS:
  * - Deterministic output
@@ -249,3 +251,90 @@ export function formatBundleVerbose(bundle: ReconcileBundleArtifact): string {
 
 // Re-export getRepoRoot for convenience
 export { getRepoRoot } from './compute.js';
+
+// =============================================================================
+// CI-FRIENDLY FORMAT (Phase 14C)
+// =============================================================================
+
+/**
+ * Format bundle artifact for CI-friendly output.
+ *
+ * Provides:
+ * - One-line verdict header
+ * - Path to bundle artifact
+ * - Stable key=value lines for easy parsing
+ *
+ * This format is designed for GitHub Actions and other CI systems.
+ *
+ * @param bundle - Bundle artifact to format
+ * @param bundlePath - Path to the bundle artifact (if written)
+ * @returns CI-friendly formatted string
+ */
+export function formatBundleCi(
+  bundle: ReconcileBundleArtifact,
+  bundlePath?: string
+): string {
+  const lines: string[] = [];
+
+  // One-line verdict header
+  const verdictIcon = bundle.overall.ciVerdict === 'PASS' ? '✓' :
+                      bundle.overall.ciVerdict === 'WARN' ? '⚠' : '✗';
+  lines.push(`${verdictIcon} VERDICT: ${bundle.overall.ciVerdict ?? 'UNKNOWN'}`);
+  lines.push('');
+
+  // Key=value pairs for easy parsing
+  lines.push('--- CI SUMMARY ---');
+  lines.push(`source=${bundle.sourceFileCanonical}`);
+  lines.push(`profile=${bundle.profile}`);
+  lines.push(`verdict=${bundle.overall.ciVerdict ?? 'UNKNOWN'}`);
+  lines.push(`ok=${bundle.overall.ok}`);
+  lines.push(`timestamp=${bundle.timestamp}`);
+
+  if (bundle.gitSha) {
+    lines.push(`git_sha=${bundle.gitSha.slice(0, 7)}`);
+  }
+
+  if (bundlePath) {
+    lines.push(`bundle_path=${bundlePath}`);
+  }
+
+  // Drift classification
+  if (bundle.comparisonClass) {
+    lines.push(`comparison_class=${bundle.comparisonClass}`);
+  }
+
+  // Dashboard counts
+  if (bundle.dashboardCounts) {
+    lines.push(`dashboard_info=${bundle.dashboardCounts.info}`);
+    lines.push(`dashboard_warn=${bundle.dashboardCounts.warn}`);
+    lines.push(`dashboard_fail=${bundle.dashboardCounts.fail}`);
+  }
+
+  // Stability score
+  if (bundle.stabilityScore !== undefined) {
+    lines.push(`stability_score=${bundle.stabilityScore}`);
+  }
+
+  // Step summary
+  lines.push('');
+  lines.push('--- STEPS ---');
+  for (const step of bundle.steps) {
+    const status = step.ok ? 'ok' : 'fail';
+    lines.push(`${step.step}=${status}`);
+  }
+
+  // Reason
+  lines.push('');
+  lines.push(`reason=${bundle.overall.explanation}`);
+
+  // Warnings (if any)
+  if (bundle.comparisonWarnings && bundle.comparisonWarnings.length > 0) {
+    lines.push('');
+    lines.push('--- WARNINGS ---');
+    for (const warning of bundle.comparisonWarnings) {
+      lines.push(`warning=${warning}`);
+    }
+  }
+
+  return lines.join('\n');
+}

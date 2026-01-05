@@ -4,6 +4,7 @@
  *
  * Phase 14A: Single-Entry Reconcile CLI.
  * Phase 14B: Profile support (deterministic flag presets).
+ * Phase 14C: CI Wiring (Deterministic Gate + Run Capture).
  *
  * WHY: One command that runs the core Phase 12-13 read-only analysis sequence
  * for a single source file, producing a single bundle artifact.
@@ -14,7 +15,8 @@
  * OPTIONS:
  *   --profile <name>      Profile preset: local, record, ci (default: local)
  *   --repo-root <path>    Repository root (default: auto-detect)
- *   --json                Output JSON format
+ *   --format <format>     Output format: human, json, ci (default: human)
+ *   --json                Output JSON format (shorthand for --format json)
  *   --write               Write bundle artifact (default: profile-dependent)
  *   --no-write            Do not write bundle artifact
  *   --record              Record timeline run (requires RECONCILIATION_TIMELINE_ON=true)
@@ -26,24 +28,26 @@
  * PROFILES:
  *   local                 Human inspection: read-only, no recording (default)
  *   record                Intentional capture: write enabled, recording (requires env)
- *   ci                    CI gate: strict mode, read-only
+ *   ci                    CI gate: strict mode, always writes bundle (Phase 14C)
  *
  * EXIT CODES:
- *   0 - Success (even if "no data / clean")
- *   1 - Strict mode failure (only if --strict and a step fails)
+ *   0 - Success (PASS or WARN verdict)
+ *   1 - Failure (FAIL verdict in strict mode)
  *   2 - Usage/config error
  */
 
 import { argv, exit, env } from 'node:process';
 import { resolve } from 'node:path';
 
-import type { ReconcileCliOptions, ReconcileProfile } from './types.js';
+import type { ReconcileCliOptions, ReconcileProfile, OutputFormat } from './types.js';
 import { VALID_PROFILES } from './types.js';
 import { runReconcile } from './compute.js';
 import {
   writeBundleArtifact,
   formatBundle,
   formatBundleVerbose,
+  formatBundleCi,
+  getBundleArtifactPath,
 } from './artifact.js';
 import { resolveProfileConfig } from './profiles.js';
 
@@ -66,7 +70,8 @@ Arguments:
 Options:
   --profile <name>        Profile preset: local, record, ci (default: local)
   --repo-root <path>      Repository root (default: auto-detect)
-  --json                  Output JSON format
+  --format <format>       Output format: human, json, ci (default: human)
+  --json                  Output JSON format (shorthand for --format json)
   --write                 Write bundle artifact (overrides profile default)
   --no-write              Do not write bundle artifact (overrides profile default)
   --record                Record timeline run (overrides profile, requires env)
@@ -78,10 +83,16 @@ Options:
 Profiles:
   local                   Human inspection: read-only, no recording (default)
   record                  Intentional capture: write + recording (requires env)
-  ci                      CI gate: strict mode, read-only
+  ci                      CI gate: strict mode, always writes bundle (Phase 14C)
 
+  CI profile always produces a bundle artifact for attribution.
   CLI flags override profile defaults. For example:
     --profile ci --no-strict   # ci profile but without strict mode
+
+Output Formats (--format):
+  human                   Human-readable formatted output (default)
+  json                    Full bundle artifact as JSON
+  ci                      CI-friendly key=value pairs for GitHub Actions
 
 Steps (run in order):
   1. status     - Compute reconciliation status
@@ -91,15 +102,15 @@ Steps (run in order):
   5. dashboard  - Generate drift dashboard
 
 Exit Codes:
-  0                       Success (even if clean/no data)
-  1                       Strict mode failure
+  0                       Success (PASS or WARN verdict)
+  1                       Failure (FAIL verdict in strict mode)
   2                       Usage/config error
 
 Examples:
   figma:reconcile demo-app/src/App.tsx
   figma:reconcile demo-app/src/App.tsx --profile ci
+  figma:reconcile demo-app/src/App.tsx --profile ci --format ci
   figma:reconcile demo-app/src/App.tsx --profile record
-  figma:reconcile demo-app/src/App.tsx --profile ci --no-strict
   figma:reconcile demo-app/src/App.tsx --json --verbose
 `.trim());
 }
@@ -145,6 +156,8 @@ function parseArgs(args: string[]): ParseArgsResult {
     sourceFile: '',
   };
 
+  const validFormats: OutputFormat[] = ['human', 'json', 'ci'];
+
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
@@ -158,7 +171,15 @@ function parseArgs(args: string[]): ParseArgsResult {
     } else if (arg === '--repo-root' && args[i + 1]) {
       options.repoRoot = resolve(args[i + 1]);
       i++;
+    } else if (arg === '--format' && args[i + 1]) {
+      const fmt = args[i + 1] as OutputFormat;
+      if (!validFormats.includes(fmt)) {
+        return { error: `Invalid format: ${fmt}. Valid formats: ${validFormats.join(', ')}` };
+      }
+      options.format = fmt;
+      i++;
     } else if (arg === '--json') {
+      options.format = 'json';
       options.json = true;
     } else if (arg === '--write') {
       overrides.write = true;
@@ -203,6 +224,8 @@ function parseArgs(args: string[]): ParseArgsResult {
   options.strict = resolved.strict;
   options.record = resolved.record;
   options.write = resolved.write;
+  options.alwaysWriteBundle = resolved.alwaysWriteBundle;
+  options.ciWritePolicy = resolved.ciWritePolicy;
 
   // Validate record profile requires env
   if (options.record && env.RECONCILIATION_TIMELINE_ON !== 'true') {
@@ -240,22 +263,33 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
   }
 
   const options = parsed;
+  const outputFormat: OutputFormat = options.format ?? (options.json ? 'json' : 'human');
+  const isJsonOutput = outputFormat === 'json';
+  const isCiOutput = outputFormat === 'ci';
 
   // Run reconcile
-  if (options.verbose) {
+  if (options.verbose && !isJsonOutput && !isCiOutput) {
     const profileInfo = options.profile ?? 'local';
     console.log(`Running reconcile for: ${options.sourceFile}`);
     console.log(`Profile: ${profileInfo} (strict=${options.strict}, record=${options.record}, write=${options.write})`);
+    if (options.alwaysWriteBundle) {
+      console.log(`CI mode: bundle will always be written`);
+    }
     console.log('');
   }
 
   const { bundle, exitCode } = await runReconcile(options);
 
-  // Write bundle artifact if requested
-  if (options.write) {
+  // Phase 14C: Determine if bundle should be written
+  // CI profile always writes bundle (alwaysWriteBundle=true), even if write=false
+  const shouldWriteBundle = options.write || options.alwaysWriteBundle;
+  let bundlePath: string | undefined;
+
+  if (shouldWriteBundle) {
     const result = writeBundleArtifact(bundle, bundle.repoRoot);
     if (result.written) {
-      if (!options.json) {
+      bundlePath = result.path;
+      if (!isJsonOutput && !isCiOutput) {
         console.log(`Wrote: ${result.path}`);
         console.log('');
       }
@@ -264,17 +298,20 @@ export async function main(args: string[] = argv.slice(2)): Promise<number> {
     }
   }
 
-  // Output
-  if (options.json) {
+  // Output based on format
+  if (isJsonOutput) {
     console.log(JSON.stringify(bundle, null, 2));
+  } else if (isCiOutput) {
+    // Phase 14C: CI-friendly output
+    console.log(formatBundleCi(bundle, bundlePath));
   } else if (options.verbose) {
     console.log(formatBundleVerbose(bundle));
   } else {
     console.log(formatBundle(bundle));
   }
 
-  // Next action hint on failure
-  if (!bundle.overall.ok && !options.json) {
+  // Next action hint on failure (only for human output)
+  if (!bundle.overall.ok && !isJsonOutput && !isCiOutput) {
     console.log('');
     if (!options.verbose) {
       console.log('Hint: Run with --verbose for more details');

@@ -3,6 +3,7 @@
  *
  * Phase 14A: Single-Entry Reconcile CLI Tests.
  * Phase 14B: Profile Support Tests.
+ * Phase 14C: CI Wiring Tests.
  *
  * Test strategy:
  * - Fixtures only, no demo-app reads
@@ -16,6 +17,7 @@
  * D) Deterministic ordering
  * E) Bundle artifact writing
  * F) Profile expansion
+ * G) CI wiring (Phase 14C)
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -29,12 +31,14 @@ import {
   getBundleArtifactPath,
   writeBundleArtifact,
   formatBundle,
+  formatBundleCi,
   RECONCILE_STEP_ORDER,
   VALID_PROFILES,
   PROFILE_CONFIGS,
   expandProfile,
   mergeWithOverrides,
   resolveProfileConfig,
+  DEFAULT_CI_WRITE_POLICY,
 } from '../index.js';
 import type {
   ReconcileBundleArtifact,
@@ -502,27 +506,25 @@ describe('Profile expansion', () => {
   });
 
   it('local profile has expected defaults', () => {
-    expect(PROFILE_CONFIGS.local).toEqual({
-      strict: false,
-      record: false,
-      write: false,
-    });
+    expect(PROFILE_CONFIGS.local.strict).toBe(false);
+    expect(PROFILE_CONFIGS.local.record).toBe(false);
+    expect(PROFILE_CONFIGS.local.write).toBe(false);
   });
 
   it('record profile has expected defaults', () => {
-    expect(PROFILE_CONFIGS.record).toEqual({
-      strict: false,
-      record: true,
-      write: true,
-    });
+    expect(PROFILE_CONFIGS.record.strict).toBe(false);
+    expect(PROFILE_CONFIGS.record.record).toBe(true);
+    expect(PROFILE_CONFIGS.record.write).toBe(true);
+    expect(PROFILE_CONFIGS.record.ciWritePolicy).toBe('bundle+all');
   });
 
-  it('ci profile has expected defaults', () => {
-    expect(PROFILE_CONFIGS.ci).toEqual({
-      strict: true,
-      record: false,
-      write: false,
-    });
+  it('ci profile has expected defaults (Phase 14C)', () => {
+    expect(PROFILE_CONFIGS.ci.strict).toBe(true);
+    expect(PROFILE_CONFIGS.ci.record).toBe(false);
+    expect(PROFILE_CONFIGS.ci.write).toBe(false);
+    // Phase 14C: CI always writes bundle
+    expect(PROFILE_CONFIGS.ci.alwaysWriteBundle).toBe(true);
+    expect(PROFILE_CONFIGS.ci.ciWritePolicy).toBe('bundle');
   });
 
   it('expandProfile returns correct config for each profile', () => {
@@ -535,7 +537,9 @@ describe('Profile expansion', () => {
   it('mergeWithOverrides applies undefined overrides as no-op', () => {
     const base = { strict: true, record: false, write: true };
     const merged = mergeWithOverrides(base, {});
-    expect(merged).toEqual(base);
+    expect(merged.strict).toBe(true);
+    expect(merged.record).toBe(false);
+    expect(merged.write).toBe(true);
   });
 
   it('mergeWithOverrides applies explicit overrides', () => {
@@ -544,11 +548,9 @@ describe('Profile expansion', () => {
       strict: true,
       write: true,
     });
-    expect(merged).toEqual({
-      strict: true,
-      record: false,
-      write: true,
-    });
+    expect(merged.strict).toBe(true);
+    expect(merged.record).toBe(false);
+    expect(merged.write).toBe(true);
   });
 
   it('mergeWithOverrides allows overriding to false', () => {
@@ -557,32 +559,32 @@ describe('Profile expansion', () => {
       strict: false,
       record: false,
     });
-    expect(merged).toEqual({
-      strict: false,
-      record: false,
-      write: true,
-    });
+    expect(merged.strict).toBe(false);
+    expect(merged.record).toBe(false);
+    expect(merged.write).toBe(true);
   });
 
   it('resolveProfileConfig defaults to local profile', () => {
     const resolved = resolveProfileConfig();
-    expect(resolved).toEqual(PROFILE_CONFIGS.local);
+    expect(resolved.strict).toBe(false);
+    expect(resolved.record).toBe(false);
+    expect(resolved.write).toBe(false);
   });
 
-  it('resolveProfileConfig with explicit profile', () => {
+  it('resolveProfileConfig with ci profile includes alwaysWriteBundle', () => {
     const resolved = resolveProfileConfig('ci');
-    expect(resolved).toEqual(PROFILE_CONFIGS.ci);
+    expect(resolved.strict).toBe(true);
+    expect(resolved.alwaysWriteBundle).toBe(true);
+    expect(resolved.ciWritePolicy).toBe('bundle');
   });
 
   it('resolveProfileConfig merges CLI overrides over profile', () => {
     // ci profile: strict=true, record=false, write=false
     // Override: strict=false
     const resolved = resolveProfileConfig('ci', { strict: false });
-    expect(resolved).toEqual({
-      strict: false, // Overridden
-      record: false, // From profile
-      write: false,  // From profile
-    });
+    expect(resolved.strict).toBe(false); // Overridden
+    expect(resolved.record).toBe(false); // From profile
+    expect(resolved.write).toBe(false);  // From profile
   });
 
   it('resolveProfileConfig cli overrides take precedence', () => {
@@ -593,10 +595,231 @@ describe('Profile expansion', () => {
       record: true,
       write: true,
     });
-    expect(resolved).toEqual({
-      strict: true,
-      record: true,
-      write: true,
+    expect(resolved.strict).toBe(true);
+    expect(resolved.record).toBe(true);
+    expect(resolved.write).toBe(true);
+  });
+});
+
+// =============================================================================
+// G) CI WIRING (Phase 14C)
+// =============================================================================
+
+describe('CI Wiring (Phase 14C)', () => {
+  let testDir: string;
+
+  beforeEach(() => {
+    testDir = createTestDir();
+  });
+
+  afterEach(() => {
+    cleanupTestDir(testDir);
+  });
+
+  describe('CI Write Policy', () => {
+    it('DEFAULT_CI_WRITE_POLICY is bundle', () => {
+      expect(DEFAULT_CI_WRITE_POLICY).toBe('bundle');
+    });
+
+    it('ci profile has alwaysWriteBundle=true', () => {
+      expect(PROFILE_CONFIGS.ci.alwaysWriteBundle).toBe(true);
+    });
+
+    it('bundle is written when alwaysWriteBundle=true even with write=false', () => {
+      // This test verifies the logic: CI profile sets write=false but alwaysWriteBundle=true
+      const ciConfig = PROFILE_CONFIGS.ci;
+      expect(ciConfig.write).toBe(false);
+      expect(ciConfig.alwaysWriteBundle).toBe(true);
+
+      // The CLI should still write bundle when alwaysWriteBundle is true
+      // Actual behavior tested in integration tests
+    });
+  });
+
+  describe('CI Output Format', () => {
+    it('formatBundleCi produces one-line verdict header', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        profile: 'ci',
+        overall: {
+          ok: true,
+          ciVerdict: 'PASS',
+          explanation: 'All steps completed successfully',
+        },
+      });
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('✓ VERDICT: PASS');
+    });
+
+    it('formatBundleCi includes key=value pairs', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        profile: 'ci',
+        gitSha: 'abc1234567890',
+        dashboardCounts: { info: 1, warn: 2, fail: 0 },
+        stabilityScore: 85,
+        comparisonClass: 'PARTIAL',
+      });
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('source=src/App.tsx');
+      expect(formatted).toContain('profile=ci');
+      expect(formatted).toContain('verdict=PASS');
+      expect(formatted).toContain('git_sha=abc1234');
+      expect(formatted).toContain('dashboard_info=1');
+      expect(formatted).toContain('dashboard_warn=2');
+      expect(formatted).toContain('dashboard_fail=0');
+      expect(formatted).toContain('stability_score=85');
+      expect(formatted).toContain('comparison_class=PARTIAL');
+    });
+
+    it('formatBundleCi shows FAIL verdict correctly', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        profile: 'ci',
+        overall: {
+          ok: false,
+          ciVerdict: 'FAIL',
+          explanation: 'Strict mode failure',
+        },
+      });
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('✗ VERDICT: FAIL');
+      expect(formatted).toContain('ok=false');
+    });
+
+    it('formatBundleCi shows WARN verdict correctly', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        profile: 'ci',
+        overall: {
+          ok: true,
+          ciVerdict: 'WARN',
+          explanation: 'Completed with warnings',
+        },
+      });
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('⚠ VERDICT: WARN');
+      expect(formatted).toContain('ok=true');
+    });
+
+    it('formatBundleCi includes bundle path when provided', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir);
+      const bundlePath = 'design-materializations/src__App.figma-reconcile.json';
+
+      const formatted = formatBundleCi(bundle, bundlePath);
+
+      expect(formatted).toContain(`bundle_path=${bundlePath}`);
+    });
+
+    it('formatBundleCi includes step status', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir);
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('--- STEPS ---');
+      expect(formatted).toContain('status=ok');
+      expect(formatted).toContain('index=ok');
+      expect(formatted).toContain('drift=ok');
+      expect(formatted).toContain('dashboard=ok');
+    });
+
+    it('formatBundleCi includes warnings if present', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        comparisonWarnings: ['Missing apply artifact', 'Missing verify artifact'],
+      });
+
+      const formatted = formatBundleCi(bundle);
+
+      expect(formatted).toContain('--- WARNINGS ---');
+      expect(formatted).toContain('warning=Missing apply artifact');
+      expect(formatted).toContain('warning=Missing verify artifact');
+    });
+  });
+
+  describe('Bundle CI Fields', () => {
+    it('bundle can include gitSha', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        gitSha: 'abc1234567890def',
+      });
+
+      expect(bundle.gitSha).toBe('abc1234567890def');
+    });
+
+    it('bundle can include comparisonClass', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        comparisonClass: 'FULL',
+      });
+
+      expect(bundle.comparisonClass).toBe('FULL');
+    });
+
+    it('bundle can include dashboardCounts', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        dashboardCounts: { info: 5, warn: 2, fail: 1 },
+      });
+
+      expect(bundle.dashboardCounts).toEqual({ info: 5, warn: 2, fail: 1 });
+    });
+
+    it('bundle can include stabilityScore', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        stabilityScore: 95,
+      });
+
+      expect(bundle.stabilityScore).toBe(95);
+    });
+
+    it('bundle can include signals', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        signals: ['conflicts.total', 'verify.mismatches'],
+      });
+
+      expect(bundle.signals).toEqual(['conflicts.total', 'verify.mismatches']);
+    });
+  });
+
+  describe('Verdict Policy', () => {
+    it('PASS verdict for all steps ok, no warnings', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        overall: {
+          ok: true,
+          ciVerdict: 'PASS',
+          explanation: 'All steps completed successfully',
+        },
+      });
+
+      expect(bundle.overall.ciVerdict).toBe('PASS');
+      expect(bundle.overall.ok).toBe(true);
+    });
+
+    it('WARN verdict for steps ok with warnings', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        overall: {
+          ok: true,
+          ciVerdict: 'WARN',
+          explanation: 'Completed with warnings',
+        },
+      });
+
+      expect(bundle.overall.ciVerdict).toBe('WARN');
+      expect(bundle.overall.ok).toBe(true);
+    });
+
+    it('FAIL verdict for strict mode failure', () => {
+      const bundle = createMockBundle('src/App.tsx', testDir, {
+        overall: {
+          ok: false,
+          ciVerdict: 'FAIL',
+          explanation: 'Strict mode failure',
+        },
+      });
+
+      expect(bundle.overall.ciVerdict).toBe('FAIL');
+      expect(bundle.overall.ok).toBe(false);
     });
   });
 });

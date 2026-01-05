@@ -327,6 +327,21 @@ This is an **MVP / patent prototype**. It prioritizes determinism, testability, 
 | Repo-root invariant (works from any working directory) | ✅ |
 | CLI `figma:ci` command | ✅ |
 | Human-readable and JSON output formats | ✅ |
+| **Single-Entry Reconcile CLI (Phase 14A-C)** | |
+| Single CLI for full reconciliation pipeline | ✅ |
+| Profile support (local, record, ci) | ✅ |
+| Bundle artifact generation | ✅ |
+| CI-friendly output format (--format ci) | ✅ |
+| Deterministic verdict (PASS/WARN/FAIL) | ✅ |
+| Git SHA capture for traceability | ✅ |
+| CI profile always writes bundle | ✅ |
+| **GitHub Actions CI (Phase 14D)** | |
+| Figma reconcile workflow | ✅ |
+| PR and main branch triggers | ✅ |
+| Bundle artifact upload (always) | ✅ |
+| Structured outputs ($GITHUB_OUTPUT) | ✅ |
+| Job summary with verdict | ✅ |
+| Copy/paste CI recipe documented | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
 
@@ -4553,6 +4568,142 @@ Or disable overrides temporarily:
 ```bash
 USE_OVERRIDES=false pnpm dev:watcher
 ```
+
+---
+
+## CI Usage (Phase 14D)
+
+The reconciliation pipeline integrates with GitHub Actions for automated design ↔ code drift detection.
+
+### CI Command
+
+Run reconcile in CI mode from the watcher package:
+
+```bash
+pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+```
+
+Or from within the watcher directory:
+
+```bash
+cd packages/watcher
+pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+```
+
+### Profiles
+
+| Profile | Behavior |
+|---------|----------|
+| `local` | Human inspection: read-only, no recording (default) |
+| `record` | Intentional capture: write + recording (requires env) |
+| `ci` | CI gate: strict mode, always writes bundle (Phase 14C) |
+
+### Output Formats
+
+| Format | Description |
+|--------|-------------|
+| `human` | Human-readable formatted output (default) |
+| `json` | Full bundle artifact as JSON |
+| `ci` | CI-friendly key=value pairs for GitHub Actions |
+
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success (PASS or WARN verdict) |
+| `1` | Failure (FAIL verdict in strict mode) |
+| `2` | Usage/config error |
+
+### Verdicts
+
+| Verdict | Description |
+|---------|-------------|
+| **PASS** | All reconciliation steps completed successfully |
+| **WARN** | Completed with warnings (e.g., PARTIAL drift comparison, missing artifacts) |
+| **FAIL** | Strict mode failure (dashboard fail > 0 or INVALID drift) |
+
+### CI Output Format
+
+The `--format ci` flag produces parseable output:
+
+```
+✓ VERDICT: PASS
+
+--- CI SUMMARY ---
+source=demo-app/src/App.tsx
+profile=ci
+verdict=PASS
+ok=true
+timestamp=2026-01-05T15:28:19.046Z
+git_sha=8a2a519
+bundle_path=design-materializations/demo-app__src__App.figma-reconcile.json
+dashboard_info=1
+dashboard_warn=1
+dashboard_fail=0
+stability_score=88
+
+--- STEPS ---
+status=ok
+index=ok
+timeline=ok
+drift=ok
+dashboard=ok
+
+reason=All steps completed successfully
+```
+
+### GitHub Actions Workflow
+
+The workflow is defined in [`.github/workflows/figma-reconcile-ci.yml`](.github/workflows/figma-reconcile-ci.yml).
+
+**Triggers:**
+- Push to `main` branch
+- Pull requests targeting `main`
+
+**Outputs:**
+- `verdict` — PASS, WARN, or FAIL
+- `bundle_path` — Path to the reconcile bundle artifact
+- `stability_score` — Stability score (0-100)
+- `git_sha` — Git commit SHA for traceability
+
+**Artifacts:**
+- **Bundle artifact** — Always uploaded: `figma-reconcile-<run_id>-<sha>`
+- **All materializations** — Optionally uploaded: `figma-reconcile-all-<run_id>-<sha>`
+
+### Running CI Locally
+
+To run the exact same command CI uses:
+
+```bash
+# From repo root
+pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+
+# Or from watcher directory
+cd packages/watcher
+pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+```
+
+### Artifact Locations
+
+After a CI run, artifacts are available in the GitHub Actions UI:
+
+| Artifact Name | Contents |
+|---------------|----------|
+| `figma-reconcile-<run>-<sha>` | The reconcile bundle JSON |
+| `figma-reconcile-all-<run>-<sha>` | All design-materializations for the source file |
+
+Bundle path (deterministic): `design-materializations/demo-app__src__App.figma-reconcile.json`
+
+### Interpreting Results
+
+1. **PASS** (exit 0): All good. Merge with confidence.
+2. **WARN** (exit 0): Review warnings but CI passes. Check for:
+   - PARTIAL drift comparison (missing apply/verify artifacts)
+   - Missing expected artifacts
+3. **FAIL** (exit 1): CI blocks merge. Check for:
+   - Dashboard fail count > 0
+   - INVALID drift classification
+   - Strict mode violations
 
 ---
 
