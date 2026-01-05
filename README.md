@@ -4,6 +4,12 @@ A bidirectional Code ↔ Design synchronization system for React and Figma. The 
 
 This is an **MVP / patent prototype**. It prioritizes determinism, testability, and safety over feature completeness.
 
+### MVP Freeze (Phase 14F)
+
+As of Phase 14F, the reconciliation system is **feature-complete and stable**. The `figma:reconcile` command provides a single entry point for the full Phase 12–14 analysis pipeline, with CI integration via GitHub Actions matrix workflows.
+
+Future work (Phase 15+) will focus on ergonomics, performance, and integrations—not new reconciliation semantics.
+
 ---
 
 ## What Works Today (Phase 14F)
@@ -455,6 +461,12 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 13D** | Drift Summary Dashboard (Aggregated + CI-friendly) | ✅ |
 | **Phase 13E** | Project Drift Dashboard (Multi-File Aggregation) | ✅ |
 | **Phase 13F** | CI Gate Summary + Trend Window (Read-Only) | ✅ |
+| **Phase 14A** | Single-Entry Reconcile CLI (`figma:reconcile`) | ✅ |
+| **Phase 14B** | Profile Support (local, record, ci) | ✅ |
+| **Phase 14C** | Bundle Artifact Generation + CI Verdict | ✅ |
+| **Phase 14D** | GitHub Actions CI Workflow | ✅ |
+| **Phase 14E** | Documentation Canonicalization | ✅ |
+| **Phase 14F** | Multi-Source CI (Matrix) + Deterministic Source Discovery | ✅ |
 
 ### Not Implemented Yet
 
@@ -464,7 +476,20 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
 
-The current implementation includes full AST-based mutation (Phase 7A/7B) with unified reconciliation policy (Phase 7C), variant/state mapping (Phase 8A), native Figma variant targeting (Phase 8B), stable ID mapping via component-map.json (Phase 8C), Feature Orchestrator with immediate Figma refresh (Phase 9A/9B), production hardening with test stability guardrails (Phase 9C/9D), framework-agnostic semantic adapter architecture with Vuetify support (Phase 10A), Ant Design adapter proving registry extensibility (Phase 10B), read-only component map suggestions (Phase 10C), bootstrap artifacts with safe apply mode (Phase 10D), canonical token layer for cross-adapter normalization (Phase 10E), canonical resolver with coverage reporting (Phase 10F), resolution policy with project-level coverage (Phase 10G), read-only Figma composition suggestions (Phase 11A), controlled Figma composition application with opt-in apply mode (Phase 11B), property application to existing Figma nodes with category-scoped allow-lists (Phase 11C), Figma → Code delta detection with canonical token resolution (Phase 12A), delta suggestion layer with target selection (Phase 12B), delta application with confidence-based filtering (Phase 12C), conflict surfacing with resolution preview (Phase 12D), guided conflict resolution plans with human-reviewable decisions (Phase 12E), and controlled resolution plan application with multi-flag gate (Phase 12F). Echo suppression prevents feedback loops when AST writes trigger file save events.
+The reconciliation system is **feature-complete through Phase 14F**. Key capabilities include:
+
+- **Core Pipeline (1–4)**: Marker parsing, LLM fallback, audit trail
+- **Bidirectional Sync (5A/5B)**: Design → Code capture and materialization
+- **AST Analysis & Writes (6–7)**: Babel-based extraction, mutation, echo suppression
+- **Variant/State Mapping (8A–8C)**: Component states, Figma variants, stable ID registry
+- **Feature Orchestrator (9A–9D)**: Prompt → Code → Figma pipeline with observability
+- **Semantic Adapters (10A–10G)**: Vuetify, Ant Design, canonical tokens, coverage
+- **Figma Composition (11A–11C)**: Read-only suggestions, controlled application
+- **Delta Detection & Resolution (12A–12J)**: Conflicts, resolution plans, verification, rollback
+- **Drift Timeline & Dashboard (13A–13F)**: Run ledger, drift diffs, project dashboard, CI gate
+- **Unified Reconcile CLI (14A–14F)**: `figma:reconcile` entry point, profiles (local/record/ci), bundle artifacts, GitHub Actions matrix workflow, multi-source discovery
+
+Echo suppression prevents feedback loops when AST writes trigger file save events.
 
 ---
 
