@@ -2,7 +2,9 @@
 
 A bidirectional Code ↔ Design synchronization system for React and Figma. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
 
-This is an **MVP / patent prototype**. It prioritizes determinism, testability, and safety over feature completeness.
+**This repository contains a prototype implementation of systems and methods described in U.S. Patent Application No. XX/XXX,XXX (filed [date]), which is currently pending.**
+
+This code is provided for research and evaluation purposes. Certain commercial uses may be restricted by patent rights.
 
 ### MVP Freeze (Phase 14F)
 
