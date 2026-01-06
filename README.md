@@ -2,11 +2,13 @@
 
 A bidirectional Code ↔ Design synchronization system for React and Figma. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
 
-**This repository contains a prototype implementation of systems and methods described in U.S. Patent Application No. XX/XXX,XXX (filed [date]), which is currently pending.**
+### Patent Notice
+
+This repository contains a prototype implementation of systems and methods described in U.S. Patent Application No. XX/XXX,XXX (filed [date]), which is currently pending.
 
 This code is provided for research and evaluation purposes. Certain commercial uses may be restricted by patent rights.
 
-### MVP Freeze (Phase 14F)
+### MVP Freeze
 
 As of Phase 14F, the reconciliation system is **feature-complete and stable**. The `figma:reconcile` command provides a single entry point for the full Phase 12–14 analysis pipeline, with CI integration via GitHub Actions matrix workflows.
 
