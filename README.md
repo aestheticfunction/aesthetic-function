@@ -1,8 +1,18 @@
-# Aesthetic Function
+<p align="center">
+  <img src="./assets/banner.png" alt="Aesthetic Function Banner" width="90%" />
+</p>
 
-**The control plane for AI-driven UI development.**
+<h1 align="center">Aesthetic Function</h1>
 
-Deterministic Code ↔ Design synchronization for React and Figma.
+<p align="center">
+  <strong>The control plane for AI-driven UI development</strong>
+</p>
+
+<p align="center">
+  Deterministic Code ↔ Design synchronization for React and Figma
+</p>
+
+<br/>
 
 ---
 
