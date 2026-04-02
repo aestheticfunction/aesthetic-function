@@ -42,6 +42,9 @@
     "figma:sources": "tsx src/reconciliationSources/cliSources.ts",
     "canonical:coverage": "tsx src/canonicalResolverPolicy/cliCoverage.ts",
     "feature": "tsx src/orchestrator/cliFeature.ts",
+    "artifacts:list": "tsx src/artifactInspector/cliArtifactList.ts",
+    "artifacts:inspect": "tsx src/artifactInspector/cliArtifactInspect.ts",
+    "artifacts:trace": "tsx src/artifactInspector/cliArtifactTrace.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },

@@ -67,3 +67,19 @@ export {
   type MigrationResult,
   type LoadComponentMapOptions,
 } from './componentMap.js';
+
+// Phase 15B: Policy profiles and profile resolver
+export {
+  BUILT_IN_PROFILES,
+  DESIGNER_FIRST,
+  CODE_FIRST,
+  BALANCED,
+  STRICT_REVIEW,
+  getProfile,
+  getDefaultProfile,
+} from './profiles.js';
+
+export {
+  resolveProfileToPolicyOptions,
+  resolveProfileName,
+} from './profileResolver.js';

@@ -41,6 +41,7 @@ import {
   applyOverridesToIntentModel,
   getUseOverrides,
   getOverridesPrecedence,
+  resolveProfileToPolicyOptions,
 } from './reconcile/index.js';
 import {
   materialize,
@@ -301,8 +302,11 @@ async function processFileWithMarkers(
   const overrides = await loadDesignOverrides();
 
   // PHASE 5A.1/5A.2: Apply design overrides (soft reconciliation with precedence)
-  const useOverrides = getUseOverrides();
-  const precedence = getOverridesPrecedence();
+  // Phase 15B: Use profile-derived policy options when available, otherwise
+  // fall back to direct env var reads (identical to Phase 14F behavior).
+  const policyOptions = resolveProfileToPolicyOptions();
+  const useOverrides = policyOptions.useOverrides;
+  const precedence = policyOptions.precedence;
 
   if (!useOverrides) {
     console.log(`[Watcher] Overrides: USE_OVERRIDES=false (skipping)`);

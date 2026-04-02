@@ -56,12 +56,19 @@ export type AstWriteOpType = 'SET_TEXT' | 'SET_FILL' | 'SET_LAYOUT';
 // CONFIGURATION HELPERS
 // =============================================================================
 
+import type { ResolvedAfConfig } from '@aesthetic-function/shared';
+
 /**
  * Get the materialization mode.
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns 'off', 'patch', or 'markers'
  */
-export function getMaterializeMode(): MaterializeMode {
+export function getMaterializeMode(config?: ResolvedAfConfig): MaterializeMode {
+  if (config) {
+    return config.materialize.mode;
+  }
+
   const value = process.env.MATERIALIZE_MODE?.toLowerCase();
   if (value === 'patch') {
     return 'patch';
@@ -76,9 +83,14 @@ export function getMaterializeMode(): MaterializeMode {
 /**
  * Get the materialization trigger.
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns 'design_change' or 'file_save'
  */
-export function getMaterializeOn(): MaterializeOn {
+export function getMaterializeOn(config?: ResolvedAfConfig): MaterializeOn {
+  if (config) {
+    return config.materialize.on;
+  }
+
   const value = process.env.MATERIALIZE_ON?.toLowerCase();
   if (value === 'file_save') {
     return 'file_save';
@@ -90,9 +102,14 @@ export function getMaterializeOn(): MaterializeOn {
 /**
  * Check if materialization is in dry-run mode (no actual writes).
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns true if MATERIALIZE_DRY_RUN is not explicitly set to 'false' or '0'
  */
-export function getMaterializeDryRun(): boolean {
+export function getMaterializeDryRun(config?: ResolvedAfConfig): boolean {
+  if (config) {
+    return config.materialize.dryRun;
+  }
+
   const flag = process.env.MATERIALIZE_DRY_RUN?.toLowerCase();
   // Default to true (safe mode)
   if (flag === undefined || flag === '') {
@@ -104,10 +121,11 @@ export function getMaterializeDryRun(): boolean {
 /**
  * Check if materialization is enabled (mode is not 'off').
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns true if MATERIALIZE_MODE is 'patch' or 'markers'
  */
-export function isMaterializeEnabled(): boolean {
-  return getMaterializeMode() !== 'off';
+export function isMaterializeEnabled(config?: ResolvedAfConfig): boolean {
+  return getMaterializeMode(config) !== 'off';
 }
 
 // =============================================================================

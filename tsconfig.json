@@ -24,7 +24,8 @@
     { "path": "./packages/shared" },
     { "path": "./packages/watcher" },
     { "path": "./packages/server" },
-    { "path": "./packages/figma-plugin" }
+    { "path": "./packages/figma-plugin" },
+    { "path": "./packages/cli" }
   ],
   "exclude": ["node_modules", "**/dist/**"]
 }

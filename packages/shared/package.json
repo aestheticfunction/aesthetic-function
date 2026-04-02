@@ -18,6 +18,22 @@
     "./compose": {
       "types": "./dist/compose.d.ts",
       "import": "./dist/compose.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./configLoader": {
+      "types": "./dist/configLoader.d.ts",
+      "import": "./dist/configLoader.js"
+    },
+    "./policy": {
+      "types": "./dist/policy.d.ts",
+      "import": "./dist/policy.js"
+    },
+    "./designAdapter": {
+      "types": "./dist/designAdapter.d.ts",
+      "import": "./dist/designAdapter.js"
     }
   },
   "scripts": {
@@ -27,6 +43,7 @@
     "clean": "rm -rf dist"
   },
   "devDependencies": {
+    "@types/node": "^20.19.26",
     "typescript": "^5.3.3"
   }
 }

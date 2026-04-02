@@ -8,7 +8,13 @@
  * - OVERRIDES_PRECEDENCE (default: always) - Control when overrides are applied
  *   - "always": Overrides always win over code values
  *   - "if_newer_than_code": Only apply overrides newer than the source file
+ *
+ * Config file support (Phase 15A):
+ * - When a ResolvedAfConfig is provided, its values take priority over env vars.
+ * - Without a config, behavior is identical to Phase 14F.
  */
+
+import type { ResolvedAfConfig } from '@aesthetic-function/shared';
 
 // =============================================================================
 // TYPES
@@ -26,9 +32,15 @@ export type OverridePrecedence = 'always' | 'if_newer_than_code';
 /**
  * Check if design overrides are enabled.
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns true if USE_OVERRIDES is not explicitly set to 'false' or '0'
  */
-export function getUseOverrides(): boolean {
+export function getUseOverrides(config?: ResolvedAfConfig): boolean {
+  // Config takes priority when provided
+  if (config) {
+    return config.overrides.enabled;
+  }
+
   const flag = process.env.USE_OVERRIDES?.toLowerCase();
   // Default to true if not set
   if (flag === undefined || flag === '') {
@@ -40,9 +52,15 @@ export function getUseOverrides(): boolean {
 /**
  * Get the override precedence mode.
  *
+ * @param config - Optional resolved config from loadAfConfig()
  * @returns 'always' or 'if_newer_than_code'
  */
-export function getOverridesPrecedence(): OverridePrecedence {
+export function getOverridesPrecedence(config?: ResolvedAfConfig): OverridePrecedence {
+  // Config takes priority when provided
+  if (config) {
+    return config.overrides.precedence;
+  }
+
   const value = process.env.OVERRIDES_PRECEDENCE?.toLowerCase();
   if (value === 'if_newer_than_code') {
     return 'if_newer_than_code';

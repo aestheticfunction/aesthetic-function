@@ -1,0 +1,30 @@
+{
+  "name": "@aesthetic-function/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Thin CLI control surface for Aesthetic Function",
+  "type": "module",
+  "bin": {
+    "af": "./dist/af.js"
+  },
+  "main": "./dist/af.js",
+  "types": "./dist/af.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/af.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@aesthetic-function/shared": "workspace:*",
+    "@aesthetic-function/watcher": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3",
+    "vitest": "^2.1.9"
+  }
+}

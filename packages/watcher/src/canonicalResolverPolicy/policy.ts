@@ -20,6 +20,7 @@ import type {
   PolicyResult,
 } from './types.js';
 import type { CanonicalResolution, ResolvedValue } from '../canonicalResolver/types.js';
+import type { ResolvedAfConfig } from '@aesthetic-function/shared';
 
 // =============================================================================
 // DEFAULT POLICY
@@ -47,7 +48,10 @@ export const DEFAULT_POLICY: ResolutionPolicy = {
 // =============================================================================
 
 /**
- * Get resolution policy from environment variables.
+ * Get resolution policy from environment variables or config.
+ *
+ * When a ResolvedAfConfig is provided, its canonical values are used directly.
+ * Otherwise falls back to environment variables.
  *
  * Environment variables:
  * - CANONICAL_STRICT: 'true' | 'false' (default: false)
@@ -56,9 +60,21 @@ export const DEFAULT_POLICY: ResolutionPolicy = {
  * - CANONICAL_RADIUS_SCALE: 'default' | 'token-only' | 'custom' (default: default)
  * - CANONICAL_TYPOGRAPHY_SCALE: 'default' | 'token-only' | 'custom' (default: default)
  *
- * @returns Resolution policy from environment, falling back to defaults
+ * @param config - Optional resolved config from loadAfConfig()
+ * @returns Resolution policy from config/environment, falling back to defaults
  */
-export function getResolutionPolicyFromEnv(): ResolutionPolicy {
+export function getResolutionPolicyFromEnv(config?: ResolvedAfConfig): ResolutionPolicy {
+  // Config takes priority when provided
+  if (config) {
+    return {
+      colorStrategy: config.canonical.colorStrategy as ColorStrategy,
+      spacingScale: config.canonical.spacingScale as SpacingScaleStrategy,
+      radiusScale: config.canonical.radiusScale as RadiusScaleStrategy,
+      typographyScale: config.canonical.typographyScale as TypographyScaleStrategy,
+      strict: config.canonical.strict,
+    };
+  }
+
   const strict = process.env.CANONICAL_STRICT === 'true';
 
   const colorStrategy = parseColorStrategy(process.env.CANONICAL_COLOR_STRATEGY);

@@ -12,7 +12,7 @@ This code is provided for research and evaluation purposes. Certain commercial u
 
 As of Phase 14F, the reconciliation system is **feature-complete and stable**. The `figma:reconcile` command provides a single entry point for the full Phase 12–14 analysis pipeline, with CI integration via GitHub Actions matrix workflows.
 
-Future work (Phase 15+) will focus on ergonomics, performance, and integrations—not new reconciliation semantics.
+Phase 15 adds a configuration layer, named policy profiles, artifact inspection tooling, and a unified `af` CLI control surface. No reconciliation semantics changed.
 
 ---
 
@@ -362,6 +362,34 @@ Future work (Phase 15+) will focus on ergonomics, performance, and integrations�
 | CLI `figma:sources` command | ✅ |
 | **Observability** | |
 | Async audit trail logging (sync-log.md) | ✅ |
+| **Project Configuration (Phase 15A)** | |
+| `af.config.json` project configuration | ✅ |
+| Config discovery (cwd → parent dirs → .git root) | ✅ |
+| Merge precedence: defaults → file → env vars | ✅ |
+| Zero-config backward compatibility | ✅ |
+| Config wiring into watcher pipeline (optional param) | ✅ |
+| **Named Policy Profiles (Phase 15B)** | |
+| `designer-first` profile (= Phase 14F default) | ✅ |
+| `code-first` profile (= `if_newer_than_code`) | ✅ |
+| `balanced` profile (code-first + warn on conflicts) | ✅ |
+| `strict-review` profile (block all conflicts) | ✅ |
+| Profile resolver (`RECONCILIATION_POLICY` env or config) | ✅ |
+| Profile wired into watch.ts pipeline | ✅ |
+| **Artifact Inspector (Phase 15D)** | |
+| Artifact listing (`artifacts:list`) — all 12 types | ✅ |
+| Artifact inspection (`artifacts:inspect`) — type-aware highlights | ✅ |
+| Lifecycle trace (`artifacts:trace`) — end-to-end audit trail | ✅ |
+| Audit log metadata expansion (profile, configSource, policy) | ✅ |
+| **Unified CLI Control Surface (Phase 15C)** | |
+| `af init` — Generate af.config.json | ✅ |
+| `af run` — Spawn watcher + server as child processes | ✅ |
+| `af reconcile` — Delegate to figma:reconcile | ✅ |
+| `af status` — Delegate to figma:status | ✅ |
+| `af dashboard` — Delegate to figma:dashboard | ✅ |
+| `af dashboard --project` — Delegate to figma:project-dashboard | ✅ |
+| `af ci` — Delegate to figma:ci | ✅ |
+| `af artifacts list\|inspect\|trace` — Delegate to artifact inspector | ✅ |
+| Config → env var bridge (no logic duplication) | ✅ |
 
 ---
 
@@ -404,6 +432,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | `@aesthetic-function/server` | Local Node.js | HTTP/WebSocket relay bridge, persists design changes to `design-overrides.json`, audit logging |
 | `@aesthetic-function/figma-plugin` | Figma Sandbox | Receives operations, executes scene graph mutations, sends selection changes back |
 | `@aesthetic-function/shared` | Shared | Protocol definitions, message types, version constants |
+| `@aesthetic-function/cli` | Local Node.js | Thin CLI control surface (`af` binary), delegates to watcher/server modules |
 
 ### Runtime Boundaries (Critical)
 
@@ -471,11 +500,17 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 14D** | GitHub Actions CI Workflow | ✅ |
 | **Phase 14E** | Documentation Canonicalization | ✅ |
 | **Phase 14F** | Multi-Source CI (Matrix) + Deterministic Source Discovery | ✅ |
+| **Phase 15A** | Project Configuration (`af.config.json`) | ✅ |
+| **Phase 15B** | Named Reconciliation Policy Profiles | ✅ |
+| **Phase 15C** | Unified `af` CLI Control Surface | ✅ |
+| **Phase 15D** | Artifact Inspector + Audit Trail Expansion | ✅ |
 
 ### Not Implemented Yet
 
 | Feature | Status |
 |---------|--------|
+| Design adapter interface (verification-scoped) | ❌ |
+| Figma MCP reader (optional enrichment) | ❌ |
 | Conflict resolution UI | ❌ |
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
@@ -492,8 +527,163 @@ The reconciliation system is **feature-complete through Phase 14F**. Key capabil
 - **Delta Detection & Resolution (12A–12J)**: Conflicts, resolution plans, verification, rollback
 - **Drift Timeline & Dashboard (13A–13F)**: Run ledger, drift diffs, project dashboard, CI gate
 - **Unified Reconcile CLI (14A–14F)**: `figma:reconcile` entry point, profiles (local/record/ci), bundle artifacts, GitHub Actions matrix workflow, multi-source discovery
+- **Configuration & Profiles (15A–15B)**: `af.config.json`, named policy profiles (designer-first, code-first, balanced, strict-review)
+- **CLI & Inspector (15C–15D)**: Unified `af` CLI (control surface, not runtime), artifact listing/inspection/trace
 
 Echo suppression prevents feedback loops when AST writes trigger file save events.
+
+---
+
+## Project Configuration (Phase 15A)
+
+Phase 15A adds a portable project configuration file (`af.config.json`) that replaces per-invocation environment variables while remaining fully backward compatible.
+
+### Configuration File
+
+Create an `af.config.json` in your project root:
+
+```json
+{
+  "profile": "designer-first",
+  "server": {
+    "port": 3001,
+    "url": "http://localhost:3001"
+  },
+  "overrides": {
+    "enabled": true,
+    "precedence": "always"
+  },
+  "canonical": {
+    "colorStrategy": "token-first",
+    "strict": false
+  }
+}
+```
+
+All fields are optional. Without `af.config.json`, the system behaves identically to Phase 14F (environment variables + built-in defaults).
+
+### Merge Precedence
+
+Configuration values are resolved in order (lowest → highest priority):
+
+1. **Built-in defaults** — match existing Phase 14F behavior
+2. **`af.config.json`** — version-controlled project settings
+3. **Environment variables** — always override file values (backward compatible)
+
+Existing env vars (`USE_OVERRIDES`, `OVERRIDES_PRECEDENCE`, `CANONICAL_STRICT`, etc.) continue to work and always take priority over the config file.
+
+### Named Policy Profiles (Phase 15B)
+
+Profiles are named presets that map onto the existing `resolveField()` / `resolveWithPolicy()` engine. They do **not** modify resolution logic — they set parameters.
+
+| Profile | `USE_OVERRIDES` | `OVERRIDES_PRECEDENCE` | `ColorStrategy` | Conflict Action |
+|---------|-----------------|------------------------|-----------------|-----------------|
+| `designer-first` | `true` | `always` | `token-first` | apply |
+| `code-first` | `true` | `if_newer_than_code` | `token-first` | apply |
+| `balanced` | `true` | `if_newer_than_code` | `token-first` | warn |
+| `strict-review` | `true` | `always` | `token-only` | block |
+
+- **`designer-first`** is the default and produces identical behavior to Phase 14F
+- **`code-first`** maps to existing `OVERRIDES_PRECEDENCE=if_newer_than_code` behavior
+- **`balanced`** adds conflict warnings on top of code-first precedence
+- **`strict-review`** blocks all conflicts for human review with strict token policy
+
+Set the profile in `af.config.json` or via `RECONCILIATION_POLICY` environment variable:
+
+```bash
+# Via config file
+echo '{"profile": "code-first"}' > af.config.json
+
+# Via environment variable (always overrides config file)
+RECONCILIATION_POLICY=code-first pnpm dev:watcher
+```
+
+### Artifact Inspector (Phase 15D)
+
+Phase 15D adds read-only inspection tooling for the 12 reconciliation artifact types. All commands are additive — no new artifacts are generated, no reconciliation logic is modified.
+
+**CLI Commands:**
+
+```bash
+# List all artifacts for a source file (12 types)
+pnpm artifacts:list demo-app/src/App.tsx
+
+# Inspect a single artifact with type-aware highlights
+pnpm artifacts:inspect design-materializations/demo-app__src__App.figma-reconciliation-status.json
+
+# End-to-end lifecycle trace across all artifacts
+pnpm artifacts:trace demo-app/src/App.tsx
+```
+
+All three commands support `--json` for machine-readable output and `--repo-root` for explicit repo root.
+
+**Highlight Levels:**
+
+| Icon | Level | Meaning |
+|------|-------|---------|
+| ✓ | ok | Passing / verified |
+| ⚠ | warn | Warning / dry-run |
+| ✗ | fail | Failure / mismatch |
+| · | info | Informational |
+
+**Audit Log Expansion:**
+
+The server audit log (`sync-log.md`) now accepts optional metadata fields when present:
+- `profile` — active policy profile name
+- `configSource` — path to the config file used
+- `policy` — policy settings snapshot (JSON)
+
+These fields are purely additive. Existing callers are unaffected.
+
+### Unified CLI Control Surface (Phase 15C)
+
+Phase 15C adds the `af` binary — a thin CLI control surface that delegates every command to existing watcher/server modules. The CLI does NOT own the runtime, reconciliation logic, or server authority.
+
+**Installation:**
+
+The CLI lives in `packages/cli/`. It is currently a **workspace-only** tool — it must be run from within the aesthetic-function monorepo.
+
+**Runtime requirements:**
+- Must run from within the monorepo (needs `packages/watcher/src/` and `packages/server/src/`)
+- Requires `tsx` (installed as a workspace dev dependency)
+- Delegates to `.ts` source files directly via `fork()` with `--import tsx` — no pre-build step
+- Existing `pnpm --filter` commands continue to work unchanged
+
+In development, run via tsx:
+
+```bash
+pnpm --filter @aesthetic-function/cli dev -- <command> [args]
+```
+
+**Commands:**
+
+| Command | Delegates To | Description |
+|---------|-------------|-------------|
+| `af init` | standalone | Generate `af.config.json` |
+| `af run` | server + watcher (child processes) | Spawn both processes |
+| `af reconcile <file>` | `reconciliationReconcile/cliReconcile` | Full reconciliation pipeline |
+| `af status <file>` | `reconciliationStatus/cliStatus` | Reconciliation status |
+| `af dashboard <file>` | `reconciliationDashboard/cliDashboard` | Drift dashboard (file-level) |
+| `af dashboard --project <dir>` | `reconciliationProjectDashboard/cliProjectDashboard` | Drift dashboard (project-level) |
+| `af ci [dir]` | `reconciliationCi/cliCi` | CI gate summary |
+| `af artifacts list <file>` | `artifactInspector/cliArtifactList` | List artifacts |
+| `af artifacts inspect <path>` | `artifactInspector/cliArtifactInspect` | Inspect artifact |
+| `af artifacts trace <file>` | `artifactInspector/cliArtifactTrace` | Lifecycle trace |
+
+**Architecture:**
+
+- `af init` detects project context (framework, existing artifacts) and writes `af.config.json` — does NOT start the system
+- `af run` spawns server + watcher as child processes via `fork()` — it is a launcher, not a runtime
+- All other commands load `af.config.json` via `loadAfConfig()`, derive env vars via `envBridge.ts`, then fork the target watcher CLI module with `--import tsx` and those env vars
+- The env var names (`CANONICAL_COLOR_STRATEGY`, `OVERRIDES_PRECEDENCE`, etc.) match exactly what the watcher/server modules read from `process.env`
+- Existing `pnpm --filter @aesthetic-function/watcher` commands continue to work unchanged
+
+**The CLI does NOT:**
+- Implement reconciliation logic
+- Modify policy behavior
+- Bypass the server
+- Write overrides directly
+- Replace the watcher or server runtime
 
 ---
 
@@ -5118,6 +5308,17 @@ aesthetic-function/
 | `pnpm --filter @aesthetic-function/watcher figma:ci <dir>` | CI gate summary (Phase 13F) |
 
 **Note:** `figma:reconcile` orchestrates all Phase 12-13 steps in sequence. Use individual commands only when debugging specific steps.
+
+### Design Adapter Commands (Phase 16A)
+
+| Command | Description |
+|---------|-------------|
+| `af design pull` | Pull full design data (tokens + components + styles) |
+| `af design tokens` | Pull and normalize design tokens to canonical vocabulary |
+| `af design inspect <name>` | Inspect a specific design component |
+| `af design inspect --all` | Inspect all design components |
+
+All design adapter commands are **read-only** — they do not write to Figma or trigger reconciliation. Use `--json` for machine-readable output, `--verbose` for trace details.
 
 ---
 

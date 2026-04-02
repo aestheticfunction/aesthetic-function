@@ -112,6 +112,12 @@ export interface AuditLogEntry {
   timestamp: string;
   /** Number of clients notified */
   clientsNotified?: number;
+  /** Active policy profile name (Phase 15D) */
+  profile?: string;
+  /** Config source path (Phase 15D) */
+  configSource?: string;
+  /** Policy settings snapshot (Phase 15D) */
+  policySettings?: Record<string, unknown>;
 }
 
 /**
@@ -350,6 +356,17 @@ function formatLogEntry(entry: AuditLogEntry): string {
     `file=${filePath}`,
     `ops=${opCount}`,
   ];
+
+  // Profile / config metadata (Phase 15D — optional, additive)
+  if (entry.profile) {
+    lines.push(`profile=${entry.profile}`);
+  }
+  if (entry.configSource) {
+    lines.push(`configSource=${entry.configSource}`);
+  }
+  if (entry.policySettings && Object.keys(entry.policySettings).length > 0) {
+    lines.push(`policy=${JSON.stringify(entry.policySettings)}`);
+  }
 
   // Operation details (summarized, not full JSON)
   for (const op of entry.operations) {
