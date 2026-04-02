@@ -20,10 +20,12 @@
 import type {
   DesignAdapter,
   AdapterResult,
+  AdapterCapabilityManifest,
   DesignTokenValue,
   DesignComponent,
   DesignStyle,
   DesignFileData,
+  DesignScreenshot,
 } from '@aesthetic-function/shared/designAdapter';
 
 // =============================================================================
@@ -234,6 +236,39 @@ export class FigmaMCPAdapter implements DesignAdapter {
       durationMs: Date.now() - start,
       warnings: ['Using stub data — wire MCP transport in Phase 16B'],
       cached: false,
+    };
+  }
+
+  async getScreenshot(): Promise<AdapterResult<DesignScreenshot | null>> {
+    return {
+      data: null,
+      adapterId: this.id,
+      adapterName: this.displayName,
+      durationMs: 0,
+      warnings: ['Screenshots not available in stub adapter'],
+      cached: false,
+    };
+  }
+
+  getCapabilities(): AdapterCapabilityManifest {
+    return {
+      // Allowed (read-only)
+      readDesignTokens: true,
+      readComponents: true,
+      readStyles: true,
+      readFileData: true,
+      readScreenshots: false, // stub does not support screenshots
+      readDesignSystemKit: false,
+      readDesignCodeParity: false,
+
+      // Blocked by AF architecture
+      writeDesign: false,
+      writeVariables: false,
+      executeDesignCode: false,
+      writeVariableCollections: false,
+      cloudWriteRelay: false,
+      writeFigJam: false,
+      writeSlides: false,
     };
   }
 }

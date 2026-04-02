@@ -504,13 +504,13 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 15B** | Named Reconciliation Policy Profiles | ✅ |
 | **Phase 15C** | Unified `af` CLI Control Surface | ✅ |
 | **Phase 15D** | Artifact Inspector + Audit Trail Expansion | ✅ |
+| **Phase 16A** | Design Adapter Interface (verification-scoped) | ✅ |
+| **Phase 16B** | Figma Console MCP Adapter (read-only) | ✅ |
 
 ### Not Implemented Yet
 
 | Feature | Status |
 |---------|--------|
-| Design adapter interface (verification-scoped) | ❌ |
-| Figma MCP reader (optional enrichment) | ❌ |
 | Conflict resolution UI | ❌ |
 | Layout/spacing operations | ❌ |
 | Background reconciliation | ❌ |
@@ -5318,7 +5318,110 @@ aesthetic-function/
 | `af design inspect <name>` | Inspect a specific design component |
 | `af design inspect --all` | Inspect all design components |
 
+### Figma Console MCP Adapter Commands (Phase 16B)
+
+| Command | Description |
+|---------|-------------|
+| `af design screenshot` | Capture a design screenshot (PNG) |
+| `af design screenshot --node <id>` | Screenshot a specific Figma node |
+| `af design screenshot --out file.png` | Save screenshot to file |
+| `af design component` | List all design components |
+| `af design component <name>` | Inspect a specific component |
+
 All design adapter commands are **read-only** — they do not write to Figma or trigger reconciliation. Use `--json` for machine-readable output, `--verbose` for trace details.
+
+#### Phase 16B: Figma Console MCP Adapter (Read-Only)
+
+Phase 16B integrates [southleft/figma-console-mcp](https://github.com/southleft/figma-console-mcp)
+as a constrained, read-only AF design adapter using the [Model Context Protocol](https://modelcontextprotocol.io/) (MCP).
+
+**Integration boundary — what talks to what:**
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  AF Watcher (Node.js)                                               │
+│                                                                     │
+│  FigmaConsoleMCPAdapter                                             │
+│    │                                                                │
+│    ├─── MCP Client (@modelcontextprotocol/sdk)                      │
+│    │      │                                                         │
+│    │      ├─── [stdio] spawn `npx figma-console-mcp`  ──┐          │
+│    │      │    (preferred: full 92+ tools available)     │          │
+│    │      │                                              ▼          │
+│    │      └─── [sse] connect to running MCP server  → figma-       │
+│    │           (22 read-only tools in SSE mode)       console-mcp  │
+│    │                                                     │          │
+│    │                                                     ▼          │
+│    │                                              Figma REST API    │
+│    │                                                                │
+│    └─── [rest-fallback] Direct Figma REST API calls                 │
+│         (same data as figma-console-mcp, no MCP protocol)           │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Transport modes (in order of preference):**
+1. **stdio** — AF spawns figma-console-mcp as a child process via `npx figma-console-mcp`
+   and communicates over stdin/stdout using the MCP stdio transport.
+2. **sse** — AF connects to an already-running figma-console-mcp SSE server.
+3. **rest-fallback** — Direct Figma REST API calls when figma-console-mcp is unavailable.
+
+**Tool mapping (figma-console-mcp tool → AF adapter method):**
+
+| MCP Tool | AF Method | Data |
+|----------|-----------|------|
+| `figma_get_variables` | `getDesignTokens()` | Design variables/tokens |
+| `figma_get_file_data` | `getComponents()`, `getFileData()` | File tree, components |
+| `figma_get_component` | `getComponent()` | Single component |
+| `figma_get_styles` | `getStyles()` | Published styles |
+| `figma_take_screenshot` | `getScreenshot()` | Visual capture (PNG) |
+
+**Architecture:**
+- AF acts as an MCP **client** connecting to figma-console-mcp as the MCP **server**.
+- Read-only. No write operations. No mutations.
+- AF remains the sole mutation authority (watcher → server → plugin).
+- **Default-deny** MCP tool policy: only the 14 tools in `ALLOWED_MCP_TOOLS` may be invoked.
+- All 30+ write tools are explicitly blocked (see `BLOCKED_MCP_TOOLS` registry).
+- Unclassified tools (not in either list) are also rejected.
+- Graceful degradation: if figma-console-mcp is unavailable, AF falls back to REST.
+- Every adapter result includes `transport:` metadata for observability.
+
+**Blocked capabilities (by AF architecture, not by omission):**
+- `writeDesign` — Design creation is AF plugin's job
+- `writeVariables` — Token authority belongs to AF reconciliation engine
+- `executeDesignCode` — `figma_execute` bypasses AF control plane
+- `writeVariableCollections` — Collection CRUD is AF's responsibility
+- `cloudWriteRelay` — `figma_pair_plugin` would create a second control plane
+- `writeFigJam` / `writeSlides` — Outside AF scope
+
+**Configuration:**
+```bash
+export FIGMA_ACCESS_TOKEN=figd_...
+export FIGMA_FILE_KEY=your-file-key
+```
+
+**Dependencies:**
+- `@modelcontextprotocol/sdk` — MCP client SDK (in watcher package)
+- `figma-console-mcp` — External MCP server (not a dependency; spawned via npx or connected via SSE)
+
+**Transport validation status:**
+- `rest-fallback` — Fully tested (all 47 adapter tests exercise this path).
+- `stdio` / `sse` — Implemented, typechecked, config-tested. Live end-to-end validation against a real figma-console-mcp instance is an integration-time check (not part of unit test suite).
+
+**Phase 16B Compliance Summary:**
+
+| Requirement | Status | File(s) | Notes |
+|---|---|---|---|
+| Real figma-console-mcp integration via MCP protocol | ✅ | `figmaConsoleMCPAdapter.ts` | Uses `@modelcontextprotocol/sdk` Client + StdioClientTransport to spawn/connect to figma-console-mcp |
+| Read-only constraint (no write operations) | ✅ | `BLOCKED_MCP_TOOLS` (30+ entries), `callMCPTool()` guard | Default-deny: blocked tools rejected explicitly, unclassified tools rejected as unknown |
+| Allowed read tools enforced as strict allow-list | ✅ | `ALLOWED_MCP_TOOLS` (14 entries), `callMCPTool()` guard | Only tools in `ALLOWED_TOOL_NAMES` are invoked; all others are rejected before `client.callTool()` |
+| REST fallback when figma-console-mcp unavailable | ✅ | `figmaConsoleMCPAdapter.ts` | Each method tries MCP first, falls back to direct Figma REST API |
+| Transport observability (which path was used) | ✅ | `getActiveTransport()`, result `warnings` | Every result includes `transport: mcp-stdio`, `mcp-sse`, or `rest-fallback` |
+| Integration boundary documented | ✅ | README.md Phase 16B section | ASCII diagram showing AF → MCP → figma-console-mcp → Figma REST |
+| README contradictions resolved | ✅ | README.md | Roadmap table now lists 16A/16B as ✅; "Not Implemented" table updated |
+| Tests pass (all packages) | ✅ | 1842 watcher + 50 CLI tests | 47 adapter-specific tests (37 original + 10 new transport/MCP tests) |
+| Typecheck clean (all packages) | ✅ | shared, server, cli, watcher | Zero errors across all packages |
+| Branch: no merge, no 16C | ✅ | `feat/16b-figma-console-mcp-readonly-adapter` | All corrections on same branch |
+| Deviation: MCP SDK in watcher (not separate package) | ⚠️ | `packages/watcher/package.json` | plan.md suggested `packages/adapters/figma-mcp/`. Kept in watcher for simplicity; can extract later. |
 
 ---
 

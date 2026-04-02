@@ -1,12 +1,14 @@
 /**
  * @aesthetic-function/cli - commands/design.ts
  *
- * Phase 16A: `af design` — Design Adapter CLI commands.
+ * Phase 16A+16B: `af design` — Design Adapter CLI commands.
  *
  * Subcommands:
  *   af design pull              → designAdapter/cliDesignPull.ts
  *   af design tokens            → designAdapter/cliDesignTokens.ts
  *   af design inspect <name>    → designAdapter/cliDesignInspect.ts
+ *   af design screenshot        → designAdapter/cliDesignScreenshot.ts    (Phase 16B)
+ *   af design component [name]  → designAdapter/cliDesignComponent.ts    (Phase 16B)
  *
  * CONSTRAINTS:
  * - Read-only. Does NOT write to Figma or trigger reconciliation.
@@ -19,6 +21,8 @@ const SUBCOMMANDS: Record<string, string> = {
   pull: 'designAdapter/cliDesignPull.ts',
   tokens: 'designAdapter/cliDesignTokens.ts',
   inspect: 'designAdapter/cliDesignInspect.ts',
+  screenshot: 'designAdapter/cliDesignScreenshot.ts',
+  component: 'designAdapter/cliDesignComponent.ts',
 };
 
 function printHelp(): void {
@@ -31,6 +35,8 @@ Subcommands:
   tokens                   Pull and normalize design tokens
   inspect <component>      Inspect a design component
   inspect --all            Inspect all design components
+  screenshot               Capture a design screenshot
+  component [name]         List or inspect design components
 
 Options (all subcommands):
   --json                   Output JSON format
@@ -42,7 +48,9 @@ Examples:
   af design pull
   af design tokens --json
   af design inspect Button
-  af design inspect --all --verbose`);
+  af design inspect --all --verbose
+  af design screenshot --node 1:100
+  af design component Button`);
 }
 
 export async function design(args: string[]): Promise<number> {
@@ -57,7 +65,7 @@ export async function design(args: string[]): Promise<number> {
   const modulePath = SUBCOMMANDS[subcommand];
   if (!modulePath) {
     console.error(`Unknown design subcommand: ${subcommand}`);
-    console.error('Valid subcommands: pull, tokens, inspect');
+    console.error('Valid subcommands: pull, tokens, inspect, screenshot, component');
     return 2;
   }
 

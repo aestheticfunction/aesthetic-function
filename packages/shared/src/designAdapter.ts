@@ -122,6 +122,96 @@ export interface DesignFileData {
 }
 
 // =============================================================================
+// SCREENSHOT TYPES
+// =============================================================================
+
+/**
+ * A screenshot captured from the design tool.
+ */
+export interface DesignScreenshot {
+  /** Base64-encoded image data */
+  data: string;
+
+  /** Image format */
+  format: 'png' | 'jpg' | 'svg';
+
+  /** Image dimensions in pixels */
+  width?: number;
+  height?: number;
+
+  /** What was captured (node name, page name, etc.) */
+  subject?: string;
+
+  /** Timestamp of capture */
+  capturedAt: string;
+}
+
+// =============================================================================
+// ADAPTER CAPABILITY MANIFEST
+// =============================================================================
+
+/**
+ * Explicit capability manifest for a design adapter.
+ *
+ * WHY: External tools like figma-console-mcp expose broad capabilities
+ * including design creation, variable management, and code execution.
+ * AF intentionally restricts adapters to read-only operations.
+ * The manifest makes allowed/blocked capabilities explicit and auditable.
+ *
+ * RULE: Every `false` capability is an intentional architectural decision,
+ * not an omission. AF's mutation path is watcher → server → plugin ONLY.
+ */
+export interface AdapterCapabilityManifest {
+  // --- ALLOWED (read-only intelligence) ---
+
+  /** Read design tokens / variables */
+  readDesignTokens: boolean;
+
+  /** Read component definitions and properties */
+  readComponents: boolean;
+
+  /** Read published styles (fill, text, effect, grid) */
+  readStyles: boolean;
+
+  /** Read file-level metadata and structure */
+  readFileData: boolean;
+
+  /** Capture visual screenshots of design content */
+  readScreenshots: boolean;
+
+  /** Read design system kit (tokens + components + styles in one call) */
+  readDesignSystemKit: boolean;
+
+  /** Read design-code parity reports */
+  readDesignCodeParity: boolean;
+
+  // --- BLOCKED (mutation via AF architecture) ---
+  // These are intentionally false. They are not "not yet implemented" —
+  // they are "blocked by AF's deterministic reconciliation model."
+
+  /** Create or edit design elements — BLOCKED: AF plugin is sole mutator */
+  writeDesign: false;
+
+  /** Create, update, or delete variables — BLOCKED: AF owns token authority */
+  writeVariables: false;
+
+  /** Execute arbitrary Figma Plugin API code — BLOCKED: security + control */
+  executeDesignCode: false;
+
+  /** Manage variable collections (create/delete) — BLOCKED */
+  writeVariableCollections: false;
+
+  /** Cloud relay write pairing — BLOCKED: AF has its own relay (server) */
+  cloudWriteRelay: false;
+
+  /** FigJam board creation/modification — BLOCKED: outside AF scope */
+  writeFigJam: false;
+
+  /** Slides creation/modification — BLOCKED: outside AF scope */
+  writeSlides: false;
+}
+
+// =============================================================================
 // ADAPTER RESULT TYPES
 // =============================================================================
 
@@ -204,4 +294,18 @@ export interface DesignAdapter {
    * Get file-level metadata.
    */
   getFileData(): Promise<AdapterResult<DesignFileData>>;
+
+  /**
+   * Capture a screenshot of the current design or a specific node.
+   * Optional — adapters that don't support screenshots return null.
+   *
+   * @param nodeId - Optional node ID to screenshot. If omitted, captures current view.
+   */
+  getScreenshot?(nodeId?: string): Promise<AdapterResult<DesignScreenshot | null>>;
+
+  /**
+   * Return the capability manifest for this adapter.
+   * Used for observability, auditing, and enforcing AF's read-only boundary.
+   */
+  getCapabilities(): AdapterCapabilityManifest;
 }

@@ -21,6 +21,10 @@ export {
 
 export { FigmaMCPAdapter } from './figmaMCPAdapter.js';
 
+export { FigmaConsoleMCPAdapter } from './figmaConsoleMCPAdapter.js';
+export type { FigmaConsoleMCPConfig, MCPTransportMode } from './figmaConsoleMCPAdapter.js';
+export { BLOCKED_MCP_TOOLS, BLOCKED_TOOL_NAMES, ALLOWED_MCP_TOOLS, ALLOWED_TOOL_NAMES } from './figmaConsoleMCPAdapter.js';
+
 export type {
   NormalizedToken,
   NormalizedDesignTokens,
