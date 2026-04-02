@@ -1,6 +1,7 @@
 # Aesthetic Function — Architecture Reference
 
-> **This is the internal architecture reference for contributors and AI agents.**
+> **This document is the authoritative source of truth for system behavior.** AI agents and contributors should prioritize this over README.md when resolving questions about runtime boundaries, reconciliation semantics, or architectural constraints.
+>
 > For a product overview, see [README.md](../README.md).
 
 This document is the source of truth for AF's runtime boundaries, reconciliation semantics, phase invariants, and adapter constraints. It preserves all architectural guarantees that implementations must respect.

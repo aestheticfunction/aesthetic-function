@@ -10,7 +10,9 @@ This code is provided for research and evaluation purposes. Certain commercial u
 
 ---
 
-Aesthetic Function (AF) is a control-plane system that keeps your React codebase and Figma designs in sync — bidirectionally, deterministically, and without prompt engineering.
+Aesthetic Function is a deterministic UI control plane for synchronizing code and design systems.
+
+AF keeps your React codebase and Figma designs in sync — bidirectionally, deterministically, and without prompt engineering. As AI-generated UI accelerates, maintaining alignment between code and design becomes harder — not easier. AF provides the structural layer that makes that alignment reliable.
 
 ## The Problem
 
@@ -24,7 +26,7 @@ None of these are *systems*. They don't reconcile. They don't detect drift. They
 
 ## What AF Does Differently
 
-AF treats code as the source of truth and synchronizes design to match — while preserving designer overrides when they're intentional.
+AF treats code as the execution source of truth while preserving intentional design overrides. Code drives structure; design overrides drive aesthetics. Both are reconciled through explicit precedence rules.
 
 ```
 Code Change → Watcher → Reconciliation → Server → Figma Plugin → Figma Update
@@ -181,7 +183,13 @@ See [docs/architecture-reference.md](docs/architecture-reference.md) for the com
 | Document | Audience | Content |
 |----------|----------|---------|
 | [README.md](README.md) | Everyone | Product overview, quick start, CLI reference |
+| [docs/getting-started.md](docs/getting-started.md) | New users | Full step-by-step setup guide |
+| [docs/cli-reference.md](docs/cli-reference.md) | Users | All commands, flags, and examples |
 | [docs/architecture-reference.md](docs/architecture-reference.md) | Contributors, AI agents | Full phase history, runtime boundaries, reconciliation model, invariants |
+| [docs/reconciliation-model.md](docs/reconciliation-model.md) | Contributors | Precedence rules, field resolution, drift semantics |
+| [docs/runtime-boundaries.md](docs/runtime-boundaries.md) | Contributors | Three-runtime model, boundary constraints |
+| [docs/adapter-model.md](docs/adapter-model.md) | Contributors | Design adapters, MCP integration, tool policies |
+| [docs/safety-and-control.md](docs/safety-and-control.md) | Contributors | Safety properties, CI gates, rollback model |
 | [claude.md](claude.md) | Claude AI | Project context for AI-assisted development |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributors | Test policy, code standards |
 | [.github/instructions/](/.github/instructions/) | VS Code Copilot | Coding style, architecture rules |
