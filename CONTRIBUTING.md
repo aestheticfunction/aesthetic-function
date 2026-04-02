@@ -133,6 +133,49 @@ const filePath = 'demo-app/src/App.tsx';
 
 ---
 
+## Developer Certificate of Origin (DCO)
+
+All contributions must include a Signed-off-by trailer:
+
+```text
+Signed-off-by: Your Name <your.email@example.com>
+```
+
+By signing off, you confirm that:
+- You have the right to submit the contribution
+- You agree to license it under Apache-2.0
+
+This project uses the DCO as a lightweight contribution certification. No CLA is required.
+
+---
+
+## Project Direction / Architectural Constraints
+
+This project enforces strict runtime boundaries:
+- Watcher: code -> intent
+- Server: relay + persistence
+- Design Plugin: execution
+
+Deterministic reconciliation is the core invariant.
+
+Contributions must not:
+- bypass reconciliation
+- introduce direct mutation paths outside the defined flow
+- blur runtime responsibilities
+
+Core architectural changes must be discussed before implementation. Not all pull requests will be accepted if they violate these constraints.
+
+---
+
+## Contribution Workflow
+
+- Fork the repository and create a branch for your change
+- Make focused changes
+- Ensure relevant tests pass
+- Submit a pull request with a clear description
+
+---
+
 ## Development Workflow
 
 ### Running Tests

@@ -231,4 +231,4 @@ See [docs/architecture-reference.md](docs/architecture-reference.md) for the com
 
 ## License
 
-This repository contains a prototype implementation of a patent-pending system. All rights reserved.
+This repository contains a prototype implementation of a patent-pending system and is licensed under the Apache License, Version 2.0. See LICENSE.
