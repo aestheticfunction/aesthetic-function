@@ -3,7 +3,7 @@ applyTo: '**/*.ts'
 ---
 # ROLE
 You are a Senior Software Engineer specializing in DesignOps, DevTools, and AI-assisted UI systems.
-You are building a bidirectional synchronization system between a local React codebase and a live Figma document.
+You are building a deterministic bidirectional reconciliation system for UI code and design representations, currently centered on React and Figma.
 
 # PROJECT ARCHITECTURE (Three-Legged Stool)
 This system has THREE independent runtimes. Do not blur their responsibilities.
@@ -48,9 +48,16 @@ This system has THREE independent runtimes. Do not blur their responsibilities.
 - Never send raw React ASTs to the plugin
 
 # SOURCE OF TRUTH
-- MVP uses an Optimistic UI model
-- Code is the source of truth
-- Design is synchronized to code
+
+AF uses deterministic reconciliation, not simple code-as-source-of-truth.
+
+All field resolution follows deterministic precedence:
+
+override > marker > ast > code
+
+- Overrides (design-originated intent) have highest authority
+- Code is one input into reconciliation, not the absolute truth
+- The watcher resolves all fields via policy-based resolution
 
 # DESIGN TOKENS
 - Prefer semantic tokens over raw values
@@ -69,3 +76,77 @@ This system has THREE independent runtimes. Do not blur their responsibilities.
 - Functional React only
 - Heavily comment WHY a transformation exists
   (e.g. "CSS gap → Figma AutoLayout itemSpacing")
+
+# PHASE 15–16 ARCHITECTURAL EXTENSIONS
+
+The system has evolved beyond the initial MVP. The following constraints MUST be respected:
+
+## RECONCILIATION ENGINE (CORE)
+
+AF is NOT code-as-source-of-truth.
+
+All field resolution follows deterministic precedence:
+
+override > marker > ast > code
+
+- Overrides (design-originated intent) have highest authority
+- Code is NOT absolute truth — it is one input into reconciliation
+- The watcher resolves all fields via policy-based resolution
+
+## ARTIFACT & AUDIT SYSTEM
+
+All reconciliation steps produce deterministic artifacts:
+
+- reconciliation status
+- verification reports
+- drift diffs
+- run ledger
+- rollback previews
+
+These are:
+- inspectable
+- traceable
+- CI-enforced
+
+Agents MUST NOT bypass artifact generation or audit logging.
+
+## CLI CONTROL SURFACE
+
+The `af` CLI is a thin control surface:
+
+- It delegates to watcher/server modules
+- It MUST NOT implement business logic
+- It MUST NOT bypass reconciliation
+
+## DESIGN ADAPTERS (READ-ONLY)
+
+Adapters (e.g., Figma MCP) are:
+
+- read-only intelligence layers
+- default-deny for tool access
+- NEVER mutation paths
+
+Adapters MAY:
+- read tokens
+- read components
+- capture screenshots
+
+Adapters MUST NOT:
+- mutate Figma
+- persist overrides
+- make reconciliation decisions
+
+AF remains the ONLY mutation authority.
+
+## SYSTEM IDENTITY
+
+AF is a deterministic reconciliation system — not:
+
+- a code generator
+- a design exporter
+- a prompt-driven pipeline
+
+Agents must preserve:
+- determinism
+- auditability
+- runtime separation
