@@ -1,18 +1,37 @@
 # Aesthetic Function
 
-**Deterministic Code ↔ Design synchronization for React and Figma.**
+**The control plane for AI-driven UI development.**
 
-### Patent Notice
-
-This repository contains a prototype implementation of systems and methods described in U.S. Patent Application No. XX/XXX,XXX (filed [date]), which is currently pending.
-
-This code is provided for research and evaluation purposes. Certain commercial uses may be restricted by patent rights.
+Deterministic Code ↔ Design synchronization for React and Figma.
 
 ---
 
-Aesthetic Function is a deterministic UI control plane for synchronizing code and design systems.
+Aesthetic Function (AF) is a system for keeping code and design in sync — continuously and deterministically, without prompt engineering.
 
-AF keeps your React codebase and Figma designs in sync — bidirectionally, deterministically, and without prompt engineering. As AI-generated UI accelerates, maintaining alignment between code and design becomes harder — not easier. AF provides the structural layer that makes that alignment reliable.
+As AI-generated UI accelerates, alignment between code and design becomes harder — not easier.
+
+AF makes that alignment a **system**, not a workflow.
+
+This is a new category: a control plane for UI systems.
+
+AF is not a design tool. It is not a code generator.
+
+It is the system that keeps them aligned over time.
+
+## Why Now
+
+AI can generate UI instantly.
+
+But it cannot keep code and design aligned over time.
+
+That gap creates:
+- drift
+- inconsistencies
+- broken design systems
+- manual cleanup work
+
+AF solves the **post-generation problem**:
+keeping UI systems coherent after they are created.
 
 ## The Problem
 
@@ -22,11 +41,23 @@ Design–dev drift is the slow divergence between what designers build in Figma 
 - **Prompt-to-code** — AI generates code from screenshots, losing fidelity and context
 - **One-shot exports** — tools export design tokens once, with no ongoing sync
 
-None of these are *systems*. They don't reconcile. They don't detect drift. They don't provide a continuous, auditable loop.
+None of these are *systems*.
+
+They don't reconcile.
+They don’t detect drift.
+They don’t maintain alignment over time.
 
 ## What AF Does Differently
 
-AF treats code as the execution source of truth while preserving intentional design overrides. Code drives structure; design overrides drive aesthetics. Both are reconciled through explicit precedence rules.
+Think of AF as:
+
+> Git for UI state — across code and design.
+
+AF introduces a deterministic reconciliation model:
+
+- Code defines structure
+- Design defines visual overrides
+- Conflicts are resolved with explicit precedence rules
 
 ```
 Code Change → Watcher → Reconciliation → Server → Figma Plugin → Figma Update
@@ -35,6 +66,10 @@ Design Change → Plugin → Server → Override Capture → Reconciliation (nex
 ```
 
 This is a **continuous bidirectional loop**, not a one-shot export.
+
+It does not export design to code.
+
+It keeps them in sync continuously.
 
 ### Key Properties
 
@@ -196,4 +231,4 @@ See [docs/architecture-reference.md](docs/architecture-reference.md) for the com
 
 ## License
 
-Patent prototype. All rights reserved.
+This repository contains a prototype implementation of a patent-pending system. All rights reserved.
