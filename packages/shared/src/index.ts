@@ -10,6 +10,7 @@ export * from './compose.js';
 export * from './config.js';
 export * from './policy.js';
 export * from './designAdapter.js';
+export * from './surfaceMetadata.js';
 export {
   loadAfConfig,
   findConfigFile,

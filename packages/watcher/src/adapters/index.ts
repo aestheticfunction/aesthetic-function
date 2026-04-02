@@ -28,6 +28,7 @@ export {
   unlockRegistry,
   runAdapters,
   mergeWithAdapterSemantics,
+  getSemanticAdaptersBySurface,
 } from './registry.js';
 export type {
   AdapterExtractionResult,

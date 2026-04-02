@@ -543,6 +543,14 @@ export class AntdSemanticAdapter implements SemanticAdapter {
   readonly displayName = 'Ant Design';
   readonly priority = 51; // After Vuetify (50)
 
+  /** Surface classification: runtime framework, no-mutation, non-authoritative, derived */
+  readonly surfaceMetadata = {
+    surfaceType: 'runtime' as const,
+    accessMode: 'no-mutation' as const,
+    authorityRole: 'external-non-authoritative' as const,
+    stability: 'derived' as const,
+  };
+
   /**
    * Check if this adapter supports the given JSX element.
    * Uses import-based detection - must be imported from 'antd' or 'antd/es/*'.

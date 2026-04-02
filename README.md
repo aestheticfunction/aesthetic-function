@@ -79,7 +79,7 @@ It keeps them in sync continuously.
 | **Reconciled** | Design overrides, code markers, AST values, and defaults are merged with explicit precedence: `override > marker > ast > code`. |
 | **Auditable** | Every operation produces artifacts. Every decision is traceable. CI gates enforce drift thresholds. |
 | **Safe** | Dry-run by default. Opt-in writes. Echo suppression prevents feedback loops. Rollback previews before destructive changes. |
-| **Read-only adapters** | External integrations (e.g., Figma MCP) are read-only with default-deny tool policies. AF is the only mutation authority. |
+| **Read-only adapters** | External integrations (e.g., Figma MCP, Storybook) are read-only with default-deny tool policies. Adapters are classified by surface type, access mode, authority role, and stability. AF is the only mutation authority. |
 
 ### How It Differs From…
 

@@ -56,6 +56,14 @@ export class VuetifySemanticAdapter implements SemanticAdapter {
   readonly displayName = 'Vuetify';
   readonly priority = 50; // Run before generic adapters (100)
 
+  /** Surface classification: runtime framework, no-mutation, non-authoritative, derived */
+  readonly surfaceMetadata = {
+    surfaceType: 'runtime' as const,
+    accessMode: 'no-mutation' as const,
+    authorityRole: 'external-non-authoritative' as const,
+    stability: 'derived' as const,
+  };
+
   /**
    * Check if this adapter supports the given JSX element.
    * Supports v-btn, v-card, v-text-field, v-chip.

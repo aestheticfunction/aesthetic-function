@@ -167,6 +167,17 @@ export interface SemanticAdapter {
   readonly priority?: number;
 
   /**
+   * Surface classification metadata (Phase 16A Extension).
+   *
+   * Categorizes the external surface this adapter connects to along
+   * four independent dimensions. Read-only descriptor — does NOT
+   * influence reconciliation, execution order, or adapter behavior.
+   *
+   * Optional for backward compatibility.
+   */
+  readonly surfaceMetadata?: import('@aesthetic-function/shared/surfaceMetadata').SurfaceMetadata;
+
+  /**
    * Check if this adapter supports the given JSX element.
    *
    * @param node - The JSX element node from Babel AST

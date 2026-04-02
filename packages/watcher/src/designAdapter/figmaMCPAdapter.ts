@@ -27,6 +27,7 @@ import type {
   DesignFileData,
   DesignScreenshot,
 } from '@aesthetic-function/shared/designAdapter';
+import type { SurfaceMetadata } from '@aesthetic-function/shared/surfaceMetadata';
 
 // =============================================================================
 // MOCK DATA
@@ -151,6 +152,14 @@ export class FigmaMCPAdapter implements DesignAdapter {
   readonly id = 'figma-mcp';
   readonly displayName = 'Figma MCP Adapter';
   readonly version = '0.1.0';
+
+  /** Surface classification: design tool, read-only, non-authoritative, observational */
+  readonly surfaceMetadata: SurfaceMetadata = {
+    surfaceType: 'design',
+    accessMode: 'read-only',
+    authorityRole: 'external-non-authoritative',
+    stability: 'observational',
+  };
 
   /** Whether this stub is configured to be "available" */
   private available: boolean;

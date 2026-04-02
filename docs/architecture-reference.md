@@ -30,7 +30,7 @@ As of Phase 14F, the reconciliation system is **feature-complete and stable**. T
 
 Phase 15 adds a configuration layer, named policy profiles, artifact inspection tooling, and a unified `af` CLI control surface. No reconciliation semantics changed.
 
-Phase 16 adds a design adapter interface and a Figma Console MCP adapter. The adapter is read-only and non-authoritative. It does not participate in reconciliation decisions.
+Phase 16 adds a design adapter interface, a Figma Console MCP adapter, and a surface classification metadata layer. Adapters are read-only and non-authoritative. They do not participate in reconciliation decisions. The surface classification layer categorizes adapters along four independent dimensions (surface type, access mode, authority role, stability) without affecting behavior.
 
 ---
 
@@ -408,6 +408,15 @@ Phase 16 adds a design adapter interface and a Figma Console MCP adapter. The ad
 | `af ci` — Delegate to figma:ci | ✅ |
 | `af artifacts list\|inspect\|trace` — Delegate to artifact inspector | ✅ |
 | Config → env var bridge (no logic duplication) | ✅ |
+| **Surface Classification Metadata (Phase 16A Extension)** | |
+| SurfaceMetadata types (SurfaceType, AccessMode, AuthorityRole, StabilityLevel) | ✅ |
+| Optional surfaceMetadata on DesignAdapter and SemanticAdapter | ✅ |
+| getDesignAdaptersBySurface() read-only query helper | ✅ |
+| getSemanticAdaptersBySurface() read-only query helper | ✅ |
+| Figma MCP adapters classified: design / read-only / observational | ✅ |
+| Semantic adapters classified: runtime / no-mutation / derived | ✅ |
+| Storybook adapter stub (runtime / read-only / observational) | ✅ |
+| No reconciliation logic modified | ✅ |
 
 ---
 
@@ -523,6 +532,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 15C** | Unified `af` CLI Control Surface | ✅ |
 | **Phase 15D** | Artifact Inspector + Audit Trail Expansion | ✅ |
 | **Phase 16A** | Design Adapter Interface (verification-scoped) | ✅ |
+| **Phase 16A.1** | Surface Classification Metadata (adapter taxonomy) | ✅ |
 | **Phase 16B** | Figma Console MCP Adapter (read-only) | ✅ |
 
 ### Not Implemented Yet
@@ -547,6 +557,7 @@ The reconciliation system is **feature-complete through Phase 14F**. Key capabil
 - **Unified Reconcile CLI (14A–14F)**: `figma:reconcile` entry point, profiles (local/record/ci), bundle artifacts, GitHub Actions matrix workflow, multi-source discovery
 - **Configuration & Profiles (15A–15B)**: `af.config.json`, named policy profiles (designer-first, code-first, balanced, strict-review)
 - **CLI & Inspector (15C–15D)**: Unified `af` CLI (control surface, not runtime), artifact listing/inspection/trace
+- **Design Adapters (16A–16B)**: Read-only design adapter interface, Figma Console MCP adapter, surface classification metadata (taxonomy layer for adapter categorization)
 
 Echo suppression prevents feedback loops when AST writes trigger file save events.
 
@@ -5440,6 +5451,85 @@ export FIGMA_FILE_KEY=your-file-key
 | Typecheck clean (all packages) | ✅ | shared, server, cli, watcher | Zero errors across all packages |
 | Branch: no merge, no 16C | ✅ | `feat/16b-figma-console-mcp-readonly-adapter` | All corrections on same branch |
 | Deviation: MCP SDK in watcher (not separate package) | ⚠️ | `packages/watcher/package.json` | plan.md suggested `packages/adapters/figma-mcp/`. Kept in watcher for simplicity; can extract later. |
+
+---
+
+### Surface Classification Metadata (Phase 16A Extension)
+
+Phase 16A.1 adds a **taxonomy/descriptor layer** for adapters. This allows AF to categorize external UI surfaces (design tools, runtime views, generators, inspection sources) without introducing any new authority into reconciliation.
+
+**This is a classification layer only.** It does not affect reconciliation logic, precedence, execution order, or mutation paths.
+
+#### Design Principle
+
+Surface metadata consists of four **independent dimensions** that must not be conflated:
+
+| Dimension | Type | Description |
+|-----------|------|-------------|
+| **Surface Type** | `SurfaceType` | What kind of UI surface: `design`, `runtime`, `generation`, `inspection` |
+| **Access Mode** | `AccessMode` | Mutation capability: `read-only`, `no-mutation`, `internal-write` |
+| **Authority Role** | `AuthorityRole` | Whether AF treats data as authoritative: `external-non-authoritative`, `internal-authoritative` |
+| **Stability** | `StabilityLevel` | Data stability: `canonical`, `derived`, `observational` |
+
+#### Interface
+
+```ts
+interface SurfaceMetadata {
+  surfaceType: SurfaceType;
+  accessMode: AccessMode;
+  authorityRole: AuthorityRole;
+  stability: StabilityLevel;
+}
+```
+
+The `surfaceMetadata` field is **optional** on both `DesignAdapter` and `SemanticAdapter` interfaces to preserve backward compatibility.
+
+#### Current Classifications
+
+| Adapter | Surface Type | Access Mode | Authority Role | Stability |
+|---------|-------------|-------------|----------------|-----------|
+| FigmaMCPAdapter | `design` | `read-only` | `external-non-authoritative` | `observational` |
+| FigmaConsoleMCPAdapter | `design` | `read-only` | `external-non-authoritative` | `observational` |
+| VuetifySemanticAdapter | `runtime` | `no-mutation` | `external-non-authoritative` | `derived` |
+| AntdSemanticAdapter | `runtime` | `no-mutation` | `external-non-authoritative` | `derived` |
+| StorybookAdapter (stub) | `runtime` | `read-only` | `external-non-authoritative` | `observational` |
+
+#### Query Helpers
+
+```ts
+// Design adapter registry
+getDesignAdaptersBySurface('design')    // → [FigmaMCPAdapter, FigmaConsoleMCPAdapter]
+getDesignAdaptersBySurface('runtime')   // → [StorybookAdapter]
+
+// Semantic adapter registry
+getSemanticAdaptersBySurface('runtime') // → [VuetifySemanticAdapter, AntdSemanticAdapter]
+```
+
+Adapters without `surfaceMetadata` are excluded from surface-type queries.
+
+#### Explicit Non-Goals
+
+The following are **internal reconciliation inputs** and MUST NOT be modeled as adapters:
+
+- `design-overrides.json`
+- Marker extraction
+- AST-derived values
+
+These remain governed exclusively by the frozen reconciliation precedence: `override > marker > ast > code`.
+
+#### Future Extensibility
+
+New adapters (Penpot, UXPilot, Storybook, etc.) can be classified using the same four dimensions without refactoring:
+
+```ts
+// Example: future Penpot adapter
+readonly surfaceMetadata: SurfaceMetadata = {
+  surfaceType: 'design',
+  accessMode: 'read-only',
+  authorityRole: 'external-non-authoritative',
+  stability: 'observational',
+};
+```
 
 ---
 

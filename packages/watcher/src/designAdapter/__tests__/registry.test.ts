@@ -13,6 +13,7 @@ import {
   getDesignAdapter,
   getAvailableAdapter,
   clearDesignAdapters,
+  getDesignAdaptersBySurface,
 } from '../registry.js';
 
 // =============================================================================
@@ -150,5 +151,100 @@ describe('designAdapter/registry', () => {
     expect(getRegisteredDesignAdapters()).toHaveLength(2);
     clearDesignAdapters();
     expect(getRegisteredDesignAdapters()).toHaveLength(0);
+  });
+
+  // ===========================================================================
+  // SURFACE METADATA QUERIES (Phase 16A Extension)
+  // ===========================================================================
+
+  describe('getDesignAdaptersBySurface', () => {
+    it('returns adapters matching surface type', () => {
+      const designAdapter = createMockAdapter({
+        id: 'figma',
+        surfaceMetadata: {
+          surfaceType: 'design',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      const runtimeAdapter = createMockAdapter({
+        id: 'storybook',
+        surfaceMetadata: {
+          surfaceType: 'runtime',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      registerDesignAdapter(designAdapter);
+      registerDesignAdapter(runtimeAdapter);
+
+      const designResults = getDesignAdaptersBySurface('design');
+      expect(designResults).toHaveLength(1);
+      expect(designResults[0].id).toBe('figma');
+
+      const runtimeResults = getDesignAdaptersBySurface('runtime');
+      expect(runtimeResults).toHaveLength(1);
+      expect(runtimeResults[0].id).toBe('storybook');
+    });
+
+    it('returns empty array when no adapters match', () => {
+      const adapter = createMockAdapter({
+        id: 'figma',
+        surfaceMetadata: {
+          surfaceType: 'design',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      registerDesignAdapter(adapter);
+      expect(getDesignAdaptersBySurface('generation')).toHaveLength(0);
+    });
+
+    it('excludes adapters without surfaceMetadata', () => {
+      const withMeta = createMockAdapter({
+        id: 'with-meta',
+        surfaceMetadata: {
+          surfaceType: 'design',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      const withoutMeta = createMockAdapter({ id: 'no-meta' });
+      registerDesignAdapter(withMeta);
+      registerDesignAdapter(withoutMeta);
+
+      expect(getDesignAdaptersBySurface('design')).toHaveLength(1);
+      expect(getDesignAdaptersBySurface('design')[0].id).toBe('with-meta');
+    });
+
+    it('returns multiple adapters of the same surface type', () => {
+      const a1 = createMockAdapter({
+        id: 'figma-mcp',
+        surfaceMetadata: {
+          surfaceType: 'design',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      const a2 = createMockAdapter({
+        id: 'figma-console-mcp',
+        surfaceMetadata: {
+          surfaceType: 'design',
+          accessMode: 'read-only',
+          authorityRole: 'external-non-authoritative',
+          stability: 'observational',
+        },
+      });
+      registerDesignAdapter(a1);
+      registerDesignAdapter(a2);
+
+      const results = getDesignAdaptersBySurface('design');
+      expect(results).toHaveLength(2);
+    });
   });
 });

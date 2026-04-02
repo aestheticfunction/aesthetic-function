@@ -34,6 +34,7 @@ import type {
   AdapterContext,
   AdapterProvenance,
 } from './types.js';
+import type { SurfaceType } from '@aesthetic-function/shared/surfaceMetadata';
 
 // =============================================================================
 // REGISTRY STATE
@@ -106,6 +107,23 @@ export function lockRegistry(): void {
  */
 export function unlockRegistry(): void {
   isLocked = false;
+}
+
+// =============================================================================
+// SURFACE METADATA QUERIES (Phase 16A Extension)
+// =============================================================================
+
+/**
+ * Get all registered semantic adapters that match a given surface type.
+ *
+ * Read-only query helper. Does not affect registration, priority, or execution.
+ * Adapters without surfaceMetadata are excluded from surface-type queries.
+ *
+ * @param surfaceType - The surface type to filter by
+ * @returns Array of matching adapters in priority order
+ */
+export function getSemanticAdaptersBySurface(surfaceType: SurfaceType): readonly SemanticAdapter[] {
+  return registeredAdapters.filter((a) => a.surfaceMetadata?.surfaceType === surfaceType);
 }
 
 // =============================================================================

@@ -263,6 +263,17 @@ export interface DesignAdapter {
   readonly version: string;
 
   /**
+   * Surface classification metadata (Phase 16A Extension).
+   *
+   * Categorizes the external surface this adapter connects to along
+   * four independent dimensions. This is a read-only descriptor that
+   * does NOT influence reconciliation, execution order, or adapter behavior.
+   *
+   * Optional for backward compatibility.
+   */
+  readonly surfaceMetadata?: import('./surfaceMetadata.js').SurfaceMetadata;
+
+  /**
    * Check if the adapter is available and configured.
    * Returns true if the adapter can make requests.
    */

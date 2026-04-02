@@ -14,6 +14,7 @@
  */
 
 import type { DesignAdapter } from '@aesthetic-function/shared/designAdapter';
+import type { SurfaceType } from '@aesthetic-function/shared/surfaceMetadata';
 
 // =============================================================================
 // REGISTRY STATE
@@ -76,4 +77,21 @@ export async function getAvailableAdapter(): Promise<DesignAdapter | null> {
  */
 export function clearDesignAdapters(): void {
   adapters.length = 0;
+}
+
+// =============================================================================
+// SURFACE METADATA QUERIES (Phase 16A Extension)
+// =============================================================================
+
+/**
+ * Get all registered design adapters that match a given surface type.
+ *
+ * Read-only query helper. Does not affect registration, priority, or execution.
+ * Adapters without surfaceMetadata are excluded from surface-type queries.
+ *
+ * @param surfaceType - The surface type to filter by
+ * @returns Array of matching adapters in registration order
+ */
+export function getDesignAdaptersBySurface(surfaceType: SurfaceType): readonly DesignAdapter[] {
+  return adapters.filter((a) => a.surfaceMetadata?.surfaceType === surfaceType);
 }

@@ -48,6 +48,7 @@ import type {
   DesignFileData,
   DesignScreenshot,
 } from '@aesthetic-function/shared/designAdapter';
+import type { SurfaceMetadata } from '@aesthetic-function/shared/surfaceMetadata';
 
 // =============================================================================
 // CONFIGURATION
@@ -566,6 +567,14 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
   readonly id = 'figma-console-mcp';
   readonly displayName = 'Figma Console MCP Adapter';
   readonly version = '0.2.0';
+
+  /** Surface classification: design tool, read-only, non-authoritative, observational */
+  readonly surfaceMetadata: SurfaceMetadata = {
+    surfaceType: 'design',
+    accessMode: 'read-only',
+    authorityRole: 'external-non-authoritative',
+    stability: 'observational',
+  };
 
   private config: FigmaConsoleMCPConfig;
   private apiOptions: FigmaApiOptions;

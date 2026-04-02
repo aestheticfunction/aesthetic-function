@@ -12,6 +12,7 @@ export {
   getDesignAdapter,
   getAvailableAdapter,
   clearDesignAdapters,
+  getDesignAdaptersBySurface,
 } from './registry.js';
 
 export {
@@ -24,6 +25,10 @@ export { FigmaMCPAdapter } from './figmaMCPAdapter.js';
 export { FigmaConsoleMCPAdapter } from './figmaConsoleMCPAdapter.js';
 export type { FigmaConsoleMCPConfig, MCPTransportMode } from './figmaConsoleMCPAdapter.js';
 export { BLOCKED_MCP_TOOLS, BLOCKED_TOOL_NAMES, ALLOWED_MCP_TOOLS, ALLOWED_TOOL_NAMES } from './figmaConsoleMCPAdapter.js';
+
+// Stub only — NOT auto-registered. Validates the Surface Classification Metadata model.
+// Future Storybook integration would replace this with a real implementation.
+export { StorybookAdapter } from './storybookAdapter.js';
 
 export type {
   NormalizedToken,
