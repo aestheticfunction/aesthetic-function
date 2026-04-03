@@ -7,6 +7,7 @@
   "scripts": {
     "build": "esbuild src/code.ts --bundle --outfile=dist/code.js --format=esm --target=es2017 && cp src/ui.html dist/ui.html",
     "dev": "pnpm build --watch",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
@@ -16,6 +17,7 @@
   "devDependencies": {
     "@figma/plugin-typings": "^1.85.0",
     "esbuild": "^0.19.11",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^1.6.0"
   }
 }

@@ -417,7 +417,26 @@ function resolveTargetNode(
     };
   }
 
-  // No variant state - standard resolution
+  // No variant state — try Component Set + base variant BEFORE findNodeByName.
+  // WHY: findNodeByName("LoginButton") depth-first hits the COMPONENT_SET root,
+  // not the base variant COMPONENT inside it. By resolving via Component Set first,
+  // bare "LoginButton" gets the correct base/default variant node.
+  const setResult = findComponentSetByName(nodeQuery);
+  if (setResult.set) {
+    const baseResult = findVariantByState(setResult.set, 'base');
+    if (baseResult.component) {
+      console.log(
+        `[Plugin] Resolved base variant via Component Set: "${nodeQuery}" → "${baseResult.component.name}" (${baseResult.component.type})`
+      );
+      return { node: baseResult.component, source: 'variant' };
+    }
+    // Component Set exists but no base variant found — fall through to name search
+    console.log(
+      `[Plugin] Component Set "${nodeQuery}" found but no base variant (available: ${baseResult.available?.join(', ')})`
+    );
+  }
+
+  // Standard name-based resolution (for nodes without a matching Component Set)
   const node = findNodeByName(nodeQuery);
   if (node) {
     return { node, source: 'name' };
@@ -776,26 +795,185 @@ async function loadAllFontsForTextNode(textNode: TextNode): Promise<void> {
 }
 
 /**
- * Execute SET_FILL operation
- * Changes the fill color of a node that supports fills
+ * Shape types that are valid targets for SET_FILL.
+ * WHY: Explicit allowlist prevents accidentally filling TEXT nodes
+ * (which have a `fills` property for text color, not background).
+ */
+const FILL_SHAPE_TYPES = new Set([
+  'RECTANGLE', 'ELLIPSE', 'VECTOR', 'LINE', 'STAR', 'POLYGON', 'BOOLEAN_OPERATION',
+]);
+
+/**
+ * Container types that may wrap visual shape children.
+ */
+const FILL_CONTAINER_TYPES = new Set([
+  'COMPONENT', 'COMPONENT_SET', 'FRAME', 'INSTANCE', 'GROUP',
+]);
+
+/**
+ * Container types that can own their own visible background fill.
+ * WHY: FRAME, COMPONENT, and INSTANCE commonly carry the background fill
+ * directly (no inner RECTANGLE). This is normal Figma structure.
+ * COMPONENT_SET and GROUP are excluded — they are organizational wrappers.
+ */
+const SELF_FILL_TYPES = new Set([
+  'FRAME', 'COMPONENT', 'INSTANCE',
+]);
+
+/**
+ * Find the visual shape target for SET_FILL inside a container.
+ * Returns null if no child shape exists (caller decides on container-self fallback).
+ *
+ * INVARIANT: Never returns a TEXT node.
+ */
+function findFillShapeInContainer(container: SceneNode, depth: number = 0): SceneNode | null {
+  if (!('children' in container)) return null;
+  if (depth > 3) return null;
+
+  const children = (container as ChildrenMixin).children;
+
+  // 1. Direct child named "background" or "fill" that is a shape
+  for (const child of children) {
+    if (
+      FILL_SHAPE_TYPES.has(child.type) &&
+      (child.name.toLowerCase() === 'background' || child.name.toLowerCase() === 'fill')
+    ) {
+      return child;
+    }
+  }
+
+  // 2. First direct child that is a shape type
+  for (const child of children) {
+    if (FILL_SHAPE_TYPES.has(child.type)) {
+      return child;
+    }
+  }
+
+  // 3. Recurse into container children only (never into TEXT or shapes)
+  for (const child of children) {
+    if (FILL_CONTAINER_TYPES.has(child.type) && 'children' in child) {
+      const nested = findFillShapeInContainer(child, depth + 1);
+      if (nested) return nested;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Execute SET_FILL operation.
+ *
+ * Two-phase target resolution:
+ * Phase 1 (variant): getTargetNode resolves query to the correct variant/node
+ * Phase 2 (property): Determine the actual fill target:
+ *   - If node is a shape → fill directly
+ *   - If node is a container → prefer child shape, fall back to container-self
+ *     for FRAME/COMPONENT/INSTANCE (they own visible background fills)
+ *   - Never fill TEXT or COMPONENT_SET
  */
 function executeSetFill(op: SetFillOperation): { success: boolean; error?: string } {
   const node = getTargetNode(op);
 
   if (!node) {
+    console.log(JSON.stringify({
+      diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null,
+      resolvedNode: null, result: 'skip', reason: 'no target node resolved',
+    }));
     return { success: false, error: 'No target node found. Select a node or provide nodeId/nodeQuery.' };
   }
 
-  // Check if node supports fills
-  if (!('fills' in node)) {
-    return { success: false, error: `Node "${node.name}" (${node.type}) does not support fills` };
+  // Phase 2: Determine the actual fill target
+  let fillTarget: SceneNode = node;
+  let targetMode: 'direct-shape' | 'child-visual' | 'container-self' | 'rejected-text' | 'rejected-component-set' | 'ambiguous-skip' = 'direct-shape';
+  let childSearchRan = false;
+  let selfFillConsidered = false;
+
+  // Reject TEXT unconditionally
+  if (node.type === 'TEXT') {
+    targetMode = 'rejected-text';
+    console.log(JSON.stringify({
+      diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null, color: op.color,
+      resolvedNode: { name: node.name, id: node.id, type: node.type },
+      finalTarget: null, targetMode, childSearchRan, selfFillConsidered,
+      result: 'skip', reason: 'TEXT nodes are not valid SET_FILL targets',
+    }));
+    return { success: false, error: `SET_FILL rejected: "${node.name}" is a TEXT node.` };
+  }
+
+  // Reject COMPONENT_SET unconditionally
+  if (node.type === 'COMPONENT_SET') {
+    targetMode = 'rejected-component-set';
+    console.log(JSON.stringify({
+      diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null, color: op.color,
+      resolvedNode: { name: node.name, id: node.id, type: node.type },
+      finalTarget: null, targetMode, childSearchRan, selfFillConsidered,
+      result: 'skip', reason: 'COMPONENT_SET is not a valid SET_FILL target',
+    }));
+    return { success: false, error: `SET_FILL rejected: "${node.name}" is a COMPONENT_SET.` };
+  }
+
+  if (FILL_SHAPE_TYPES.has(node.type)) {
+    // Node is already a shape — apply directly
+    fillTarget = node;
+    targetMode = 'direct-shape';
+  } else if (FILL_CONTAINER_TYPES.has(node.type)) {
+    // Node is a container — prefer child shape, fall back to container-self
+    childSearchRan = true;
+    const shape = findFillShapeInContainer(node);
+    if (shape) {
+      fillTarget = shape;
+      targetMode = 'child-visual';
+    } else if (SELF_FILL_TYPES.has(node.type) && 'fills' in node) {
+      // Container owns its own background fill (FRAME, COMPONENT, INSTANCE)
+      // WHY: Many Figma components carry the background fill on the container
+      // itself with no inner RECTANGLE. This is normal Figma structure.
+      fillTarget = node;
+      targetMode = 'container-self';
+      selfFillConsidered = true;
+    } else {
+      // GROUP or unsupported container with no child shape
+      targetMode = 'ambiguous-skip';
+      console.log(JSON.stringify({
+        diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null, color: op.color,
+        resolvedNode: { name: node.name, id: node.id, type: node.type },
+        finalTarget: null, targetMode, childSearchRan, selfFillConsidered,
+        result: 'skip', reason: 'no valid fill target found',
+      }));
+      return {
+        success: false,
+        error: `No valid fill target for "${node.name}" (${node.type}). SET_FILL skipped.`,
+      };
+    }
+  } else {
+    // Unknown non-shape, non-container type (e.g., SLICE)
+    targetMode = 'ambiguous-skip';
+    console.log(JSON.stringify({
+      diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null, color: op.color,
+      resolvedNode: { name: node.name, id: node.id, type: node.type },
+      finalTarget: null, targetMode, childSearchRan, selfFillConsidered,
+      result: 'skip', reason: `node type ${node.type} is not a valid fill target`,
+    }));
+    return {
+      success: false,
+      error: `Node "${node.name}" (${node.type}) is not a valid SET_FILL target.`,
+    };
+  }
+
+  // Apply fill
+  if (!('fills' in fillTarget)) {
+    return { success: false, error: `Node "${fillTarget.name}" (${fillTarget.type}) does not support fills` };
   }
 
   try {
     const rgb = hexToRgb(op.color);
-    // WHY: Figma fills are readonly, so we must replace the entire array
-    (node as GeometryMixin).fills = [{ type: 'SOLID', color: rgb }];
-    console.log(`[Plugin] SET_FILL: "${op.color}" on node "${node.name}"`);
+    (fillTarget as GeometryMixin).fills = [{ type: 'SOLID', color: rgb }];
+    console.log(JSON.stringify({
+      diagnostic: 'SET_FILL', nodeQuery: op.nodeQuery ?? null, color: op.color,
+      resolvedNode: { name: node.name, id: node.id, type: node.type },
+      finalTarget: { name: fillTarget.name, id: fillTarget.id, type: fillTarget.type },
+      targetMode, childSearchRan, selfFillConsidered,
+      result: 'applied',
+    }));
     return { success: true };
   } catch (err) {
     return { success: false, error: `Failed to set fill: ${err}` };

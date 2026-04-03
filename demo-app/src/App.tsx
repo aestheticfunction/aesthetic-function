@@ -19,12 +19,10 @@
 import React from 'react';
 
 // =============================================================================
-// LOGIN BUTTON
+// DEMO BUTTON
 // =============================================================================
 
-// @figma node=LoginButton text="Login" fill=#0000FF
-// @figma node=LoginButton::hover text="Hover" fill=#2563EB
-export function LoginButton() {
+export function DemoButton() {
   return (
     <button
       style={{
