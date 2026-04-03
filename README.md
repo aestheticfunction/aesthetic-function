@@ -35,7 +35,7 @@ It is the system that keeps them aligned over time.
 </p>
 
 <p align="center">
-  <a href="https://github.com/user-attachments/assets/d9c3756b-3458-4d45-8d1b-fad9ad75a964">
+  <a href="https://github-production-user-asset-6210df.s3.amazonaws.com/955217/573682867-d9c3756b-3458-4d45-8d1b-fad9ad75a964.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260403%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260403T223311Z&X-Amz-Expires=300&X-Amz-Signature=18ec3cc86fd57e3f254e0826bb15ad34068e41d8ecb53dabec8c78218f8daa95&X-Amz-SignedHeaders=host">
     <img src="./assets/demo-thumbnail.png" alt="Aesthetic Function Demo" width="100%" />
   </a>
 </p>
