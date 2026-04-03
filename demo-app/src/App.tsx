@@ -22,6 +22,9 @@ import React from 'react';
 // DEMO BUTTON
 // =============================================================================
 
+// @figma node=DemoButton text="Demo" fill=#0000FF
+// @figma node=DemoButton::hover fill=#2563EB
+
 export function DemoButton() {
   return (
     <button
@@ -36,7 +39,7 @@ export function DemoButton() {
         cursor: 'pointer'
       }}>
 
-      Continue
+      CONTINUE
     </button>);
 
 }

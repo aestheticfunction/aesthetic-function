@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./assets/banner.png" alt="Aesthetic Function Banner" width="90%" />
+  <img src="./assets/banner.png" alt="Aesthetic Function Banner" width="100%" />
 </p>
 
 <h1 align="center">Aesthetic Function</h1>
@@ -27,6 +27,18 @@ This is a new category: a control plane for UI systems.
 AF is not a design tool. It is not a code generator.
 
 It is the system that keeps them aligned over time.
+
+## Demo
+
+<p align="center">
+  <strong>Change code or design — AF keeps them aligned automatically.</strong>
+</p>
+
+<p align="center">
+  <a href="./assets/af-demo.mp4">
+    <img src="./assets/demo-thumbnail.png" alt="Aesthetic Function Demo" width="100%" />
+  </a>
+</p>
 
 ## Why Now
 
