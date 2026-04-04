@@ -35,7 +35,7 @@ It is the system that keeps them aligned over time.
 </p>
 
 <p align="center">
-  <a href="https://github.com/user-attachments/assets/08dc886f-efe8-47f2-95de-0dc0ccf5aa2b">
+  <a href="https://github.com/user-attachments/assets/a7664e8c-4297-44d7-9a69-47f453811ff3">
     <img src="./assets/demo-thumbnail.png" alt="Aesthetic Function Demo" width="100%" />
   </a>
 </p>
