@@ -34,11 +34,7 @@ It is the system that keeps them aligned over time.
   <strong>Change code or design — AF keeps them aligned automatically.</strong>
 </p>
 
-<p align="center">
-  <a href="https://youtu.be/DgQw3mlu1HM">
-    <img src="./assets/demo-thumbnail.png" alt="Aesthetic Function Demo" width="100%" />
-  </a>
-</p>
+https://github.com/user-attachments/assets/7842cacb-3759-4794-b350-716b2bc15766
 
 ## Why Now
 
