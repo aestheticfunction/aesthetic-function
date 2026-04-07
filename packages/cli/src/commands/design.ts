@@ -23,6 +23,7 @@ const SUBCOMMANDS: Record<string, string> = {
   inspect: 'designAdapter/cliDesignInspect.ts',
   screenshot: 'designAdapter/cliDesignScreenshot.ts',
   component: 'designAdapter/cliDesignComponent.ts',
+  drift: 'crossSurfaceDrift/cliCrossSurfaceDrift.ts',
 };
 
 function printHelp(): void {
@@ -37,6 +38,7 @@ Subcommands:
   inspect --all            Inspect all design components
   screenshot               Capture a design screenshot
   component [name]         List or inspect design components
+  drift [component]        Cross-surface drift analysis (Figma vs Storybook vs Code)
 
 Options (all subcommands):
   --json                   Output JSON format
@@ -50,7 +52,9 @@ Examples:
   af design inspect Button
   af design inspect --all --verbose
   af design screenshot --node 1:100
-  af design component Button`);
+  af design component Button
+  af design drift Button
+  af design drift --json --include-uncorroborated`);
 }
 
 export async function design(args: string[]): Promise<number> {
@@ -65,7 +69,7 @@ export async function design(args: string[]): Promise<number> {
   const modulePath = SUBCOMMANDS[subcommand];
   if (!modulePath) {
     console.error(`Unknown design subcommand: ${subcommand}`);
-    console.error('Valid subcommands: pull, tokens, inspect, screenshot, component');
+    console.error('Valid subcommands: pull, tokens, inspect, screenshot, component, drift');
     return 2;
   }
 
