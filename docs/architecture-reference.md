@@ -534,6 +534,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 16A** | Design Adapter Interface (verification-scoped) | ✅ |
 | **Phase 16A.1** | Surface Classification Metadata (adapter taxonomy) | ✅ |
 | **Phase 16B** | Figma Console MCP Adapter (read-only) | ✅ |
+| **Phase 16C** | Storybook MCP Adapter + Cross-Surface Drift Analysis | ✅ |
 
 ### Not Implemented Yet
 
@@ -557,7 +558,7 @@ The reconciliation system is **feature-complete through Phase 14F**. Key capabil
 - **Unified Reconcile CLI (14A–14F)**: `figma:reconcile` entry point, profiles (local/record/ci), bundle artifacts, GitHub Actions matrix workflow, multi-source discovery
 - **Configuration & Profiles (15A–15B)**: `af.config.json`, named policy profiles (designer-first, code-first, balanced, strict-review)
 - **CLI & Inspector (15C–15D)**: Unified `af` CLI (control surface, not runtime), artifact listing/inspection/trace
-- **Design Adapters (16A–16B)**: Read-only design adapter interface, Figma Console MCP adapter, surface classification metadata (taxonomy layer for adapter categorization)
+- **Design Adapters (16A–16C)**: Read-only design adapter interface, Figma Console MCP adapter, Storybook MCP adapter, surface classification metadata, cross-surface drift analysis
 
 Echo suppression prevents feedback loops when AST writes trigger file save events.
 

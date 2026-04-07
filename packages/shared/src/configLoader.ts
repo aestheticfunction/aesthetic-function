@@ -70,6 +70,13 @@ export const DEFAULT_CONFIG: ResolvedAfConfig = {
   audit: {
     enabled: false,
   },
+  storybook: {
+    url: 'http://localhost:6006',
+    mcpPath: '/mcp',
+    timeout: 30000,
+    enabled: false,
+    framework: 'react',
+  },
   _source: null,
 };
 
@@ -254,6 +261,27 @@ function validateAfConfig(raw: Record<string, unknown>): AfConfig {
     }
   }
 
+  // Storybook (Phase 16C)
+  if (typeof raw.storybook === 'object' && raw.storybook !== null && !Array.isArray(raw.storybook)) {
+    const sb = raw.storybook as Record<string, unknown>;
+    config.storybook = {};
+    if (typeof sb.url === 'string' && sb.url.length > 0) {
+      config.storybook.url = sb.url;
+    }
+    if (typeof sb.mcpPath === 'string' && sb.mcpPath.length > 0) {
+      config.storybook.mcpPath = sb.mcpPath;
+    }
+    if (typeof sb.timeout === 'number' && sb.timeout > 0) {
+      config.storybook.timeout = sb.timeout;
+    }
+    if (typeof sb.enabled === 'boolean') {
+      config.storybook.enabled = sb.enabled;
+    }
+    if (sb.framework === 'react') {
+      config.storybook.framework = sb.framework;
+    }
+  }
+
   return config;
 }
 
@@ -353,6 +381,17 @@ function applyEnvOverrides(base: ResolvedAfConfig): ResolvedAfConfig {
     config.audit.enabled = false;
   }
 
+  // Storybook
+  if (process.env.STORYBOOK_URL) {
+    config.storybook.url = process.env.STORYBOOK_URL;
+  }
+  const storybookEnabled = process.env.STORYBOOK_ENABLED?.toLowerCase();
+  if (storybookEnabled === 'true' || storybookEnabled === '1') {
+    config.storybook.enabled = true;
+  } else if (storybookEnabled === 'false' || storybookEnabled === '0') {
+    config.storybook.enabled = false;
+  }
+
   return config;
 }
 
@@ -395,6 +434,13 @@ function mergeFileConfig(defaults: ResolvedAfConfig, file: AfConfig, source: str
 
   // Audit
   if (file.audit?.enabled !== undefined) config.audit.enabled = file.audit.enabled;
+
+  // Storybook
+  if (file.storybook?.url !== undefined) config.storybook.url = file.storybook.url;
+  if (file.storybook?.mcpPath !== undefined) config.storybook.mcpPath = file.storybook.mcpPath;
+  if (file.storybook?.timeout !== undefined) config.storybook.timeout = file.storybook.timeout;
+  if (file.storybook?.enabled !== undefined) config.storybook.enabled = file.storybook.enabled;
+  if (file.storybook?.framework !== undefined) config.storybook.framework = file.storybook.framework;
 
   return config;
 }

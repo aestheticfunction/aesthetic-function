@@ -11,6 +11,8 @@ export * from './config.js';
 export * from './policy.js';
 export * from './designAdapter.js';
 export * from './surfaceMetadata.js';
+export * from './storybookAdapter.js';
+export * from './crossSurfaceDrift.js';
 export {
   loadAfConfig,
   findConfigFile,

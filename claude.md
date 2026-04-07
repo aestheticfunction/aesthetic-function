@@ -22,6 +22,12 @@ This repository implements an AI-driven Code → Design synchronization system.
    - ui.html: network allowed
    - code.ts: NO network, NO filesystem
 
+4. Storybook Dev Server (optional, Phase 16C)
+   - Runs on http://localhost:6006 (configurable)
+   - Exposes MCP endpoint via @storybook/addon-mcp at /mcp
+   - Read-only data source for cross-surface drift analysis
+   - Start with: `pnpm dev:storybook`
+
 ## Protocol Rules
 - All cross-process communication uses shared TypeScript interfaces
 - Single canonical protocol file: `/packages/shared/src/protocol.ts`
@@ -32,6 +38,12 @@ This repository implements an AI-driven Code → Design synchronization system.
 - When JSON is requested, output JSON only
 - Never mix explanation with structured output
 - Retry with repair prompts if validation fails
+
+## Design Adapter Rules
+- Adapters are read-only with default-deny tool policies
+- Storybook MCP adapter: `af design drift [component]` for cross-surface analysis
+- Storybook adapter requires dev server running (`pnpm dev:storybook`)
+- Cross-surface drift is a separate analysis pass — it does NOT modify reconciliation
 
 ## Design Token Rules
 - Prefer semantic tokens over raw values

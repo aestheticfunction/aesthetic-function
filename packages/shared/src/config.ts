@@ -149,6 +149,25 @@ export interface AfConfig {
     /** Enable audit logging to sync-log.md. Default: false */
     enabled?: boolean;
   };
+
+  /**
+   * Storybook MCP adapter configuration (Phase 16C).
+   *
+   * Connects to @storybook/addon-mcp running inside the Storybook dev server
+   * to pull structured component metadata for cross-surface drift analysis.
+   */
+  storybook?: {
+    /** URL of the Storybook dev server (e.g., http://localhost:6006). Default: http://localhost:6006 */
+    url?: string;
+    /** MCP endpoint path. Default: '/mcp' */
+    mcpPath?: string;
+    /** Request timeout in ms. Default: 30000 */
+    timeout?: number;
+    /** Enable/disable the Storybook adapter. Default: false */
+    enabled?: boolean;
+    /** Expected framework. Adapter validates at startup and rejects non-matching. Default: 'react' */
+    framework?: 'react';
+  };
 }
 
 // =============================================================================
@@ -192,6 +211,14 @@ export interface ResolvedAfConfig {
 
   audit: {
     enabled: boolean;
+  };
+
+  storybook: {
+    url: string;
+    mcpPath: string;
+    timeout: number;
+    enabled: boolean;
+    framework: 'react';
   };
 
   /** Where the config was loaded from, or null if using defaults */

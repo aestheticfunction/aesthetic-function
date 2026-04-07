@@ -97,7 +97,7 @@ It keeps them in sync continuously.
 | **Reconciled** | Design overrides, code markers, AST values, and defaults are merged with explicit precedence: `override > marker > ast > code`. |
 | **Auditable** | Every operation produces artifacts. Every decision is traceable. CI gates enforce drift thresholds. |
 | **Safe** | Dry-run by default. Opt-in writes. Echo suppression prevents feedback loops. Rollback previews before destructive changes. |
-| **Read-only adapters** | External integrations (e.g., Figma MCP, Storybook) are read-only with default-deny tool policies. Adapters are classified by surface type, access mode, authority role, and stability. AF is the only mutation authority. |
+| **Read-only adapters** | External integrations (Figma MCP, Storybook MCP) are read-only with default-deny tool policies. Adapters are classified by surface type, access mode, authority role, and stability. AF is the only mutation authority. |
 
 ### How It Differs From…
 
@@ -106,6 +106,7 @@ It keeps them in sync continuously.
 | **Prompt-to-code** (v0, Bolt, etc.) | AF doesn't generate code from designs. It *reconciles* code and design as a continuous system. |
 | **Design token export** (Style Dictionary, etc.) | AF goes beyond tokens — it syncs component structure, variants, states, and properties bidirectionally. |
 | **MCP integrations** (figma-console-mcp, etc.) | AF uses MCP as a *read-only data source*, never as a mutation path. AF's control plane is watcher → server → plugin. |
+| **Storybook MCP** (@storybook/addon-mcp) | AF connects to Storybook's MCP endpoint to read component metadata for cross-surface drift analysis — it does not run or control Storybook. |
 | **Figma plugins** (code-gen plugins) | AF's plugin is a *mutation executor*, not a decision-maker. Reconciliation happens in the watcher. |
 
 ## Architecture
@@ -200,6 +201,7 @@ Available profiles: `designer-first`, `code-first`, `balanced`, `strict-review`.
 | `af design pull` | Pull design data (tokens + components + styles) |
 | `af design screenshot` | Capture design screenshot |
 | `af design component [name]` | List or inspect components |
+| `af design drift [name]` | Cross-surface drift analysis (Figma vs Storybook vs code) |
 
 ## Project Structure
 
@@ -208,10 +210,14 @@ aesthetic-function/
 ├── packages/
 │   ├── shared/          # Protocol definitions, shared types
 │   ├── watcher/         # Reconciliation engine, AST analysis, adapters
+│   │   └── src/
+│   │       ├── designAdapter/        # Figma + Storybook MCP adapters
+│   │       └── crossSurfaceDrift/    # Cross-surface drift analysis engine
 │   ├── server/          # WebSocket/HTTP relay, audit logging
 │   ├── figma-plugin/    # Figma sandbox plugin (mutation executor)
 │   └── cli/             # `af` CLI control surface
-├── demo-app/            # Sample React app with @figma markers
+├── demo-app/            # Sample React app with @figma markers + Storybook
+│   └── .storybook/      # Storybook config (addon-mcp enabled)
 ├── docs/
 │   └── architecture-reference.md  # Full internal reference
 ├── .github/
@@ -228,6 +234,8 @@ aesthetic-function/
 | `FIGMA_FILE_KEY` | — | Figma file key |
 | `USE_LLM_ANALYZER` | `false` | Enable LLM intent parsing (optional) |
 | `TRACE` | `false` | Enable trace logging |
+| `STORYBOOK_URL` | `http://localhost:6006` | Storybook dev server URL |
+| `STORYBOOK_ENABLED` | `false` | Enable Storybook MCP adapter |
 
 See [docs/architecture-reference.md](docs/architecture-reference.md) for the complete environment variable reference.
 

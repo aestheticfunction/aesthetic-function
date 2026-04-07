@@ -22,7 +22,8 @@
     "demo:watcher": "echo '👁 Starting watcher...' && pnpm --filter @aesthetic-function/watcher watch",
     "demo:feature": "echo '🎯 Running feature orchestrator...' && pnpm --filter @aesthetic-function/watcher cli:feature",
     "demo:fast": "echo '⚡ Quick demo: server + watcher + feature (use --prompt)' && concurrently -n server,watcher 'pnpm demo:server' 'sleep 2 && pnpm demo:watcher'",
-    "demo:tunnel": "echo '🚇 Expose server for Figma plugin...' && pnpm tunnel && echo 'Copy the HTTPS URL to Figma plugin settings'"
+    "demo:tunnel": "echo '🚇 Expose server for Figma plugin...' && pnpm tunnel && echo 'Copy the HTTPS URL to Figma plugin settings'",
+    "dev:storybook": "cd demo-app && npx storybook dev -p 6006"
   },
   "engines": {
     "node": ">=18.0.0",

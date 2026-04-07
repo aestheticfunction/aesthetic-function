@@ -34,6 +34,18 @@
     "./designAdapter": {
       "types": "./dist/designAdapter.d.ts",
       "import": "./dist/designAdapter.js"
+    },
+    "./surfaceMetadata": {
+      "types": "./dist/surfaceMetadata.d.ts",
+      "import": "./dist/surfaceMetadata.js"
+    },
+    "./storybookAdapter": {
+      "types": "./dist/storybookAdapter.d.ts",
+      "import": "./dist/storybookAdapter.js"
+    },
+    "./crossSurfaceDrift": {
+      "types": "./dist/crossSurfaceDrift.d.ts",
+      "import": "./dist/crossSurfaceDrift.js"
     }
   },
   "scripts": {
