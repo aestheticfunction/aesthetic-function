@@ -601,13 +601,21 @@ export class StorybookMCPAdapter implements DesignAdapter {
       const client = await this.ensureMCPConnection();
 
       if (client) {
-        const raw = await callStorybookMCPTool(client, 'get-documentation', { id: name.toLowerCase() });
-        warnings.push('transport: mcp');
-        const meta = this.parseDocumentationResponse(raw, name);
-        return this.makeResult(meta, warnings, start);
+        try {
+          const raw = await callStorybookMCPTool(client, 'get-documentation', { id: name.toLowerCase() });
+          warnings.push('transport: mcp');
+          const meta = this.parseDocumentationResponse(raw, name);
+          // If MCP found the component, return it. Otherwise fall through to
+          // HTTP manifest which does a name-based lookup (handles ID mismatches
+          // like 'demobutton' vs actual ID 'components-demobutton').
+          if (meta) return this.makeResult(meta, warnings, start);
+          warnings.push('mcp: component not found by id, trying HTTP manifest');
+        } catch {
+          warnings.push('mcp: get-documentation failed, trying HTTP manifest');
+        }
       }
 
-      // HTTP fallback
+      // HTTP fallback (also used when MCP returned null for the component)
       warnings.push('transport: http-fallback');
       const manifest = await this.fetchComponentManifest();
       if (!manifest) return this.makeResult(null, [...warnings, 'Manifest unavailable'], start);

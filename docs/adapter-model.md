@@ -58,10 +58,32 @@ Same default-deny pattern as Figma Console MCP:
 
 The adapter validates that the Storybook instance is React-based. Non-React frameworks (Vue, Angular, Svelte) cause `isAvailable()` to return `false` with an explicit error.
 
+## Figma Console MCP Adapter — Component Search
+
+`getComponent(name)` searches the entire Figma file tree recursively across all pages.
+
+**Node types matched** (case-insensitive name match):
+
+| Figma node type | AF `DesignComponent.type` | Notes |
+|-----------------|--------------------------|-------|
+| `COMPONENT` | `component` | Published design-system component |
+| `COMPONENT_SET` | `component-set` | Published component set with variants |
+| `INSTANCE` | `instance` | Placed instance of a component |
+| `FRAME` | `frame` | Named frame (e.g., an artboard representing the component) |
+| `GROUP` | `frame` | Named group containing the component |
+| `SECTION` | `frame` | Figma section node |
+| `TEXT` | `frame` | Top-level text layer (rarely, but possible) |
+
+The raw Figma node type is always stored in `properties.figmaType` for caller diagnostics. When a node is found but is not a `COMPONENT` or `COMPONENT_SET`, the adapter adds a warning to the result: `Node "X" found as FRAME (not a COMPONENT or COMPONENT_SET)`.
+
+The `getComponents()` method (list all) continues to return only `COMPONENT` and `COMPONENT_SET` nodes — the broader search applies only to `getComponent()` (find one by name).
+
+**Search depth**: Both MCP and REST fallback paths fetch with `depth=8`, which covers virtually all real-world Figma file structures without fetching the entire potentially-large file.
+
 ### Cross-Surface Drift Analysis
 
 The `af design drift` command compares component data across available surfaces:
-- **Figma** — variants, properties from Figma adapter
+- **Figma** — variants, properties from Figma adapter; matches any named node (not just published components)
 - **Storybook** — props, stories, variant axes from Storybook MCP
 - **Code** — props, union types from AST analysis
 

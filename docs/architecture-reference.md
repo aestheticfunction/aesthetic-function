@@ -5400,10 +5400,23 @@ as a constrained, read-only AF design adapter using the [Model Context Protocol]
 | MCP Tool | AF Method | Data |
 |----------|-----------|------|
 | `figma_get_variables` | `getDesignTokens()` | Design variables/tokens |
-| `figma_get_file_data` | `getComponents()`, `getFileData()` | File tree, components |
-| `figma_get_component` | `getComponent()` | Single component |
+| `figma_get_file_data` | `getComponent()`, `getComponents()`, `getFileData()` | File tree, nodes, components |
 | `figma_get_styles` | `getStyles()` | Published styles |
 | `figma_take_screenshot` | `getScreenshot()` | Visual capture (PNG) |
+
+**`getComponent(name)` — node search behavior:**
+
+Searches the entire Figma file tree recursively across all pages at depth=8.
+Matches by exact name (case-insensitive) against any of these node types:
+
+| Figma type | AF `DesignComponent.type` |
+|------------|--------------------------|
+| `COMPONENT` | `component` |
+| `COMPONENT_SET` | `component-set` |
+| `INSTANCE` | `instance` |
+| `FRAME`, `GROUP`, `SECTION`, `TEXT` | `frame` |
+
+The raw Figma type is preserved in `properties.figmaType`. A warning is added to the result when the matched node is not a `COMPONENT` or `COMPONENT_SET`. `getComponents()` (list all) retains its original behavior and only returns published `COMPONENT`/`COMPONENT_SET` nodes.
 
 **Architecture:**
 - AF acts as an MCP **client** connecting to figma-console-mcp as the MCP **server**.

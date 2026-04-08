@@ -771,17 +771,18 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
       const client = await this.ensureMCPConnection();
 
       if (client) {
-        // MCP path: use figma_get_file_data to get components, then filter
+        // MCP path: fetch at depth=8 and search by name across all node types
         const raw = await callMCPTool(client, 'figma_get_file_data', {
           fileKey: this.config.fileKey,
-          depth: 3,
+          depth: 8,
         });
         const file = JSON.parse(raw) as FigmaFileResponse;
-        const components = extractComponents(file);
-        const match = components.find(
-          c => c.name.toLowerCase() === name.toLowerCase(),
-        ) ?? null;
-        if (!match) warnings.push(`Component "${name}" not found in file`);
+        const match = findNodeByName(file.document, name, file.components ?? {});
+        if (!match) {
+          warnings.push(`Node "${name}" not found in file (searched all pages at depth 8)`);
+        } else if (match.properties.figmaType !== 'COMPONENT' && match.properties.figmaType !== 'COMPONENT_SET') {
+          warnings.push(`Node "${name}" found as ${String(match.properties.figmaType)} (not a COMPONENT or COMPONENT_SET)`);
+        }
         warnings.push(`transport: mcp-${this.activeTransport}`);
         return {
           data: match,
@@ -793,14 +794,18 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
         };
       }
 
-      // REST fallback
+      // REST fallback — fetch at depth=8 directly (bypasses the shallow fileCache)
       warnings.push('transport: rest-fallback');
-      const file = await this.getFileTree();
-      const components = extractComponents(file);
-      const match = components.find(
-        c => c.name.toLowerCase() === name.toLowerCase(),
-      ) ?? null;
-      if (!match) warnings.push(`Component "${name}" not found in file`);
+      const deepFile = await figmaGet<FigmaFileResponse>(
+        `/files/${this.config.fileKey}?geometry=paths&depth=8`,
+        this.apiOptions,
+      );
+      const match = findNodeByName(deepFile.document, name, deepFile.components ?? {});
+      if (!match) {
+        warnings.push(`Node "${name}" not found in file (searched all pages at depth 8)`);
+      } else if (match.properties.figmaType !== 'COMPONENT' && match.properties.figmaType !== 'COMPONENT_SET') {
+        warnings.push(`Node "${name}" found as ${String(match.properties.figmaType)} (not a COMPONENT or COMPONENT_SET)`);
+      }
 
       return {
         data: match,
@@ -808,7 +813,7 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
         adapterName: this.displayName,
         durationMs: Date.now() - start,
         warnings,
-        cached: this.fileCache !== null,
+        cached: false,
       };
     } catch (error) {
       warnings.push(`File error: ${error instanceof Error ? error.message : String(error)}`);
@@ -1269,6 +1274,124 @@ function resolvedTypeToTokenType(
     default:
       return 'other';
   }
+}
+
+// =============================================================================
+// GENERIC NODE SEARCH HELPERS
+// =============================================================================
+
+/**
+ * Figma node types eligible for name-based component search.
+ *
+ * Covers the full range of design elements that may have a component-like
+ * name in a real Figma file, beyond just published components:
+ * - COMPONENT / COMPONENT_SET: published design system components
+ * - FRAME / GROUP / SECTION: containers that often represent or contain components
+ * - INSTANCE: a placed component instance; useful when the master is on another page
+ * - TEXT: top-level text layers occasionally named after components
+ *
+ * getComponents() (list all) still uses extractComponents() which restricts to
+ * COMPONENT/COMPONENT_SET — this broader set is only used in getComponent() (find one).
+ */
+const SEARCHABLE_FIGMA_NODE_TYPES = new Set([
+  'COMPONENT',
+  'COMPONENT_SET',
+  'FRAME',
+  'GROUP',
+  'INSTANCE',
+  'SECTION',
+  'TEXT',
+]);
+
+/**
+ * Map a raw Figma node type to an AF DesignComponent.type value.
+ *
+ * COMPONENT and COMPONENT_SET map exactly. INSTANCE maps to 'instance'.
+ * FRAME, GROUP, SECTION, TEXT, and any other container type all map to 'frame'
+ * (the AF type representing "a named node that is not a true component").
+ *
+ * The original Figma type is always preserved in properties.figmaType so
+ * callers can distinguish a FRAME from a GROUP in their own logic.
+ */
+function figmaNodeTypeToAFType(
+  figmaType: string,
+): 'component' | 'component-set' | 'instance' | 'frame' {
+  switch (figmaType) {
+    case 'COMPONENT': return 'component';
+    case 'COMPONENT_SET': return 'component-set';
+    case 'INSTANCE': return 'instance';
+    default: return 'frame';
+  }
+}
+
+/**
+ * Recursively search the Figma document tree for the first node whose name
+ * matches `targetName` (case-insensitive) among SEARCHABLE_FIGMA_NODE_TYPES.
+ *
+ * Searches across ALL pages and ALL depths in the tree.
+ *
+ * Returns a DesignComponent with:
+ * - type: mapped to AF canonical type via figmaNodeTypeToAFType()
+ * - properties.figmaType: the raw Figma node type string for caller diagnostics
+ * - variants: populated when node.type === 'COMPONENT_SET'
+ *
+ * Returns null only if no node with that name is found anywhere in the tree.
+ */
+function findNodeByName(
+  node: FigmaNode,
+  targetName: string,
+  componentMeta: Record<string, FigmaComponentMeta>,
+): DesignComponent | null {
+  if (
+    SEARCHABLE_FIGMA_NODE_TYPES.has(node.type) &&
+    node.name.toLowerCase() === targetName.toLowerCase()
+  ) {
+    const meta = componentMeta[node.id];
+    const variants: DesignVariant[] = [];
+
+    if (node.type === 'COMPONENT_SET' && node.children) {
+      for (const child of node.children) {
+        if (child.type === 'COMPONENT') {
+          variants.push({
+            name: child.name,
+            id: child.id,
+            properties: parseVariantName(child.name),
+          });
+        }
+      }
+    }
+
+    const properties: Record<string, unknown> = { figmaType: node.type };
+    if (node.fills) properties.fills = node.fills;
+    if (node.cornerRadius !== undefined) properties.cornerRadius = node.cornerRadius;
+    if (node.paddingTop !== undefined) properties.paddingTop = node.paddingTop;
+    if (node.paddingRight !== undefined) properties.paddingRight = node.paddingRight;
+    if (node.paddingBottom !== undefined) properties.paddingBottom = node.paddingBottom;
+    if (node.paddingLeft !== undefined) properties.paddingLeft = node.paddingLeft;
+    if (node.itemSpacing !== undefined) properties.itemSpacing = node.itemSpacing;
+    if (node.characters) properties.characters = node.characters;
+    if (node.absoluteBoundingBox) {
+      properties.width = node.absoluteBoundingBox.width;
+      properties.height = node.absoluteBoundingBox.height;
+    }
+
+    return {
+      name: meta?.name ?? node.name,
+      id: node.id,
+      type: figmaNodeTypeToAFType(node.type),
+      properties,
+      variants: variants.length > 0 ? variants : undefined,
+    };
+  }
+
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNodeByName(child, targetName, componentMeta);
+      if (found) return found;
+    }
+  }
+
+  return null;
 }
 
 /**
