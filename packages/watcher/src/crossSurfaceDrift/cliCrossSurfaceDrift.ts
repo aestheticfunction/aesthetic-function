@@ -11,14 +11,120 @@
  * resolution or write to any surface.
  */
 
+import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
 import type { CrossSurfaceDriftReport } from '@aesthetic-function/shared/crossSurfaceDrift';
 import type { StorybookMCPConfig } from '@aesthetic-function/shared/storybookAdapter';
 import { loadAfConfig } from '@aesthetic-function/shared/configLoader';
 import { StorybookMCPAdapter } from '../designAdapter/storybookAdapter.js';
-import { getAvailableAdapter } from '../designAdapter/registry.js';
+import { getAvailableAdapter, registerDesignAdapter } from '../designAdapter/registry.js';
+import { FigmaConsoleMCPAdapter } from '../designAdapter/figmaConsoleMCPAdapter.js';
 import { normalizeDesignComponent } from '../designAdapter/normalize.js';
 import { analyzeCrossSurfaceDrift } from './analyze.js';
 import type { CodeSurfaceData } from './analyze.js';
+
+// =============================================================================
+// REPO ROOT
+// =============================================================================
+
+function findRepoRoot(): string {
+  let dir = process.cwd();
+  while (dir !== '/') {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
+    dir = resolve(dir, '..');
+  }
+  return process.cwd();
+}
+
+// =============================================================================
+// CODE SURFACE — file-based component scanner
+// =============================================================================
+
+/**
+ * Recursively collect .ts/.tsx/.js/.jsx files under a directory.
+ * Skips node_modules, dist, and .git.
+ */
+function collectSourceFiles(dir: string): string[] {
+  const results: string[] = [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results;
+  }
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name === '.git') continue;
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectSourceFiles(full));
+    } else if (/\.(tsx?|jsx?)$/.test(entry.name)) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+/**
+ * Return CodeSurfaceData for `componentName` if found in the watched source
+ * files, or null if the component doesn't exist in code.
+ *
+ * Detection: looks for `function ComponentName`, `class ComponentName`,
+ * or `const ComponentName =` in any TSX/TS source file inside watchPaths.
+ *
+ * Props: extracted from destructured function parameters.
+ * Variants: extracted from string-literal union types in the same file.
+ */
+function findCodeSurface(
+  componentName: string,
+  watchPaths: string[],
+  repoRoot: string,
+): CodeSurfaceData | null {
+  const namePattern = new RegExp(
+    `(?:function|class)\\s+${componentName}\\b|` +
+    `const\\s+${componentName}\\s*[=:]|` +
+    `export\\s+(?:default\\s+)?(?:function|class)\\s+${componentName}\\b`,
+  );
+
+  for (const watchPath of watchPaths) {
+    const absPath = resolve(repoRoot, watchPath);
+    if (!existsSync(absPath)) continue;
+
+    for (const file of collectSourceFiles(absPath)) {
+      let content: string;
+      try {
+        content = readFileSync(file, 'utf-8');
+      } catch {
+        continue;
+      }
+      if (!namePattern.test(content)) continue;
+
+      // Extract props from destructured function parameters
+      const props: string[] = [];
+      const destructuredMatch = content.match(
+        new RegExp(`(?:function|const)\\s+${componentName}[^(]*\\(\\s*\\{([^}]+)\\}`),
+      );
+      if (destructuredMatch) {
+        for (const raw of destructuredMatch[1].split(',')) {
+          const name = raw.trim().split(/[?:=\s]/)[0].trim();
+          if (name && /^[a-zA-Z_$]/.test(name)) props.push(name);
+        }
+      }
+
+      // Extract string-literal union values as variant candidates
+      const variants: string[] = [];
+      const unionRe = /'([^']+)'\s*\|/g;
+      let m;
+      while ((m = unionRe.exec(content)) !== null) {
+        if (!variants.includes(m[1])) variants.push(m[1]);
+      }
+
+      return { props, variants };
+    }
+  }
+
+  return null;
+}
 
 // =============================================================================
 // CLI ENTRY POINT
@@ -84,6 +190,14 @@ export async function main(args: string[]): Promise<number> {
   const options = parseArgs(args);
   const config = loadAfConfig();
 
+  // Register Figma adapter if credentials are available
+  if (process.env.FIGMA_ACCESS_TOKEN && process.env.FIGMA_FILE_KEY) {
+    registerDesignAdapter(new FigmaConsoleMCPAdapter({
+      accessToken: process.env.FIGMA_ACCESS_TOKEN,
+      fileKey: process.env.FIGMA_FILE_KEY,
+    }));
+  }
+
   // Check adapter availability
   const figmaAdapter = await getAvailableAdapter();
   const storybookConfig: StorybookMCPConfig = {
@@ -140,6 +254,7 @@ export async function main(args: string[]): Promise<number> {
       figmaAdapter,
       storybookAvailable ? storybookAdapter : null,
       options,
+      config,
     );
     reports.push(report);
   } else {
@@ -152,6 +267,7 @@ export async function main(args: string[]): Promise<number> {
           figmaAdapter,
           storybookAdapter,
           options,
+          config,
         );
         reports.push(report);
       }
@@ -181,40 +297,54 @@ async function analyzeComponent(
   figmaAdapter: Awaited<ReturnType<typeof getAvailableAdapter>>,
   storybookAdapter: StorybookMCPAdapter | null,
   options: CliOptions,
+  afConfig: ReturnType<typeof loadAfConfig>,
 ): Promise<CrossSurfaceDriftReport> {
+  // Track which surfaces we actually query
+  const queriedSurfaces: ('figma' | 'storybook' | 'code')[] = [];
+
   // Fetch Figma data
   let figmaData = null;
   if (figmaAdapter) {
+    queriedSurfaces.push('figma');
     try {
       const result = await figmaAdapter.getComponent(componentName);
       if (result.data) {
         figmaData = normalizeDesignComponent(result.data);
       }
-    } catch {
-      // Figma data unavailable for this component
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[af:drift] Figma adapter error for "${componentName}": ${msg}`);
     }
   }
 
   // Fetch Storybook data
   let storybookData = null;
   if (storybookAdapter) {
+    queriedSurfaces.push('storybook');
     try {
       const result = await storybookAdapter.getComponentMeta(componentName);
       storybookData = result.data;
-    } catch {
-      // Storybook data unavailable for this component
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[af:drift] Storybook adapter error for "${componentName}": ${msg}`);
     }
   }
 
-  // Code data would come from AST analysis — placeholder for now
-  const codeData: CodeSurfaceData | null = null;
+  // Scan source files for this component
+  queriedSurfaces.push('code');
+  const repoRoot = findRepoRoot();
+  const codeData: CodeSurfaceData | null = findCodeSurface(
+    componentName,
+    afConfig.watcher.watchPaths,
+    repoRoot,
+  );
 
   return analyzeCrossSurfaceDrift(
     componentName,
     figmaData,
     storybookData,
     codeData,
-    { includeUncorroborated: options.includeUncorroborated },
+    { includeUncorroborated: options.includeUncorroborated, queriedSurfaces },
   );
 }
 
@@ -228,11 +358,18 @@ function formatReport(report: CrossSurfaceDriftReport, verbose: boolean): void {
 
   // Surface status
   const surfaces: string[] = [];
-  if (report.surfaces.figma) surfaces.push('Figma \u2713');
+  const queried = new Set(report.queriedSurfaces);
+
+  if (!queried.has('figma')) surfaces.push('Figma \u2014');
+  else if (report.surfaces.figma && (report.surfaces.figma.props.length > 0 || report.surfaces.figma.variants.length > 0)) surfaces.push('Figma \u2713');
   else surfaces.push('Figma \u2717');
-  if (report.surfaces.storybook) surfaces.push('Storybook \u2713');
+
+  if (!queried.has('storybook')) surfaces.push('Storybook \u2014');
+  else if (report.surfaces.storybook && (report.surfaces.storybook.props.length > 0 || report.surfaces.storybook.variants.length > 0)) surfaces.push('Storybook \u2713');
   else surfaces.push('Storybook \u2717');
-  if (report.surfaces.code) surfaces.push('Code (AST) \u2713');
+
+  if (!queried.has('code')) surfaces.push('Code (AST) \u2014');
+  else if (report.surfaces.code && (report.surfaces.code.props.length > 0 || report.surfaces.code.variants.length > 0)) surfaces.push('Code (AST) \u2713');
   else surfaces.push('Code (AST) \u2717');
 
   console.log(`Surfaces: ${surfaces.join('  ')}`);

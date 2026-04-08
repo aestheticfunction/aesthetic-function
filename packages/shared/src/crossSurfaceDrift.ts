@@ -36,6 +36,9 @@ export interface CrossSurfaceDriftReport {
   /** Overall drift severity (highest finding wins) */
   severity: DriftSeverity;
 
+  /** Surfaces that were actually queried (regardless of whether data was found) */
+  queriedSurfaces: ('figma' | 'storybook' | 'code')[];
+
   /** When the analysis was performed */
   analyzedAt: string;
 }
@@ -138,4 +141,7 @@ export type DriftConfidence = 'high' | 'low';
 export interface DriftAnalysisOptions {
   /** Include uncorroborated story-derived variants in findings (default: false) */
   includeUncorroborated?: boolean;
+
+  /** Surfaces that were queried by the caller (used to distinguish "not checked" from "checked, not found") */
+  queriedSurfaces?: ('figma' | 'storybook' | 'code')[];
 }

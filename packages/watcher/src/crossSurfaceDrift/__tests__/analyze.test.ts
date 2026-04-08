@@ -78,6 +78,7 @@ describe('component presence', () => {
       null,
       makeStorybookComponent(),
       makeCodeData(),
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
     );
     const finding = report.findings.find(f => f.type === 'missing-in-figma' && f.field === 'component');
     expect(finding).toBeDefined();
@@ -90,10 +91,61 @@ describe('component presence', () => {
       makeFigmaComponent(),
       null,
       makeCodeData(),
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
     );
     const finding = report.findings.find(f => f.type === 'missing-in-storybook' && f.field === 'component');
     expect(finding).toBeDefined();
     expect(finding!.severity).toBe('info');
+  });
+
+  it('does NOT report missing-in-figma when figma was not queried', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'Button',
+      null,
+      makeStorybookComponent(),
+      makeCodeData(),
+      { queriedSurfaces: ['storybook', 'code'] },
+    );
+    const finding = report.findings.find(f => f.type === 'missing-in-figma' && f.field === 'component');
+    expect(finding).toBeUndefined();
+    // figma surface should not appear at all
+    expect(report.surfaces.figma).toBeUndefined();
+  });
+
+  it('shows empty figma surface when queried but component not found', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'Button',
+      null,
+      makeStorybookComponent(),
+      makeCodeData(),
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+    // figma surface should be present (empty snapshot)
+    expect(report.surfaces.figma).toBeDefined();
+    expect(report.surfaces.figma!.props).toHaveLength(0);
+    expect(report.surfaces.figma!.variants).toHaveLength(0);
+    expect(report.surfaces.figma!.source).toBe('figma-console-mcp');
+  });
+
+  it('includes queriedSurfaces in report', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'Button',
+      null,
+      makeStorybookComponent(),
+      makeCodeData(),
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+    expect(report.queriedSurfaces).toEqual(['figma', 'storybook', 'code']);
+  });
+
+  it('derives queriedSurfaces from non-null data when not provided', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'Button',
+      makeFigmaComponent(),
+      makeStorybookComponent(),
+      null,
+    );
+    expect(report.queriedSurfaces).toEqual(['figma', 'storybook']);
   });
 });
 
@@ -267,6 +319,22 @@ describe('report metadata', () => {
     );
     expect(report.surfaces.figma).toBeDefined();
     expect(report.surfaces.storybook).toBeDefined();
+    // code was not queried (derived from non-null data), so no snapshot
     expect(report.surfaces.code).toBeUndefined();
+  });
+
+  it('includes empty code snapshot when queried but not found', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'Button',
+      makeFigmaComponent(),
+      makeStorybookComponent(),
+      null,
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+    expect(report.surfaces.figma).toBeDefined();
+    expect(report.surfaces.storybook).toBeDefined();
+    expect(report.surfaces.code).toBeDefined();
+    expect(report.surfaces.code!.props).toHaveLength(0);
+    expect(report.surfaces.code!.source).toBe('code-ast');
   });
 });

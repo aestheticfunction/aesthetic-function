@@ -58,21 +58,39 @@ export function analyzeCrossSurfaceDrift(
   const findings: DriftFinding[] = [];
   const now = new Date().toISOString();
 
+  // Determine which surfaces were queried.
+  // If caller provides queriedSurfaces, use that. Otherwise derive from
+  // non-null data params (backward compat for direct callers).
+  const queriedSurfaces: ('figma' | 'storybook' | 'code')[] =
+    options?.queriedSurfaces ?? [
+      ...(figmaData ? ['figma' as const] : []),
+      ...(storybookData ? ['storybook' as const] : []),
+      ...(codeData ? ['code' as const] : []),
+    ];
+
   // Build surface snapshots
   const surfaces: CrossSurfaceDriftReport['surfaces'] = {};
 
   if (figmaData) {
     surfaces.figma = buildFigmaSnapshot(figmaData);
+  } else if (queriedSurfaces.includes('figma')) {
+    // Figma was queried but returned no data — record an empty snapshot
+    // so the surface is visible in the report.
+    surfaces.figma = buildEmptySnapshot('figma-console-mcp', componentName);
   }
   if (storybookData) {
     surfaces.storybook = buildStorybookSnapshot(storybookData);
+  } else if (queriedSurfaces.includes('storybook')) {
+    surfaces.storybook = buildEmptySnapshot('storybook-mcp', componentName);
   }
   if (codeData) {
     surfaces.code = buildCodeSnapshot(componentName, codeData);
+  } else if (queriedSurfaces.includes('code')) {
+    surfaces.code = buildEmptySnapshot('code-ast', componentName);
   }
 
   // Run comparisons
-  findings.push(...compareComponentPresence(componentName, surfaces));
+  findings.push(...compareComponentPresence(componentName, surfaces, queriedSurfaces));
   findings.push(...comparePropInventory(surfaces));
   findings.push(
     ...compareVariantCoverage(surfaces, storybookData, options),
@@ -86,6 +104,7 @@ export function analyzeCrossSurfaceDrift(
     surfaces,
     findings,
     severity,
+    queriedSurfaces,
     analyzedAt: now,
   };
 }
@@ -93,6 +112,20 @@ export function analyzeCrossSurfaceDrift(
 // =============================================================================
 // SNAPSHOT BUILDERS
 // =============================================================================
+
+/**
+ * Build an empty snapshot for a surface that was queried but returned no data.
+ * This ensures the surface appears in the report's surfaces map.
+ */
+function buildEmptySnapshot(source: string, componentName: string): SurfaceSnapshot {
+  return {
+    source,
+    componentName,
+    props: [],
+    variants: [],
+    lastObserved: new Date().toISOString(),
+  };
+}
 
 function buildFigmaSnapshot(data: NormalizedDesignComponent): SurfaceSnapshot {
   const props: SurfaceProp[] = [];
@@ -171,44 +204,67 @@ function buildCodeSnapshot(name: string, data: CodeSurfaceData): SurfaceSnapshot
 
 /**
  * Check if the component exists in all available surfaces.
+ *
+ * Uses queriedSurfaces to distinguish "not checked" from "checked, not found".
+ * A surface that was queried but has an empty snapshot (no props, no variants)
+ * is treated as "component not found in that surface".
+ * A surface that was NOT queried never generates a missing-in-X finding.
  */
 function compareComponentPresence(
   componentName: string,
   surfaces: CrossSurfaceDriftReport['surfaces'],
+  queriedSurfaces: ('figma' | 'storybook' | 'code')[],
 ): DriftFinding[] {
   const findings: DriftFinding[] = [];
-  const availableSurfaces = Object.keys(surfaces).filter(
-    k => surfaces[k as keyof typeof surfaces] != null,
-  );
 
-  if (availableSurfaces.length < 2) {
-    // Need at least 2 surfaces to compare
+  // A surface counts as "has data" when it was queried AND has props or variants.
+  // An empty snapshot (queried, no data) means the component wasn't found there.
+  const figmaQueried = queriedSurfaces.includes('figma');
+  const storybookQueried = queriedSurfaces.includes('storybook');
+  const codeQueried = queriedSurfaces.includes('code');
+
+  const figmaHasData = surfaces.figma != null &&
+    (surfaces.figma.props.length > 0 || surfaces.figma.variants.length > 0);
+  const storybookHasData = surfaces.storybook != null &&
+    (surfaces.storybook.props.length > 0 || surfaces.storybook.variants.length > 0);
+  const codeHasData = surfaces.code != null &&
+    (surfaces.code.props.length > 0 || surfaces.code.variants.length > 0);
+
+  // Need at least 2 queried surfaces to compare
+  const queriedCount = [figmaQueried, storybookQueried, codeQueried].filter(Boolean).length;
+  if (queriedCount < 2) {
     return findings;
   }
 
-  if (!surfaces.figma && surfaces.storybook) {
+  // missing-in-figma: only when figma was queried but has no data,
+  // AND at least one other queried surface has data
+  if (figmaQueried && !figmaHasData && (storybookHasData || codeHasData)) {
     findings.push({
       field: 'component',
       type: 'missing-in-figma',
       severity: 'warn',
-      message: `Component "${componentName}" exists in Storybook but not found in Figma`,
-      storybookValue: componentName,
+      message: `Component "${componentName}" exists in ${storybookHasData ? 'Storybook' : 'Code'} but not found in Figma`,
+      storybookValue: storybookHasData ? componentName : undefined,
+      codeValue: !storybookHasData && codeHasData ? componentName : undefined,
       confidence: 'high',
     });
   }
 
-  if (surfaces.figma && !surfaces.storybook) {
+  // missing-in-storybook: only when storybook was queried but has no data
+  if (storybookQueried && !storybookHasData && (figmaHasData || codeHasData)) {
     findings.push({
       field: 'component',
       type: 'missing-in-storybook',
       severity: 'info',
-      message: `Component "${componentName}" exists in Figma but not found in Storybook`,
-      figmaValue: componentName,
+      message: `Component "${componentName}" exists in ${figmaHasData ? 'Figma' : 'Code'} but not found in Storybook`,
+      figmaValue: figmaHasData ? componentName : undefined,
+      codeValue: !figmaHasData && codeHasData ? componentName : undefined,
       confidence: 'high',
     });
   }
 
-  if (!surfaces.code && (surfaces.figma || surfaces.storybook)) {
+  // missing-in-code: only when code was queried but has no data
+  if (codeQueried && !codeHasData && (figmaHasData || storybookHasData)) {
     findings.push({
       field: 'component',
       type: 'missing-in-code',
