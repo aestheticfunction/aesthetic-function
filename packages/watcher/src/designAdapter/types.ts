@@ -101,6 +101,17 @@ export interface NormalizedDesignComponent {
     state: string;
   }>;
 
+  /**
+   * Structured property definitions from Figma COMPONENT_SET nodes.
+   * Contains variant axes (name + allowed values) and text property definitions.
+   * Pass-through from Figma REST API's componentPropertyDefinitions.
+   */
+  componentPropertyDefinitions?: Record<string, {
+    type: string;
+    defaultValue?: string;
+    variantOptions?: string[];
+  }>;
+
   /** Unmapped properties that didn't fit known keys */
   unmappedProperties: string[];
 }

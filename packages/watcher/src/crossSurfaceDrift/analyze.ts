@@ -131,18 +131,48 @@ function buildFigmaSnapshot(data: NormalizedDesignComponent): SurfaceSnapshot {
   const props: SurfaceProp[] = [];
   const variants: string[] = [];
 
-  // Extract variants from the normalized component
-  // NormalizedDesignComponent variants have { name, nodeId, state }
-  if (data.variants) {
-    for (const variant of data.variants) {
-      variants.push(variant.name);
-      if (variant.state) {
-        props.push({ name: 'state', values: [variant.state] });
+  // Extract structured metadata from componentPropertyDefinitions
+  // This is the canonical source for variant axes and text properties
+  if (data.componentPropertyDefinitions) {
+    for (const [key, def] of Object.entries(data.componentPropertyDefinitions)) {
+      if (def.type === 'VARIANT' && def.variantOptions) {
+        props.push({ name: key, type: 'VARIANT', values: def.variantOptions });
+        for (const option of def.variantOptions) {
+          if (!variants.includes(option)) variants.push(option);
+        }
+      } else if (def.type === 'TEXT') {
+        // Clean "Text#id" → "Text" style names
+        const cleanName = key.replace(/#\d+:\d+$/, '').trim();
+        props.push({ name: cleanName, type: 'TEXT' });
+      } else if (def.type === 'BOOLEAN') {
+        props.push({ name: key, type: 'BOOLEAN' });
+      } else if (def.type === 'INSTANCE_SWAP') {
+        props.push({ name: key, type: 'INSTANCE_SWAP' });
       }
     }
   }
 
-  // Extract property-based props
+  // Supplemental: extract variants from normalized children (if CPD didn't provide them)
+  if (data.variants && variants.length === 0) {
+    for (const variant of data.variants) {
+      variants.push(variant.name);
+    }
+  }
+
+  // Supplemental: extract state-based props from normalized variants.
+  // Skip when CPD already provided a VARIANT prop (avoids duplicate "State"/"state").
+  const hasVariantPropFromCPD = props.some(p => p.type === 'VARIANT');
+  if (data.variants && !hasVariantPropFromCPD) {
+    for (const variant of data.variants) {
+      if (variant.state && !props.some(p => p.name === 'state')) {
+        const stateValues = data.variants.map(v => v.state).filter(Boolean);
+        props.push({ name: 'state', values: stateValues });
+        break;
+      }
+    }
+  }
+
+  // Extract property-based props (fills, cornerRadius, etc.)
   if (data.properties) {
     for (const key of Object.keys(data.properties)) {
       const value = data.properties[key as keyof typeof data.properties];
@@ -175,6 +205,20 @@ function buildStorybookSnapshot(data: StorybookComponentMeta): SurfaceSnapshot {
         if (!variants.includes(value)) {
           variants.push(value);
         }
+      }
+    }
+  }
+
+  // Fallback: if no variant axes were inferred but stories exist, use story
+  // names as variant candidates. This captures common patterns where stories
+  // like "Default" and "Hover" represent variant values even without
+  // reactDocgen prop data to match against.
+  const SKIP_STORY_NAMES = new Set(['docs', 'overview', 'page', 'playground', 'template']);
+  if (variants.length === 0 && data.stories.length > 0) {
+    for (const story of data.stories) {
+      const normalized = story.name.toLowerCase().trim();
+      if (!SKIP_STORY_NAMES.has(normalized) && !variants.includes(story.name)) {
+        variants.push(story.name);
       }
     }
   }

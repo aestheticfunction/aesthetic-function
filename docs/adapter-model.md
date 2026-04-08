@@ -78,7 +78,9 @@ The raw Figma node type is always stored in `properties.figmaType` for caller di
 
 The `getComponents()` method (list all) continues to return only `COMPONENT` and `COMPONENT_SET` nodes — the broader search applies only to `getComponent()` (find one by name).
 
-**Search depth**: Both MCP and REST fallback paths fetch with `depth=8`, which covers virtually all real-world Figma file structures without fetching the entire potentially-large file.
+**Search depth**: The MCP path fetches with `depth=3` and `verbosity='full'` (the MCP tool's maximum depth is 3). The REST fallback fetches with `depth=8`. Both are sufficient — component sets are typically at depth 2-3 in the file tree (Document → Page → Component). The MCP tool requires `verbosity='full'` to include `componentPropertyDefinitions` and visual properties on nodes; the default `'summary'` verbosity strips all properties.
+
+**MCP-to-REST fallback**: If the MCP call fails (e.g., schema validation, network error), the adapter falls through to the REST API rather than returning empty data. This ensures the Figma surface is always populated when credentials are valid, regardless of whether the figma-console MCP plugin is running.
 
 ### Cross-Surface Drift Analysis
 

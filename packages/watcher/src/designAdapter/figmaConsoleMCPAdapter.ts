@@ -454,6 +454,7 @@ interface FigmaFileResponse {
   lastModified: string;
   document: FigmaNode;
   components: Record<string, FigmaComponentMeta>;
+  componentSets?: Record<string, FigmaComponentMeta>;
   styles: Record<string, FigmaStyleMeta>;
 }
 
@@ -487,6 +488,7 @@ interface FigmaComponentMeta {
   name: string;
   description: string;
   containing_frame?: { name: string; nodeId: string };
+  componentPropertyDefinitions?: Record<string, unknown>;
 }
 
 interface FigmaStyleMeta {
@@ -767,19 +769,35 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
     const start = Date.now();
     const warnings: string[] = [];
 
-    try {
-      const client = await this.ensureMCPConnection();
-
-      if (client) {
-        // MCP path: fetch at depth=8 and search by name across all node types
+    // Try MCP path first — if it fails, fall through to REST (not caught by outer catch)
+    const client = await this.ensureMCPConnection();
+    if (client) {
+      try {
+        // MCP path: depth=3 (MCP tool maximum), verbosity='full' to include
+        // componentPropertyDefinitions, fills, absoluteBoundingBox, etc.
         const raw = await callMCPTool(client, 'figma_get_file_data', {
           fileKey: this.config.fileKey,
-          depth: 8,
+          depth: 3,
+          verbosity: 'full',
         });
         const file = JSON.parse(raw) as FigmaFileResponse;
-        const match = findNodeByName(file.document, name, file.components ?? {});
+        // MCP response may return components as a count (number) rather than
+        // the Record<string, FigmaComponentMeta> that the REST API returns.
+        const componentMeta: Record<string, FigmaComponentMeta> =
+          (typeof file.components === 'object' && file.components !== null && !Array.isArray(file.components))
+            ? file.components as Record<string, FigmaComponentMeta>
+            : {};
+        const match = findNodeByName(file.document, name, componentMeta);
+        // Enrich with componentPropertyDefinitions from top-level componentSets metadata
+        // (the document tree may not include CPD inline depending on MCP implementation)
+        if (match && !match.properties.componentPropertyDefinitions) {
+          const csMeta = file.componentSets?.[match.id] ?? componentMeta[match.id];
+          if (csMeta?.componentPropertyDefinitions) {
+            match.properties.componentPropertyDefinitions = csMeta.componentPropertyDefinitions;
+          }
+        }
         if (!match) {
-          warnings.push(`Node "${name}" not found in file (searched all pages at depth 8)`);
+          warnings.push(`Node "${name}" not found in file (searched all pages at depth 3)`);
         } else if (match.properties.figmaType !== 'COMPONENT' && match.properties.figmaType !== 'COMPONENT_SET') {
           warnings.push(`Node "${name}" found as ${String(match.properties.figmaType)} (not a COMPONENT or COMPONENT_SET)`);
         }
@@ -792,15 +810,28 @@ export class FigmaConsoleMCPAdapter implements DesignAdapter {
           warnings,
           cached: false,
         };
+      } catch (mcpError) {
+        // MCP call failed — fall through to REST fallback
+        const msg = mcpError instanceof Error ? mcpError.message : String(mcpError);
+        warnings.push(`MCP call failed, falling back to REST: ${msg}`);
       }
+    }
 
-      // REST fallback — fetch at depth=8 directly (bypasses the shallow fileCache)
+    // REST fallback — fetch at depth=8 directly (bypasses the shallow fileCache)
+    try {
       warnings.push('transport: rest-fallback');
       const deepFile = await figmaGet<FigmaFileResponse>(
         `/files/${this.config.fileKey}?geometry=paths&depth=8`,
         this.apiOptions,
       );
       const match = findNodeByName(deepFile.document, name, deepFile.components ?? {});
+      // Enrich with componentPropertyDefinitions from top-level metadata (REST fallback)
+      if (match && !match.properties.componentPropertyDefinitions) {
+        const csMeta = deepFile.componentSets?.[match.id] ?? deepFile.components?.[match.id];
+        if (csMeta?.componentPropertyDefinitions) {
+          match.properties.componentPropertyDefinitions = csMeta.componentPropertyDefinitions;
+        }
+      }
       if (!match) {
         warnings.push(`Node "${name}" not found in file (searched all pages at depth 8)`);
       } else if (match.properties.figmaType !== 'COMPONENT' && match.properties.figmaType !== 'COMPONENT_SET') {
@@ -1325,10 +1356,47 @@ function figmaNodeTypeToAFType(
 }
 
 /**
- * Recursively search the Figma document tree for the first node whose name
- * matches `targetName` (case-insensitive) among SEARCHABLE_FIGMA_NODE_TYPES.
+ * Node-type priority for ranking candidates when multiple nodes share the
+ * same name. Higher is better.
+ */
+function figmaNodeTypePriority(type: string): number {
+  switch (type) {
+    case 'COMPONENT_SET': return 3;
+    case 'COMPONENT': return 2;
+    case 'INSTANCE': return 1;
+    default: return 0; // FRAME, GROUP, SECTION, TEXT
+  }
+}
+
+/**
+ * Recursively collect ALL nodes whose name matches `targetName`
+ * (case-insensitive) among SEARCHABLE_FIGMA_NODE_TYPES.
+ */
+function collectNodesByName(
+  node: FigmaNode,
+  targetName: string,
+  results: FigmaNode[],
+): void {
+  if (
+    SEARCHABLE_FIGMA_NODE_TYPES.has(node.type) &&
+    node.name.toLowerCase() === targetName.toLowerCase()
+  ) {
+    results.push(node);
+  }
+  if (node.children) {
+    for (const child of node.children) {
+      collectNodesByName(child, targetName, results);
+    }
+  }
+}
+
+/**
+ * Search the Figma document tree for the best node whose name matches
+ * `targetName` (case-insensitive) among SEARCHABLE_FIGMA_NODE_TYPES.
  *
- * Searches across ALL pages and ALL depths in the tree.
+ * When multiple nodes share the same name, candidates are ranked by:
+ * 1. Node type priority: COMPONENT_SET > COMPONENT > INSTANCE > others
+ * 2. Presence of componentPropertyDefinitions (has CPD wins)
  *
  * Returns a DesignComponent with:
  * - type: mapped to AF canonical type via figmaNodeTypeToAFType()
@@ -1342,56 +1410,63 @@ function findNodeByName(
   targetName: string,
   componentMeta: Record<string, FigmaComponentMeta>,
 ): DesignComponent | null {
-  if (
-    SEARCHABLE_FIGMA_NODE_TYPES.has(node.type) &&
-    node.name.toLowerCase() === targetName.toLowerCase()
-  ) {
-    const meta = componentMeta[node.id];
-    const variants: DesignVariant[] = [];
+  // Collect all matching candidates
+  const candidates: FigmaNode[] = [];
+  collectNodesByName(node, targetName, candidates);
+  if (candidates.length === 0) return null;
 
-    if (node.type === 'COMPONENT_SET' && node.children) {
-      for (const child of node.children) {
-        if (child.type === 'COMPONENT') {
-          variants.push({
-            name: child.name,
-            id: child.id,
-            properties: parseVariantName(child.name),
-          });
-        }
+  // Rank: type priority first, then CPD presence as tiebreaker
+  candidates.sort((a, b) => {
+    const typeDiff = figmaNodeTypePriority(b.type) - figmaNodeTypePriority(a.type);
+    if (typeDiff !== 0) return typeDiff;
+    const aCpd = a.componentPropertyDefinitions ? 1 : 0;
+    const bCpd = b.componentPropertyDefinitions ? 1 : 0;
+    return bCpd - aCpd;
+  });
+
+  const best = candidates[0];
+  const meta = componentMeta[best.id];
+  const variants: DesignVariant[] = [];
+
+  if (best.type === 'COMPONENT_SET' && best.children) {
+    for (const child of best.children) {
+      if (child.type === 'COMPONENT') {
+        variants.push({
+          name: child.name,
+          id: child.id,
+          properties: parseVariantName(child.name),
+        });
       }
     }
-
-    const properties: Record<string, unknown> = { figmaType: node.type };
-    if (node.fills) properties.fills = node.fills;
-    if (node.cornerRadius !== undefined) properties.cornerRadius = node.cornerRadius;
-    if (node.paddingTop !== undefined) properties.paddingTop = node.paddingTop;
-    if (node.paddingRight !== undefined) properties.paddingRight = node.paddingRight;
-    if (node.paddingBottom !== undefined) properties.paddingBottom = node.paddingBottom;
-    if (node.paddingLeft !== undefined) properties.paddingLeft = node.paddingLeft;
-    if (node.itemSpacing !== undefined) properties.itemSpacing = node.itemSpacing;
-    if (node.characters) properties.characters = node.characters;
-    if (node.absoluteBoundingBox) {
-      properties.width = node.absoluteBoundingBox.width;
-      properties.height = node.absoluteBoundingBox.height;
-    }
-
-    return {
-      name: meta?.name ?? node.name,
-      id: node.id,
-      type: figmaNodeTypeToAFType(node.type),
-      properties,
-      variants: variants.length > 0 ? variants : undefined,
-    };
   }
 
-  if (node.children) {
-    for (const child of node.children) {
-      const found = findNodeByName(child, targetName, componentMeta);
-      if (found) return found;
-    }
+  const properties: Record<string, unknown> = { figmaType: best.type };
+  if (best.fills) properties.fills = best.fills;
+  if (best.cornerRadius !== undefined) properties.cornerRadius = best.cornerRadius;
+  if (best.paddingTop !== undefined) properties.paddingTop = best.paddingTop;
+  if (best.paddingRight !== undefined) properties.paddingRight = best.paddingRight;
+  if (best.paddingBottom !== undefined) properties.paddingBottom = best.paddingBottom;
+  if (best.paddingLeft !== undefined) properties.paddingLeft = best.paddingLeft;
+  if (best.itemSpacing !== undefined) properties.itemSpacing = best.itemSpacing;
+  if (best.characters) properties.characters = best.characters;
+  if (best.absoluteBoundingBox) {
+    properties.width = best.absoluteBoundingBox.width;
+    properties.height = best.absoluteBoundingBox.height;
   }
 
-  return null;
+  // Carry structured property definitions through for downstream consumers
+  // (variant axes, text properties, etc.)
+  if (best.componentPropertyDefinitions) {
+    properties.componentPropertyDefinitions = best.componentPropertyDefinitions;
+  }
+
+  return {
+    name: meta?.name ?? best.name,
+    id: best.id,
+    type: figmaNodeTypeToAFType(best.type),
+    properties,
+    variants: variants.length > 0 ? variants : undefined,
+  };
 }
 
 /**

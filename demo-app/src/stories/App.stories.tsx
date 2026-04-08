@@ -1,20 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { DemoButton, TestBox, WelcomeHeading } from '../App';
+import { TestBox, WelcomeHeading } from '../App';
 
-// =============================================================================
-// DEMO BUTTON
-// =============================================================================
-
-const buttonMeta: Meta<typeof DemoButton> = {
-  title: 'Components/DemoButton',
-  component: DemoButton,
+const meta: Meta = {
+  title: 'Components/App',
 };
 
-export default buttonMeta;
-
-type ButtonStory = StoryObj<typeof DemoButton>;
-
-export const Default: ButtonStory = {};
+export default meta;
 
 // =============================================================================
 // TEST BOX

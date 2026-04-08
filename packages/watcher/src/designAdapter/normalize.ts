@@ -379,6 +379,30 @@ export function normalizeDesignComponent(
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  // Pass through componentPropertyDefinitions for drift analysis
+  // These contain variant axes (name + allowed values) and text property defs
+  if (props.componentPropertyDefinitions && typeof props.componentPropertyDefinitions === 'object') {
+    const cpd = props.componentPropertyDefinitions as Record<string, {
+      type?: string;
+      defaultValue?: unknown;
+      variantOptions?: string[];
+    }>;
+    const mapped: NormalizedDesignComponent['componentPropertyDefinitions'] = {};
+    for (const [key, def] of Object.entries(cpd)) {
+      if (def && typeof def.type === 'string') {
+        mapped[key] = {
+          type: def.type,
+          defaultValue: typeof def.defaultValue === 'string' ? def.defaultValue : undefined,
+          variantOptions: Array.isArray(def.variantOptions) ? def.variantOptions : undefined,
+        };
+      }
+    }
+    if (Object.keys(mapped).length > 0) {
+      normalized.componentPropertyDefinitions = mapped;
+      knownKeys.add('componentPropertyDefinitions');
+    }
+  }
+
   return normalized;
 }
 

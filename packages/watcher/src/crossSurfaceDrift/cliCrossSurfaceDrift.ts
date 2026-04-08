@@ -86,6 +86,12 @@ function findCodeSurface(
     `export\\s+(?:default\\s+)?(?:function|class)\\s+${componentName}\\b`,
   );
 
+  // Collect all matching files and their extracted metadata so we can pick
+  // the richest match rather than the first alphabetical hit.
+  let bestResult: CodeSurfaceData | null = null;
+  let bestScore = -1;
+  let bestFileMatchesName = false;
+
   for (const watchPath of watchPaths) {
     const absPath = resolve(repoRoot, watchPath);
     if (!existsSync(absPath)) continue;
@@ -111,19 +117,55 @@ function findCodeSurface(
         }
       }
 
-      // Extract string-literal union values as variant candidates
-      const variants: string[] = [];
-      const unionRe = /'([^']+)'\s*\|/g;
-      let m;
-      while ((m = unionRe.exec(content)) !== null) {
-        if (!variants.includes(m[1])) variants.push(m[1]);
+      // Extract props from interface/type definitions (e.g., interface ButtonProps { ... })
+      const interfaceRe = new RegExp(
+        `(?:interface|type)\\s+${componentName}Props\\s*(?:=\\s*)?\\{([^}]+)\\}`,
+      );
+      const interfaceMatch = content.match(interfaceRe);
+      if (interfaceMatch) {
+        for (const raw of interfaceMatch[1].split(/[;\n]/)) {
+          const trimmed = raw.trim();
+          if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+          const name = trimmed.split(/[?:]/)[0].trim();
+          if (name && /^[a-zA-Z_$]/.test(name) && !props.includes(name)) {
+            props.push(name);
+          }
+        }
       }
 
-      return { props, variants };
+      // Extract string-literal union values as variant candidates.
+      // Find lines that contain both '...' string literals and | (union syntax),
+      // then extract all quoted values from those lines.
+      const variants: string[] = [];
+      const lines = content.split('\n');
+      for (const line of lines) {
+        if (line.includes('|') && /'[^']+'/.test(line)) {
+          const valueRe = /'([^']+)'/g;
+          let m;
+          while ((m = valueRe.exec(line)) !== null) {
+            if (!variants.includes(m[1])) variants.push(m[1]);
+          }
+        }
+      }
+
+      // Rank this candidate: richest metadata wins.
+      // Tiebreaker: prefer file whose basename matches the component name.
+      const score = props.length + variants.length;
+      const basename = file.split('/').pop() ?? '';
+      const fileMatchesName = basename.replace(/\.(tsx?|jsx?)$/, '').toLowerCase() === componentName.toLowerCase();
+
+      if (
+        score > bestScore ||
+        (score === bestScore && fileMatchesName && !bestFileMatchesName)
+      ) {
+        bestResult = { props, variants };
+        bestScore = score;
+        bestFileMatchesName = fileMatchesName;
+      }
     }
   }
 
-  return null;
+  return bestResult;
 }
 
 // =============================================================================

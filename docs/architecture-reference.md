@@ -5406,7 +5406,10 @@ as a constrained, read-only AF design adapter using the [Model Context Protocol]
 
 **`getComponent(name)` — node search behavior:**
 
-Searches the entire Figma file tree recursively across all pages at depth=8.
+Searches the Figma file tree recursively across all pages. The MCP path uses `depth=3` with `verbosity='full'` (the MCP tool's maximum depth); the REST fallback uses `depth=8`. Both are sufficient for typical file structures (components are at depth 2-3). The `verbosity='full'` parameter is required for the MCP path — the default `'summary'` strips `componentPropertyDefinitions` and all visual properties from nodes.
+
+If the MCP call fails, the adapter falls through to the REST API automatically (not caught by the outer error handler). This ensures Figma metadata is always extracted when credentials are valid.
+
 Matches by exact name (case-insensitive) against any of these node types:
 
 | Figma type | AF `DesignComponent.type` |
@@ -5417,6 +5420,8 @@ Matches by exact name (case-insensitive) against any of these node types:
 | `FRAME`, `GROUP`, `SECTION`, `TEXT` | `frame` |
 
 The raw Figma type is preserved in `properties.figmaType`. A warning is added to the result when the matched node is not a `COMPONENT` or `COMPONENT_SET`. `getComponents()` (list all) retains its original behavior and only returns published `COMPONENT`/`COMPONENT_SET` nodes.
+
+**MCP response shape**: The figma-console MCP `figma_get_file_data` tool returns `components` as a count (number), not as a `Record<string, ComponentMeta>` like the REST API. The adapter guards against this with a type check before using the metadata map. `componentPropertyDefinitions` is extracted inline from the document tree nodes (available in `'full'` verbosity) and enriched from top-level `componentSets`/`components` metadata when available.
 
 **Architecture:**
 - AF acts as an MCP **client** connecting to figma-console-mcp as the MCP **server**.
@@ -5544,6 +5549,45 @@ readonly surfaceMetadata: SurfaceMetadata = {
   stability: 'observational',
 };
 ```
+
+---
+
+### Cross-Surface Drift: Metadata Extraction (Phase 16C Enhancement)
+
+Cross-surface drift analysis compares component metadata across three surfaces: **Figma**, **Storybook**, and **Code**. Each surface extracts props and variants independently, then `analyze.ts` compares them.
+
+#### Figma Surface
+
+The primary metadata source is `componentPropertyDefinitions` (CPD) from the Figma REST API. When a component or component set defines property definitions, `findNodeByName()` in the Figma adapter extracts them and passes them through normalization:
+
+```
+Figma REST API → findNodeByName() → NormalizedDesignComponent.componentPropertyDefinitions → buildFigmaSnapshot()
+```
+
+CPD entries are classified by type:
+- **VARIANT**: Creates a variant axis (e.g., `State` with options `['Default', 'Hover']`) and a corresponding prop
+- **TEXT**: Creates a text prop (property names like `"Label#12:34"` are cleaned to `"Label"`)
+- **BOOLEAN**: Creates a boolean prop
+- **INSTANCE_SWAP**: Creates an instance-swap prop
+
+When CPD is absent (older Figma files or non-component nodes), `buildFigmaSnapshot()` falls back to children-based variant inference from normalized variant names.
+
+#### Storybook Surface
+
+Props are extracted from `reactDocgen` metadata via `extractProps()` in `storybookAdapter.ts`. Variants are inferred by `inferVariantAxes()` from prop type unions.
+
+**Story name fallback**: When `inferVariantAxes()` yields no variants but named stories exist, story names are used as variant candidates. A skip-list filters non-variant names: `docs`, `overview`, `page`, `playground`, `template`.
+
+#### Code Surface
+
+`findCodeSurface()` in `cliCrossSurfaceDrift.ts` extracts metadata from TypeScript source:
+
+1. **Props**: Regex matches both destructured parameters (`{ variant, label }`) and `interface`/`type` declarations (`interface ButtonProps { variant?: ...; label?: ... }`)
+2. **Variants**: Line-based union extraction finds all quoted values in union types (`'Default' | 'Hover'`)
+
+#### Demo Fixture
+
+`demo-app/src/DemoButton.tsx` and `demo-app/src/stories/DemoButton.stories.tsx` provide a minimal component with typed props and matching Storybook stories for verifying drift analysis end-to-end.
 
 ---
 
