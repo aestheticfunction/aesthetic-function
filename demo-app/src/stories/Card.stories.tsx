@@ -1,11 +1,8 @@
+import React from 'react';
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { Card, SuccessButton, ErrorButton } from '../Card';
+import { Card } from '../Card';
 
-// =============================================================================
-// CARD
-// =============================================================================
-
-const cardMeta: Meta<typeof Card> = {
+const meta: Meta<typeof Card> = {
   title: 'Components/Card',
   component: Card,
   args: {
@@ -14,28 +11,18 @@ const cardMeta: Meta<typeof Card> = {
   },
 };
 
-export default cardMeta;
+export default meta;
 
-type CardStory = StoryObj<typeof Card>;
+type Story = StoryObj<typeof Card>;
 
-export const Default: CardStory = {};
+/** SDS: Card (adapted vertical layout, no fill) */
+export const Default: Story = {};
 
-export const WithLongTitle: CardStory = {
-  args: { title: 'A Very Long Card Title That Wraps' },
-};
-
-// =============================================================================
-// SUCCESS BUTTON (co-located for simplicity)
-// =============================================================================
-
-export const Success: StoryObj<typeof SuccessButton> = {
-  render: () => <SuccessButton />,
-};
-
-// =============================================================================
-// ERROR BUTTON (co-located for simplicity)
-// =============================================================================
-
-export const Error: StoryObj<typeof ErrorButton> = {
-  render: () => <ErrorButton />,
+/** Card with optional description */
+export const WithDescription: Story = {
+  args: {
+    title: 'Card Title',
+    description: 'Supporting text that provides additional context.',
+    children: 'Card content goes here.',
+  },
 };

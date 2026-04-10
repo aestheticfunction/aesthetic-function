@@ -1,63 +1,76 @@
 /**
- * Card Component with @figma markers
+ * Card — SDS-faithful layout, simplified anatomy
  *
- * Demonstrates multiple markers in a single file.
+ * Styling matches "Simple Design System" Card spacing and typography:
+ *   No background fill         (SDS card frame has no fill)
+ *   Space/400 → 16px           gap between title section and children
+ *   Space/200 → 8px            gap between title and description
+ *   Max-width 440px            (SDS card fixed width)
+ *   Body/Size Medium → 16px Inter Regular
+ *
+ * Adapted for demo:
+ *   – Vertical layout (SDS uses horizontal icon+body; simplified for sign-in use case)
+ *   – title + optional description + children slot
+ *   – AuthCardTitle (@figma node=AuthCardTitle) maps to the <h2> title element
+ *   – No @figma markers — markers live in App.tsx only
+ *   – SuccessButton / ErrorButton removed
  */
 
 import React from 'react';
 
-// @figma node=CardContainer fill=Neutral/Gray50
-export function Card({ title, children }: { title: string; children: React.ReactNode }) {
+export interface CardProps {
+  /** Card heading — maps to @figma node=AuthCardTitle in App.tsx */
+  title: string;
+  /** Optional subtitle below the title */
+  description?: string;
+  children: React.ReactNode;
+}
+
+export function Card({ title, description, children }: CardProps) {
   return (
     <div
       style={{
-        backgroundColor: '#F9FAFB', // Neutral/Gray50
-        borderRadius: 12,
-        padding: 24,
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 16,
+        maxWidth: 440,
+        width: '100%',
       }}
     >
-      {/* @figma node=CardTitle text="Card Title" */}
-      <h2 style={{ margin: 0, marginBottom: 12 }}>{title}</h2>
-      {children}
+      {/* Text section — title + description, gap 8px */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <h2
+          style={{
+            margin: 0,
+            fontSize: 24,
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontWeight: 600,
+            color: '#1E1E1E',
+            lineHeight: 1.2,
+          }}
+        >
+          {title}
+        </h2>
+        {description && (
+          <p
+            style={{
+              margin: 0,
+              fontSize: 16,
+              fontFamily: 'Inter, system-ui, sans-serif',
+              fontWeight: 400,
+              color: '#6B7280',
+              lineHeight: 1.4,
+            }}
+          >
+            {description}
+          </p>
+        )}
+      </div>
+
+      {/* Children slot — inputs and buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        {children}
+      </div>
     </div>
-  );
-}
-
-// @figma node=SuccessButton text="Continue" fill=Success/Green500
-export function SuccessButton() {
-  return (
-    <button
-      style={{
-        backgroundColor: '#10B981', // Success/Green500
-        color: 'white',
-        padding: '10px 20px',
-        borderRadius: 6,
-        border: 'none',
-        fontWeight: 500,
-        cursor: 'pointer',
-      }}
-    >
-      Continue
-    </button>
-  );
-}
-
-// @figma node=ErrorButton text="Cancel" fill=Error/Red500
-export function ErrorButton() {
-  return (
-    <button
-      style={{
-        backgroundColor: '#EF4444', // Error/Red500
-        color: 'white',
-        padding: '10px 20px',
-        borderRadius: 6,
-        border: 'none',
-        fontWeight: 500,
-        cursor: 'pointer',
-      }}
-    >
-      Cancel
-    </button>
   );
 }

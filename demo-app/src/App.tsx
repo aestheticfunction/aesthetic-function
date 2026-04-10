@@ -1,88 +1,64 @@
 /**
- * Demo React Component with @figma markers
+ * App — AF Demo: Sign-in panel
  *
- * This file demonstrates the @figma marker syntax for syncing
- * React components to Figma.
+ * This is the ONLY file with @figma markers.
+ * All markers use demo-facing node names for clean AF traceability.
  *
- * MARKER FORMAT:
- *   // @figma node=<FigmaNodeName> text="<Text>" fill=<TokenOrHex>
+ * Cross-surface map:
+ *   node=AuthCard        → Card.tsx       → Components/Card       → SDS Card (adapted)
+ *   node=AuthCardTitle   → Card <h2>      → Components/Card       → SDS Card > Text
+ *   node=EmailInput      → Input.tsx      → Components/Input      → SDS Input Field
+ *   node=PasswordInput   → Input.tsx      → Components/Input      → SDS Input Field
+ *   node=SignInButton    → Button.tsx     → Components/Button     → SDS Button Primary/Default
  *
- * INSTRUCTIONS:
- * 1. Run the server: pnpm dev:server
+ * AF instructions:
+ * 1. Run the server:  pnpm dev:server
  * 2. Run the watcher: pnpm dev:watcher
- * 3. Edit this file (change text or fill values)
- * 4. Save - the Figma plugin will update automatically!
- *
- * In Figma, create nodes named "LoginButton" and "TestBox" to see updates.
+ * 3. Edit marker values (fill, text) and save — Figma updates automatically.
  */
 
 import React from 'react';
+import { Card } from './Card';
+import { Input } from './Input';
+import { Button } from './Button';
 
 // =============================================================================
-// DEMO BUTTON
+// @figma markers — instance-level, demo-facing node names
 // =============================================================================
 
-// @figma node=DemoButton text="Demo" fill=#0000FF
-// @figma node=DemoButton::hover fill=#2563EB
-
-export function DemoButton() {
-  return (
-    <button
-      style={{
-        backgroundColor: '#0000FF', // Primary/Blue500
-        color: 'white',
-        padding: '12px 24px',
-        borderRadius: '8px',
-        border: 'none',
-        fontSize: '16px',
-        fontWeight: 600,
-        cursor: 'pointer'
-      }}>
-
-      CONTINUE
-    </button>);
-
-}
+// @figma node=AuthCard
+// @figma node=AuthCardTitle text="Sign in"
+// @figma node=EmailInput fill=#FFFFFF
+// @figma node=PasswordInput fill=#FFFFFF
+// @figma node=SignInButton fill=#2C2C2C text="Sign in"
+// @figma node=SignInButton::hover fill=#1E1E1E
 
 // =============================================================================
-// TEST BOX
-// =============================================================================
-
-// @figma node=TestBox fill=#FF0000
-export function TestBox() {
-  return (
-    <div
-      style={{
-        width: 100,
-        height: 100,
-        backgroundColor: '#FF0000',
-        borderRadius: 8
-      }} />);
-
-
-}
-
-// =============================================================================
-// WELCOME HEADING
-// =============================================================================
-
-// @figma node=WelcomeText text="Welcome to the Demo"
-export function WelcomeHeading() {
-  return <h1>Welcome to the Demo</h1>;
-}
-
-// =============================================================================
-// APP
+// App
 // =============================================================================
 
 export default function App() {
   return (
-    <div style={{ padding: 40, fontFamily: 'system-ui, sans-serif' }}>
-      <WelcomeHeading />
-      <div style={{ display: 'flex', gap: 20, marginTop: 20 }}>
-        <LoginButton />
-        <TestBox />
-      </div>
-    </div>);
-
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F3F4F6',
+        fontFamily: 'Inter, system-ui, sans-serif',
+        padding: 24,
+        boxSizing: 'border-box',
+      }}
+    >
+      <Card
+        title="Sign in"
+        description="Enter your credentials to continue."
+      >
+        <Input label="Email" type="email" placeholder="you@example.com" />
+        <Input label="Password" type="password" placeholder="Enter your password" />
+        <Button label="Sign in" />
+      </Card>
+    </div>
+  );
 }
