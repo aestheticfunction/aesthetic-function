@@ -20,9 +20,11 @@ import type {
   SurfaceSnapshot,
   SurfaceProp,
   DriftAnalysisOptions,
+  NormalizationMetadata,
 } from '@aesthetic-function/shared/crossSurfaceDrift';
 import type { StorybookComponentMeta, StorybookProp } from '@aesthetic-function/shared/storybookAdapter';
 import type { NormalizedDesignComponent } from '../designAdapter/types.js';
+import { normalizeSnapshot, DEFAULT_NORMALIZATION_CONFIG } from './normalize.js';
 
 // =============================================================================
 // CORE ANALYSIS
@@ -89,6 +91,19 @@ export function analyzeCrossSurfaceDrift(
     surfaces.code = buildEmptySnapshot('code-ast', componentName);
   }
 
+  // Normalize snapshots before comparison (Phase 16D)
+  const normConfig = options?.normalizationConfig ?? DEFAULT_NORMALIZATION_CONFIG;
+  const normalization: NormalizationMetadata = { appliedRules: [], excludedProps: [] };
+
+  for (const key of ['figma', 'storybook', 'code'] as const) {
+    const snap = surfaces[key];
+    if (!snap) continue;
+    const result = normalizeSnapshot(snap, key, normConfig);
+    surfaces[key] = result.snapshot;
+    normalization.appliedRules.push(...result.appliedRules);
+    normalization.excludedProps.push(...result.excludedProps);
+  }
+
   // Run comparisons
   findings.push(...compareComponentPresence(componentName, surfaces, queriedSurfaces));
   findings.push(...comparePropInventory(surfaces));
@@ -99,6 +114,9 @@ export function analyzeCrossSurfaceDrift(
   // Compute severity (highest finding wins)
   const severity = computeOverallSeverity(findings);
 
+  // Only include normalization metadata when something was actually normalized
+  const hasNormalization = normalization.appliedRules.length > 0 || normalization.excludedProps.length > 0;
+
   return {
     componentName,
     surfaces,
@@ -106,6 +124,7 @@ export function analyzeCrossSurfaceDrift(
     severity,
     queriedSurfaces,
     analyzedAt: now,
+    ...(hasNormalization ? { normalization } : {}),
   };
 }
 

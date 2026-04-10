@@ -365,10 +365,12 @@ describe('figma componentPropertyDefinitions', () => {
     expect(report.surfaces.figma).toBeDefined();
     expect(report.surfaces.figma!.variants).toContain('Default');
     expect(report.surfaces.figma!.variants).toContain('Hover');
-    const stateProp = report.surfaces.figma!.props.find(p => p.name === 'State');
-    expect(stateProp).toBeDefined();
-    expect(stateProp!.type).toBe('VARIANT');
-    expect(stateProp!.values).toEqual(['Default', 'Hover']);
+    // After normalization, "State" is renamed to canonical "variant"
+    const variantProp = report.surfaces.figma!.props.find(p => p.name === 'variant');
+    expect(variantProp).toBeDefined();
+    expect(variantProp!.type).toBe('VARIANT');
+    expect(variantProp!.values).toEqual(['Default', 'Hover']);
+    expect(variantProp!.normalizedFrom).toBe('State');
   });
 
   it('extracts TEXT property definitions into props', () => {
@@ -468,6 +470,170 @@ describe('storybook story name fallback', () => {
     );
     // Should use variantAxes values, not story names
     expect(report.surfaces.storybook!.variants).toEqual(['primary', 'secondary']);
+  });
+});
+
+// =============================================================================
+// NORMALIZATION — FALSE POSITIVE ELIMINATION (Phase 16D)
+// =============================================================================
+
+describe('normalization — DemoButton false positive elimination', () => {
+  it('eliminates State/variant false positive (Figma "State" ↔ Code/Storybook "variant")', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'DemoButton',
+      makeFigmaComponent({
+        name: 'DemoButton',
+        type: 'component-set',
+        variants: [],
+        componentPropertyDefinitions: {
+          State: {
+            type: 'VARIANT',
+            defaultValue: 'Default',
+            variantOptions: ['Default', 'Hover'],
+          },
+        },
+      }),
+      makeStorybookComponent({
+        name: 'DemoButton',
+        props: [
+          { name: 'variant', type: "'Default' | 'Hover'", required: false },
+        ],
+        stories: [
+          { id: 'demobutton--default', name: 'Default', variantAxes: { variant: 'Default' } },
+          { id: 'demobutton--hover', name: 'Hover', variantAxes: { variant: 'Hover' } },
+        ],
+      }),
+      { props: ['variant'], variants: ['Default', 'Hover'] },
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+
+    // Should NOT have findings about "state" missing in Storybook/Code
+    // or "variant" missing in Figma — they're the same concept
+    const propFindings = report.findings.filter(f => f.field.startsWith('prop:'));
+    const stateFindings = propFindings.filter(f => f.field.includes('state'));
+    const variantFindings = propFindings.filter(f => f.field.includes('variant'));
+    expect(stateFindings).toHaveLength(0);
+    expect(variantFindings).toHaveLength(0);
+
+    // Figma snapshot should show "variant" (normalized from "State")
+    const figmaVariantProp = report.surfaces.figma!.props.find(p => p.name === 'variant');
+    expect(figmaVariantProp).toBeDefined();
+    expect(figmaVariantProp!.normalizedFrom).toBe('State');
+  });
+
+  it('eliminates text/label false positive (Figma "text" ↔ Code/Storybook "label")', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'DemoButton',
+      makeFigmaComponent({
+        name: 'DemoButton',
+        type: 'component-set',
+        variants: [],
+        componentPropertyDefinitions: {
+          'text#12:34': {
+            type: 'TEXT',
+            defaultValue: 'Click me',
+          },
+        },
+      }),
+      makeStorybookComponent({
+        name: 'DemoButton',
+        props: [
+          { name: 'label', type: 'string', required: false },
+        ],
+        stories: [],
+      }),
+      { props: ['label'], variants: [] },
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+
+    // "text" cleaned to "text" by CPD handler, then normalized to "label"
+    // Should NOT have findings about text/label mismatch
+    const propFindings = report.findings.filter(f => f.field.startsWith('prop:'));
+    const textFindings = propFindings.filter(f => f.field.includes('text'));
+    const labelFindings = propFindings.filter(f =>
+      f.field.includes('label') && (f.type === 'missing-in-figma' || f.type === 'missing-in-storybook'),
+    );
+    expect(textFindings).toHaveLength(0);
+    expect(labelFindings).toHaveLength(0);
+  });
+
+  it('suppresses design-only properties from Figma (fills, cornerRadius, width, height)', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'DemoButton',
+      makeFigmaComponent({
+        name: 'DemoButton',
+        type: 'component-set',
+        variants: [],
+        properties: {
+          fills: ['#3B82F6'],
+          cornerRadius: 8,
+          width: 200,
+          height: 48,
+        },
+      }),
+      makeStorybookComponent({
+        name: 'DemoButton',
+        props: [
+          { name: 'variant', type: "'Default' | 'Hover'", required: false },
+        ],
+        stories: [],
+      }),
+      { props: ['variant'], variants: [] },
+      { queriedSurfaces: ['figma', 'storybook', 'code'] },
+    );
+
+    // Should NOT have findings about fills, cornerRadius, width, height
+    const layoutFindings = report.findings.filter(f =>
+      f.field.includes('fills') ||
+      f.field.includes('cornerradius') ||
+      f.field.includes('width') ||
+      f.field.includes('height'),
+    );
+    expect(layoutFindings).toHaveLength(0);
+
+    // Figma snapshot should not contain these props
+    const figmaProps = report.surfaces.figma!.props.map(p => p.name.toLowerCase());
+    expect(figmaProps).not.toContain('fills');
+    expect(figmaProps).not.toContain('cornerradius');
+    expect(figmaProps).not.toContain('width');
+    expect(figmaProps).not.toContain('height');
+  });
+
+  it('includes normalization metadata in the report', () => {
+    const report = analyzeCrossSurfaceDrift(
+      'DemoButton',
+      makeFigmaComponent({
+        name: 'DemoButton',
+        type: 'component-set',
+        variants: [],
+        componentPropertyDefinitions: {
+          State: {
+            type: 'VARIANT',
+            defaultValue: 'Default',
+            variantOptions: ['Default', 'Hover'],
+          },
+        },
+        properties: {
+          fills: ['#3B82F6'],
+          cornerRadius: 8,
+        },
+      }),
+      null,
+      null,
+    );
+
+    expect(report.normalization).toBeDefined();
+
+    // "State" → "variant" should be in appliedRules
+    const stateRule = report.normalization!.appliedRules.find(r => r.originalName === 'State');
+    expect(stateRule).toBeDefined();
+    expect(stateRule!.canonicalName).toBe('variant');
+    expect(stateRule!.surface).toBe('figma');
+
+    // fills and cornerRadius should be in excludedProps
+    const excluded = report.normalization!.excludedProps.map(e => e.name);
+    expect(excluded).toContain('fills');
+    expect(excluded).toContain('cornerRadius');
   });
 });
 

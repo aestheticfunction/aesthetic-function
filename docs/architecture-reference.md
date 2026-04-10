@@ -535,6 +535,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
 | **Phase 16A.1** | Surface Classification Metadata (adapter taxonomy) | ✅ |
 | **Phase 16B** | Figma Console MCP Adapter (read-only) | ✅ |
 | **Phase 16C** | Storybook MCP Adapter + Cross-Surface Drift Analysis | ✅ |
+| **Phase 16D** | Cross-Surface Drift Normalization Layer | ✅ |
 
 ### Not Implemented Yet
 
@@ -558,7 +559,7 @@ The reconciliation system is **feature-complete through Phase 14F**. Key capabil
 - **Unified Reconcile CLI (14A–14F)**: `figma:reconcile` entry point, profiles (local/record/ci), bundle artifacts, GitHub Actions matrix workflow, multi-source discovery
 - **Configuration & Profiles (15A–15B)**: `af.config.json`, named policy profiles (designer-first, code-first, balanced, strict-review)
 - **CLI & Inspector (15C–15D)**: Unified `af` CLI (control surface, not runtime), artifact listing/inspection/trace
-- **Design Adapters (16A–16C)**: Read-only design adapter interface, Figma Console MCP adapter, Storybook MCP adapter, surface classification metadata, cross-surface drift analysis
+- **Design Adapters (16A–16D)**: Read-only design adapter interface, Figma Console MCP adapter, Storybook MCP adapter, surface classification metadata, cross-surface drift analysis, drift normalization layer
 
 Echo suppression prevents feedback loops when AST writes trigger file save events.
 
@@ -5588,6 +5589,62 @@ Props are extracted from `reactDocgen` metadata via `extractProps()` in `storybo
 #### Demo Fixture
 
 `demo-app/src/DemoButton.tsx` and `demo-app/src/stories/DemoButton.stories.tsx` provide a minimal component with typed props and matching Storybook stories for verifying drift analysis end-to-end.
+
+### Cross-Surface Drift: Normalization Layer (Phase 16D)
+
+Different surfaces use different names for the same concepts, causing false-positive drift findings. Phase 16D adds a **deterministic, configurable normalization layer** that aligns equivalent concepts before comparison.
+
+#### Problem
+
+| Surface | Variant Axis | Text Prop | Layout Props |
+|---------|-------------|-----------|-------------|
+| Figma | `State` (VARIANT) | `text` (TEXT) | `fills`, `cornerRadius`, `width`, `height` |
+| Storybook | `variant` | `label` | (none) |
+| Code | `variant` | `label` | (none) |
+
+Without normalization, `State` vs `variant` and `text` vs `label` appear as false drift, and Figma-only layout properties generate noise.
+
+#### Solution
+
+`normalize.ts` in `crossSurfaceDrift/` applies three passes to each surface snapshot **before** comparison:
+
+1. **Design-only filtering** (Figma only): Removes layout/visual properties (`fills`, `cornerRadius`, `width`, `height`, `padding`, `gap`, `fontSize`, `fontWeight`, `textContent`) that have no API-level counterpart
+2. **Alias normalization** (all surfaces): Renames equivalent prop names to a canonical form using a configurable alias map
+3. **Deduplication**: Merges props that collide after renaming
+
+Default alias rules:
+
+| Canonical | Aliases |
+|-----------|---------|
+| `variant` | `state`, `variant` |
+| `label` | `text`, `label` |
+
+#### Configuration
+
+Normalization is configured via `NormalizationConfig` (defined in `@aesthetic-function/shared/crossSurfaceDrift`):
+
+```typescript
+interface NormalizationConfig {
+  propAliases: Array<{ canonical: string; aliases: string[] }>;
+  designOnlyFields: { names: string[]; strategy: 'exclude' | 'tag' };
+}
+```
+
+The default config (`DEFAULT_NORMALIZATION_CONFIG` in `normalize.ts`) handles the DemoButton demo. Custom configs can be passed via `DriftAnalysisOptions.normalizationConfig` for per-project overrides.
+
+#### Traceability
+
+Normalization is fully explainable:
+
+- **`SurfaceProp.normalizedFrom`**: When a prop is renamed (e.g., `State` → `variant`), the original name is preserved in `normalizedFrom`
+- **`CrossSurfaceDriftReport.normalization`**: The report includes metadata listing all applied alias rules and excluded design-only props, with surface attribution
+
+#### Design Decisions
+
+- Normalization runs **before** comparison, transforming snapshots rather than patching findings. The existing `comparePropInventory` and `compareVariantCoverage` functions require zero changes.
+- Design-only filtering applies only to the Figma surface — if Code/Storybook happens to have a prop named `fills`, it is not filtered.
+- Alias matching is case-insensitive but the canonical name is always lowercase.
+- The `strategy: 'tag'` option (alternative to `'exclude'`) is defined but not yet implemented — it would keep design-only props but mark them for separate "visual drift" reporting.
 
 ---
 

@@ -216,8 +216,13 @@ aesthetic-function/
 │   ├── server/          # WebSocket/HTTP relay, audit logging
 │   ├── figma-plugin/    # Figma sandbox plugin (mutation executor)
 │   └── cli/             # `af` CLI control surface
-├── demo-app/            # Sample React app with @figma markers + Storybook
-│   └── .storybook/      # Storybook config (addon-mcp enabled)
+├── demo-app/            # Demo React app for AF reconciliation and drift demos
+│   ├── src/
+│   │   ├── App.tsx      # Sign-in composition panel — sole source of @figma markers
+│   │   ├── Button.tsx   # SDS-faithful Button (Primary variant, no markers)
+│   │   ├── Input.tsx    # SDS-faithful Input Field (no markers)
+│   │   └── Card.tsx     # SDS-faithful Card container (no markers)
+│   └── .storybook/      # Storybook config (addon-mcp enabled, Components/Button|Input|Card)
 ├── docs/
 │   └── architecture-reference.md  # Full internal reference
 ├── .github/

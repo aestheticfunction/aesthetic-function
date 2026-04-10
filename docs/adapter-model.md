@@ -91,6 +91,16 @@ The `af design drift` command compares component data across available surfaces:
 
 Drift findings use **corroboration rules** to filter noise: a story-derived variant is only reported if (1) the variant axis maps to a real prop, (2) the value appears in the prop's type definition. Findings carry `confidence: 'high'` (constrained union match) or `'low'` (unconstrained type like `string`).
 
+#### Normalization Layer (Phase 16D)
+
+Before comparison, surface snapshots pass through a **deterministic normalization layer** (`crossSurfaceDrift/normalize.ts`) that:
+
+1. **Filters design-only fields** from Figma (e.g., `fills`, `cornerRadius`, `width`, `height`) that have no API-level counterpart
+2. **Normalizes prop aliases** across surfaces (e.g., Figma `State` → canonical `variant`, Figma `text` → canonical `label`)
+3. **Deduplicates** props that collide after renaming
+
+This eliminates false-positive drift caused by naming differences between surfaces. The normalization config is deterministic and configurable via `NormalizationConfig` — see [architecture-reference.md](architecture-reference.md) for full details.
+
 ## Detailed Reference
 
 The full adapter model, including MCP transport configuration, tool policies, and Phase 16A/16B/16C implementation details, is documented in [architecture-reference.md](architecture-reference.md).

@@ -41,6 +41,9 @@ export interface CrossSurfaceDriftReport {
 
   /** When the analysis was performed */
   analyzedAt: string;
+
+  /** Normalization metadata showing what was renamed/excluded before comparison */
+  normalization?: NormalizationMetadata;
 }
 
 // =============================================================================
@@ -74,6 +77,8 @@ export interface SurfaceProp {
   name: string;
   type?: string;
   values?: string[];
+  /** Original name before alias normalization (set only when name was changed) */
+  normalizedFrom?: string;
 }
 
 // =============================================================================
@@ -144,4 +149,53 @@ export interface DriftAnalysisOptions {
 
   /** Surfaces that were queried by the caller (used to distinguish "not checked" from "checked, not found") */
   queriedSurfaces?: ('figma' | 'storybook' | 'code')[];
+
+  /** Override the default normalization config (alias mappings + design-only filters) */
+  normalizationConfig?: NormalizationConfig;
+}
+
+// =============================================================================
+// NORMALIZATION
+// =============================================================================
+
+/**
+ * Configuration for the pre-comparison normalization layer.
+ * Deterministic and configurable — no LLM or fuzzy matching.
+ */
+export interface NormalizationConfig {
+  /** Alias groups: equivalent prop names across surfaces mapped to a canonical name */
+  propAliases: Array<{
+    /** The canonical name all surfaces will be normalized TO */
+    canonical: string;
+    /** Surface-specific names that map to this canonical name (matched case-insensitively) */
+    aliases: string[];
+  }>;
+
+  /** Figma-only layout/visual properties to filter from drift comparison */
+  designOnlyFields: {
+    /** Property names to treat as design-only (matched case-insensitively) */
+    names: string[];
+    /** 'exclude' removes from snapshot; 'tag' keeps but marks (future use) */
+    strategy: 'exclude' | 'tag';
+  };
+}
+
+/**
+ * Metadata about what normalization was applied before comparison.
+ * Provides explainability/traceability for the drift report.
+ */
+export interface NormalizationMetadata {
+  /** Prop names that were renamed via alias rules */
+  appliedRules: Array<{
+    originalName: string;
+    canonicalName: string;
+    surface: 'figma' | 'storybook' | 'code';
+  }>;
+
+  /** Props excluded from comparison as design-only */
+  excludedProps: Array<{
+    name: string;
+    surface: 'figma' | 'storybook' | 'code';
+    reason: 'design-only';
+  }>;
 }
