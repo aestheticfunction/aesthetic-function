@@ -49,7 +49,7 @@ export const DEFAULT_CONFIG: ResolvedAfConfig = {
     url: 'http://localhost:3001',
   },
   watcher: {
-    watchPaths: ['./demo-app/src'],
+    watchPaths: ['./demos/react-demo-app/src'],
   },
   overrides: {
     enabled: true,

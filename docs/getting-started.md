@@ -92,10 +92,10 @@ Alternative: use ngrok (`ngrok http 3001`).
 
 ## 5. Prepare a Component File
 
-AF analyzes React component files that contain `@figma` comment markers. The `demo-app/` directory has examples:
+AF analyzes React component files that contain `@figma` comment markers. The `demos/react-demo-app/` directory has examples:
 
 ```tsx
-// demo-app/src/App.tsx
+// demos/react-demo-app/src/App.tsx
 function App() {
   return (
     // @figma layout:column gap:16 padding:24
@@ -114,7 +114,7 @@ Markers follow the pattern `@figma property:value`. These tell AF what the code 
 Reconcile a single file:
 
 ```bash
-af reconcile demo-app/src/App.tsx
+af reconcile demos/react-demo-app/src/App.tsx
 ```
 
 This runs the full analysis pipeline:
@@ -126,19 +126,19 @@ This runs the full analysis pipeline:
 ### Check Status
 
 ```bash
-af status demo-app/src/App.tsx
+af status demos/react-demo-app/src/App.tsx
 ```
 
 ### View the Drift Dashboard
 
 ```bash
-af dashboard demo-app/src/App.tsx
+af dashboard demos/react-demo-app/src/App.tsx
 ```
 
 ### Project-Wide Dashboard
 
 ```bash
-af dashboard --project demo-app/src/
+af dashboard --project demos/react-demo-app/src/
 ```
 
 ## 7. Inspect Artifacts
@@ -147,13 +147,13 @@ Every reconciliation produces artifacts in `design-materializations/`. Inspect t
 
 ```bash
 # List all artifacts for a file
-af artifacts list demo-app/src/App.tsx
+af artifacts list demos/react-demo-app/src/App.tsx
 
 # Inspect a specific artifact
-af artifacts inspect design-materializations/demo-app__src__App.figma-reconcile.json
+af artifacts inspect design-materializations/demos__react-demo-app__src__App.figma-reconcile.json
 
 # Trace the full pipeline for a file
-af artifacts trace demo-app/src/App.tsx
+af artifacts trace demos/react-demo-app/src/App.tsx
 ```
 
 ## 8. Pull Design Data (Requires Figma Token)
@@ -179,13 +179,13 @@ af design inspect ButtonPrimary
 Run the CI gate summary on a directory:
 
 ```bash
-af ci demo-app/src/
+af ci demos/react-demo-app/src/
 ```
 
 In strict mode (for CI pipelines):
 
 ```bash
-af ci demo-app/src/ --strict --fail-on-worsening
+af ci demos/react-demo-app/src/ --strict --fail-on-worsening
 ```
 
 This exits with code 1 if drift exceeds thresholds, suitable for GitHub Actions or other CI systems.

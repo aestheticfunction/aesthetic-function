@@ -77,58 +77,58 @@ describe('getRepoRoot', () => {
 describe('normalizeSourcePath', () => {
   it('handles simple repo-relative paths', () => {
     const repoRoot = getRepoRoot();
-    const result = normalizeSourcePath('demo-app/src/App.tsx', repoRoot);
+    const result = normalizeSourcePath('demos/react-demo-app/src/App.tsx', repoRoot);
 
     // File exists at repo root, so path stays as-is
-    expect(result).toBe('demo-app/src/App.tsx');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('handles paths with parent references (../../)', () => {
     const repoRoot = getRepoRoot();
 
-    // Simulate calling from packages/watcher with ../../demo-app/src/App.tsx
-    const result = normalizeSourcePath('../../demo-app/src/App.tsx', repoRoot);
+    // Simulate calling from packages/watcher with ../../demos/react-demo-app/src/App.tsx
+    const result = normalizeSourcePath('../../demos/react-demo-app/src/App.tsx', repoRoot);
 
     // Should normalize to repo-relative
-    expect(result).toBe('demo-app/src/App.tsx');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('handles absolute paths under repo root', () => {
     const repoRoot = getRepoRoot();
-    const absolutePath = join(repoRoot, 'demo-app/src/App.tsx');
+    const absolutePath = join(repoRoot, 'demos/react-demo-app/src/App.tsx');
 
     const result = normalizeSourcePath(absolutePath, repoRoot);
 
-    expect(result).toBe('demo-app/src/App.tsx');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('handles paths with ./ prefix (relative to cwd)', () => {
     const repoRoot = getRepoRoot();
-    const result = normalizeSourcePath('./demo-app/src/App.tsx', repoRoot);
+    const result = normalizeSourcePath('./demos/react-demo-app/src/App.tsx', repoRoot);
 
     // ./ means relative to cwd, which in tests is packages/watcher
-    // So it becomes packages/watcher/demo-app/src/App.tsx, then repo-relative
-    expect(result).toBe('packages/watcher/demo-app/src/App.tsx');
+    // So it becomes packages/watcher/demos/react-demo-app/src/App.tsx, then repo-relative
+    expect(result).toBe('packages/watcher/demos/react-demo-app/src/App.tsx');
   });
 
   it('produces same result for equivalent absolute paths', () => {
     const repoRoot = getRepoRoot();
 
     // Simple repo-relative path (prefers repo root if file exists)
-    const simple = normalizeSourcePath('demo-app/src/App.tsx', repoRoot);
+    const simple = normalizeSourcePath('demos/react-demo-app/src/App.tsx', repoRoot);
 
     // Absolute path always resolves correctly
-    const absolute = normalizeSourcePath(join(repoRoot, 'demo-app/src/App.tsx'), repoRoot);
+    const absolute = normalizeSourcePath(join(repoRoot, 'demos/react-demo-app/src/App.tsx'), repoRoot);
 
-    expect(simple).toBe('demo-app/src/App.tsx');
-    expect(absolute).toBe('demo-app/src/App.tsx');
+    expect(simple).toBe('demos/react-demo-app/src/App.tsx');
+    expect(absolute).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('handles paths not under repo root gracefully', () => {
     const customRoot = '/some/fake/root';
 
     // Path won't exist at fake root, falls back to using input as-is
-    const result = normalizeSourcePath('demo-app/src/App.tsx', customRoot);
+    const result = normalizeSourcePath('demos/react-demo-app/src/App.tsx', customRoot);
 
     // Since file doesn't exist at custom root, and cwd resolution would give
     // a path under real repo root, we get the repo-relative version
@@ -137,12 +137,11 @@ describe('normalizeSourcePath', () => {
 
   it('handles backslashes (Windows-style) paths', () => {
     const repoRoot = getRepoRoot();
-    const result = normalizeSourcePath('demo-app\\src\\App.tsx', repoRoot);
+    const result = normalizeSourcePath('demos/react-demo-app\\src\\App.tsx', repoRoot);
 
     // Should normalize to forward slashes
     expect(result).not.toContain('\\');
-    expect(result).toContain('/');
-  });
+    expect(result).toContain('/');  });
 });
 
 // =============================================================================
@@ -156,18 +155,18 @@ describe('generateArtifactName', () => {
   });
 
   it('handles nested path with slashes', () => {
-    const result = generateArtifactName('demo-app/src/App.tsx');
-    expect(result).toBe('demo-app__src__App.figma-apply.json');
+    const result = generateArtifactName('demos/react-demo-app/src/App.tsx');
+    expect(result).toBe('demos__react-demo-app__src__App.figma-apply.json');
   });
 
   it('removes leading slashes', () => {
-    const result = generateArtifactName('/demo-app/src/App.tsx');
-    expect(result).toBe('demo-app__src__App.figma-apply.json');
+    const result = generateArtifactName('/demos/react-demo-app/src/App.tsx');
+    expect(result).toBe('demos__react-demo-app__src__App.figma-apply.json');
   });
 
   it('removes leading ./', () => {
-    const result = generateArtifactName('./demo-app/src/App.tsx');
-    expect(result).toBe('demo-app__src__App.figma-apply.json');
+    const result = generateArtifactName('./demos/react-demo-app/src/App.tsx');
+    expect(result).toBe('demos__react-demo-app__src__App.figma-apply.json');
   });
 
   it('handles .jsx extension', () => {
@@ -192,13 +191,13 @@ describe('generateArtifactName', () => {
 
 describe('getArtifactPath', () => {
   it('resolves to repo-root/design-materializations/', () => {
-    const path = getArtifactPath('demo-app/src/App.tsx');
+    const path = getArtifactPath('demos/react-demo-app/src/App.tsx');
     const repoRoot = getRepoRoot();
 
     // Should be under repo root
     expect(path).toContain(repoRoot);
     expect(path).toContain(DEFAULT_ARTIFACT_DIR);
-    expect(path).toContain('demo-app__src__App.figma-apply.json');
+    expect(path).toContain('demos__react-demo-app__src__App.figma-apply.json');
   });
 
   it('returns absolute path', () => {
@@ -211,20 +210,20 @@ describe('getArtifactPath', () => {
   it('uses provided repoRoot override', () => {
     // When providing a custom root, the sourceFile should be treated as already repo-relative
     const customRoot = '/custom/root';
-    const path = getArtifactPath('demo-app/src/App.tsx', customRoot);
+    const path = getArtifactPath('demos/react-demo-app/src/App.tsx', customRoot);
 
-    // Since demo-app/src/App.tsx is not under /custom/root, it should be stripped of parent refs
+    // Since demos/react-demo-app/src/App.tsx is not under /custom/root, it should be stripped of parent refs
     // and used as-is for the filename
-    expect(path).toBe('/custom/root/design-materializations/demo-app__src__App.figma-apply.json');
+    expect(path).toBe('/custom/root/design-materializations/demos__react-demo-app__src__App.figma-apply.json');
   });
 
   it('returns same path from different working directories', () => {
     // Get path from current location
-    const path1 = getArtifactPath('demo-app/src/App.tsx');
+    const path1 = getArtifactPath('demos/react-demo-app/src/App.tsx');
 
     // Get path with explicit repo root (same as auto-detected)
     const repoRoot = getRepoRoot();
-    const path2 = getArtifactPath('demo-app/src/App.tsx', repoRoot);
+    const path2 = getArtifactPath('demos/react-demo-app/src/App.tsx', repoRoot);
 
     expect(path1).toBe(path2);
   });
@@ -268,10 +267,10 @@ describe('buildApplyArtifact', () => {
   it('builds artifact with correct structure', () => {
     // Use repo root to ensure consistent behavior regardless of cwd
     const repoRoot = getRepoRoot();
-    const artifact = buildApplyArtifact('demo-app/src/App.tsx', mockOutput, DEFAULT_APPLY_CONFIG, undefined, repoRoot);
+    const artifact = buildApplyArtifact('demos/react-demo-app/src/App.tsx', mockOutput, DEFAULT_APPLY_CONFIG, undefined, repoRoot);
 
     expect(artifact.version).toBe('1.0');
-    expect(artifact.sourceFile).toBe('demo-app/src/App.tsx');
+    expect(artifact.sourceFile).toBe('demos/react-demo-app/src/App.tsx');
     expect(artifact.mode).toBe('artifact');
     expect(artifact.dryRun).toBe(true);
     expect(artifact.operations).toHaveLength(1);

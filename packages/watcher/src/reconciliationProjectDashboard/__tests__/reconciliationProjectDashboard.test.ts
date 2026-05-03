@@ -224,11 +224,11 @@ describe('discoverSourceFiles', () => {
 
 describe('normalizeScanRoot', () => {
   it('should handle relative paths', () => {
-    expect(normalizeScanRoot('demo-app/src', '/repo')).toBe('demo-app/src');
+    expect(normalizeScanRoot('demos/react-demo-app/src', '/repo')).toBe('demos/react-demo-app/src');
   });
 
   it('should strip leading ./', () => {
-    expect(normalizeScanRoot('./demo-app/src', '/repo')).toBe('demo-app/src');
+    expect(normalizeScanRoot('./demos/react-demo-app/src', '/repo')).toBe('demos/react-demo-app/src');
   });
 
   it('should handle root case', () => {
@@ -242,13 +242,13 @@ describe('normalizeScanRoot', () => {
 
 describe('getProjectDashboardArtifactPath', () => {
   it('should generate correct path for directory', () => {
-    const path = getProjectDashboardArtifactPath('demo-app/src');
-    expect(path).toBe('design-materializations/demo-app__src.figma-project-dashboard.json');
+    const path = getProjectDashboardArtifactPath('demos/react-demo-app/src');
+    expect(path).toBe('design-materializations/demos__react-demo-app__src.figma-project-dashboard.json');
   });
 
   it('should handle leading ./', () => {
-    const path = getProjectDashboardArtifactPath('./demo-app/src');
-    expect(path).toBe('design-materializations/demo-app__src.figma-project-dashboard.json');
+    const path = getProjectDashboardArtifactPath('./demos/react-demo-app/src');
+    expect(path).toBe('design-materializations/demos__react-demo-app__src.figma-project-dashboard.json');
   });
 
   it('should handle root scan', () => {
@@ -459,7 +459,7 @@ describe('writeProjectDashboardArtifact', () => {
       version: 1,
       generatedAt: '2025-12-30T10:00:00.000Z',
       repoRoot: testDir,
-      scanRoot: 'demo-app/src',
+      scanRoot: 'demos/react-demo-app/src',
       filePattern: '**/*.tsx',
       counts: {
         totalFiles: 2,
@@ -485,7 +485,7 @@ describe('writeProjectDashboardArtifact', () => {
     const result = writeProjectDashboardArtifact(artifact, testDir);
     expect(result.written).toBe(true);
     expect(result.path).toBe(
-      'design-materializations/demo-app__src.figma-project-dashboard.json'
+      'design-materializations/demos__react-demo-app__src.figma-project-dashboard.json'
     );
 
     // Verify file contents
@@ -506,7 +506,7 @@ describe('formatProjectDashboard', () => {
       version: 1,
       generatedAt: '2025-12-30T10:00:00.000Z',
       repoRoot: '/repo',
-      scanRoot: 'demo-app/src',
+      scanRoot: 'demos/react-demo-app/src',
       filePattern: '**/*.tsx',
       counts: {
         totalFiles: 3,
@@ -524,9 +524,9 @@ describe('formatProjectDashboard', () => {
       },
       topSignals: [],
       files: [
-        { sourceFile: 'demo-app/src/App.tsx', status: 'OK', verdict: 'PASS', stabilityScore: 98 },
-        { sourceFile: 'demo-app/src/Button.tsx', status: 'OK', verdict: 'PASS', stabilityScore: 100 },
-        { sourceFile: 'demo-app/src/Card.tsx', status: 'NO_DATA' },
+        { sourceFile: 'demos/react-demo-app/src/App.tsx', status: 'OK', verdict: 'PASS', stabilityScore: 98 },
+        { sourceFile: 'demos/react-demo-app/src/Button.tsx', status: 'OK', verdict: 'PASS', stabilityScore: 100 },
+        { sourceFile: 'demos/react-demo-app/src/Card.tsx', status: 'NO_DATA' },
       ],
       projectVerdict: 'PASS',
       exitCode: 0,
@@ -536,7 +536,7 @@ describe('formatProjectDashboard', () => {
     const output = formatProjectDashboard(artifact, '/repo');
 
     expect(output).toContain('FIGMA PROJECT DASHBOARD');
-    expect(output).toContain('demo-app/src');
+    expect(output).toContain('demos/react-demo-app/src');
     expect(output).toContain('Total discovered: 3');
     expect(output).toContain('With data: 2');
     expect(output).toContain('98/100');
@@ -548,7 +548,7 @@ describe('formatProjectDashboard', () => {
       version: 1,
       generatedAt: '2025-12-30T10:00:00.000Z',
       repoRoot: '/repo',
-      scanRoot: 'demo-app/src',
+      scanRoot: 'demos/react-demo-app/src',
       filePattern: '**/*.tsx',
       counts: {
         totalFiles: 1,
@@ -570,7 +570,7 @@ describe('formatProjectDashboard', () => {
           label: 'Conflicts',
           delta: 3,
           severity: 'warn',
-          sourceFile: 'demo-app/src/App.tsx',
+          sourceFile: 'demos/react-demo-app/src/App.tsx',
         },
       ],
       files: [],
@@ -584,7 +584,7 @@ describe('formatProjectDashboard', () => {
     expect(output).toContain('Conflicts');
     expect(output).toContain('+3');
     expect(output).toContain('[WARN]');
-    expect(output).toContain('demo-app/src/App.tsx');
+    expect(output).toContain('demos/react-demo-app/src/App.tsx');
   });
 });
 

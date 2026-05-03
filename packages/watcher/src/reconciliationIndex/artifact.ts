@@ -42,7 +42,7 @@ import type {
 
 /**
  * Normalize source file path for artifact naming.
- * Converts: demo-app/src/App.tsx → demo-app__src__App
+ * Converts: demos/react-demo-app/src/App.tsx → demos__react-demo-app__src__App
  */
 function normalizeSourceFileForArtifact(sourceFile: string): string {
   return sourceFile.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');

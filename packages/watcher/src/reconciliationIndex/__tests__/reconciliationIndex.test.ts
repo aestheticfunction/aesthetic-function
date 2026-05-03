@@ -71,18 +71,18 @@ function writeArtifact(
 
 describe('normalizeSourcePath', () => {
   it('should pass through simple relative paths unchanged', () => {
-    const result = normalizeSourcePath('demo-app/src/App.tsx', '/repo');
-    expect(result).toBe('demo-app/src/App.tsx');
+    const result = normalizeSourcePath('demos/react-demo-app/src/App.tsx', '/repo');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('should normalize windows-style backslashes', () => {
-    const result = normalizeSourcePath('demo-app\\src\\App.tsx', '/repo');
-    expect(result).toBe('demo-app/src/App.tsx');
+    const result = normalizeSourcePath('demos/react-demo-app\\src\\App.tsx', '/repo');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 
   it('should strip leading ./', () => {
-    const result = normalizeSourcePath('./demo-app/src/App.tsx', '/repo');
-    expect(result).toBe('demo-app/src/App.tsx');
+    const result = normalizeSourcePath('./demos/react-demo-app/src/App.tsx', '/repo');
+    expect(result).toBe('demos/react-demo-app/src/App.tsx');
   });
 });
 
@@ -92,8 +92,8 @@ describe('normalizeSourcePath', () => {
 
 describe('getRunIndexArtifactPath', () => {
   it('should generate correct artifact path for simple source file', () => {
-    const path = getRunIndexArtifactPath('demo-app/src/App.tsx');
-    expect(path).toBe('design-materializations/demo-app__src__App.figma-run-index.json');
+    const path = getRunIndexArtifactPath('demos/react-demo-app/src/App.tsx');
+    expect(path).toBe('design-materializations/demos__react-demo-app__src__App.figma-run-index.json');
   });
 
   it('should handle nested paths', () => {
@@ -119,14 +119,14 @@ describe('computeRunIndex', () => {
 
   it('should return all artifacts as not found when directory is empty', async () => {
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
     const result = await computeRunIndex(context);
 
     expect(result.index.version).toBe('1.0');
-    expect(result.index.sourceFile).toBe('demo-app/src/App.tsx');
+    expect(result.index.sourceFile).toBe('demos/react-demo-app/src/App.tsx');
     expect(result.index.repoRoot).toBe(testDir);
     expect(result.index.artifacts.delta.found).toBe(false);
     expect(result.index.artifacts.conflicts.found).toBe(false);
@@ -138,7 +138,7 @@ describe('computeRunIndex', () => {
   });
 
   it('should find conflicts artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-conflicts', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-conflicts', {
       version: '1.0',
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: {
@@ -149,7 +149,7 @@ describe('computeRunIndex', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -166,7 +166,7 @@ describe('computeRunIndex', () => {
   });
 
   it('should find resolution plan artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-resolution-plan', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-resolution-plan', {
       version: '1.0',
       generatedAt: '2025-12-30T11:00:00.000Z',
       decisions: [
@@ -177,7 +177,7 @@ describe('computeRunIndex', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -192,7 +192,7 @@ describe('computeRunIndex', () => {
   });
 
   it('should find resolution apply artifact and extract dry-run status', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-resolution-apply', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-resolution-apply', {
       version: '1.0',
       generatedAt: '2025-12-30T12:00:00.000Z',
       dryRun: true,
@@ -206,7 +206,7 @@ describe('computeRunIndex', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -225,7 +225,7 @@ describe('computeRunIndex', () => {
   });
 
   it('should find verification artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-verification', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-verification', {
       version: '1.0',
       generatedAt: '2025-12-30T13:00:00.000Z',
       summary: {
@@ -237,7 +237,7 @@ describe('computeRunIndex', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -254,14 +254,14 @@ describe('computeRunIndex', () => {
   });
 
   it('should find rollback preview artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-rollback-preview', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-rollback-preview', {
       version: '1.0',
       timestamp: '2025-12-30T14:00:00.000Z',
       actions: [{}, {}, {}],
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -276,7 +276,7 @@ describe('computeRunIndex', () => {
   });
 
   it('should find status artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-reconciliation-status', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-reconciliation-status', {
       version: '1.0',
       timestamp: '2025-12-30T15:00:00.000Z',
       overallStatus: 'VERIFIED_OK',
@@ -284,7 +284,7 @@ describe('computeRunIndex', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -300,22 +300,22 @@ describe('computeRunIndex', () => {
   });
 
   it('should find multiple artifacts', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-conflicts', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-conflicts', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: { total: 2, blocked: 0 },
     });
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-resolution-plan', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-resolution-plan', {
       generatedAt: '2025-12-30T11:00:00.000Z',
       decisions: [{}],
     });
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-resolution-apply', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-resolution-apply', {
       generatedAt: '2025-12-30T12:00:00.000Z',
       dryRun: false,
       summary: { decisionsTotal: 1, applied: 1, skipped: 0, failed: 0 },
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -345,7 +345,7 @@ describe('legacy artifact name support', () => {
 
   it('should find legacy .figma-resolve-apply.json artifact', async () => {
     // Write with legacy name
-    const normalized = 'demo-app/src/App.tsx'.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');
+    const normalized = 'demos/react-demo-app/src/App.tsx'.replace(/\//g, '__').replace(/\.(tsx?|jsx?)$/, '');
     const legacyPath = join(testDir, 'design-materializations', `${normalized}.figma-resolve-apply.json`);
     writeFileSync(legacyPath, JSON.stringify({
       generatedAt: '2025-12-30T10:00:00.000Z',
@@ -354,7 +354,7 @@ describe('legacy artifact name support', () => {
     }));
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -380,13 +380,13 @@ describe('deterministic output', () => {
   });
 
   it('should produce same output for same input', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-conflicts', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-conflicts', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: { total: 1, blocked: 0 },
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -417,15 +417,15 @@ describe('repo-root invariance', () => {
   });
 
   it('should normalize different source path formats to same canonical form', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-conflicts', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-conflicts', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: { total: 1, blocked: 0 },
     });
 
     // Simulate different input paths
     const paths = [
-      'demo-app/src/App.tsx',
-      './demo-app/src/App.tsx',
+      'demos/react-demo-app/src/App.tsx',
+      './demos/react-demo-app/src/App.tsx',
     ];
 
     const results = await Promise.all(
@@ -455,7 +455,7 @@ describe('formatRunIndex', () => {
     const index: RunIndexArtifact = {
       version: '1.0',
       repoRoot: '/repo',
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       generatedAt: '2025-12-30T10:00:00.000Z',
       artifacts: {
         delta: { found: false },
@@ -476,7 +476,7 @@ describe('formatRunIndex', () => {
 
     expect(output).toContain('=== FIGMA RUN INDEX (Phase 13A) ===');
     expect(output).toContain('Repo Root: /repo');
-    expect(output).toContain('Source: demo-app/src/App.tsx (canonical)');
+    expect(output).toContain('Source: demos/react-demo-app/src/App.tsx (canonical)');
     expect(output).toContain('✗ delta');
     expect(output).toContain('✗ conflicts');
     expect(output).toContain('Notes: none');
@@ -486,20 +486,20 @@ describe('formatRunIndex', () => {
     const index: RunIndexArtifact = {
       version: '1.0',
       repoRoot: '/repo',
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       generatedAt: '2025-12-30T10:00:00.000Z',
       artifacts: {
         delta: { found: false },
         deltaSuggestions: { found: false },
         conflicts: {
           found: true,
-          path: 'design-materializations/demo-app__src__App.figma-conflicts.json',
+          path: 'design-materializations/demos__react-demo-app__src__App.figma-conflicts.json',
           timestamp: '2025-12-30T10:00:00.000Z',
           summary: { conflicts: 3, blocked: 1 },
         },
         resolutionPlan: {
           found: true,
-          path: 'design-materializations/demo-app__src__App.figma-resolution-plan.json',
+          path: 'design-materializations/demos__react-demo-app__src__App.figma-resolution-plan.json',
           timestamp: '2025-12-30T11:00:00.000Z',
           summary: { decisions: 2 },
         },
@@ -525,7 +525,7 @@ describe('formatRunIndex', () => {
     const index: RunIndexArtifact = {
       version: '1.0',
       repoRoot: '/repo',
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       generatedAt: '2025-12-30T10:00:00.000Z',
       artifacts: {
         delta: { found: false },
@@ -568,14 +568,14 @@ describe('computeRunIndexSimple', () => {
 
   it('should return just the index without discovery details', async () => {
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
     const index = await computeRunIndexSimple(context);
 
     expect(index.version).toBe('1.0');
-    expect(index.sourceFile).toBe('demo-app/src/App.tsx');
+    expect(index.sourceFile).toBe('demos/react-demo-app/src/App.tsx');
     expect(index.artifacts).toBeDefined();
     expect(index.notes).toBeDefined();
   });
@@ -597,13 +597,13 @@ describe('delta artifact support', () => {
   });
 
   it('should find delta artifact and extract summary from deltas array', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-delta', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-delta', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       deltas: [{}, {}],
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -618,13 +618,13 @@ describe('delta artifact support', () => {
   });
 
   it('should find delta artifact and extract summary from summary.total', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-delta', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-delta', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: { total: 5 },
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -655,13 +655,13 @@ describe('delta suggestions artifact support', () => {
   });
 
   it('should find delta suggestions artifact', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-delta-suggestions', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-delta-suggestions', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       suggestions: [{}, {}, {}],
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -692,7 +692,7 @@ describe('drift diff artifact support', () => {
   });
 
   it('should find drift-diff artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-diff', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: {
         totalChanges: 5,
@@ -706,7 +706,7 @@ describe('drift diff artifact support', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -723,13 +723,13 @@ describe('drift diff artifact support', () => {
   });
 
   it('should extract driftDiff summary from changes array fallback', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-diff', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       changes: [{}, {}, {}],
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -747,7 +747,7 @@ describe('drift diff artifact support', () => {
 
   it('should report driftDiff as not found when artifact missing', async () => {
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -773,7 +773,7 @@ describe('drift dashboard artifact support', () => {
   });
 
   it('should find drift-dashboard artifact and extract summary', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-dashboard', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       stabilityScore: { score: 85, rationale: ['stable'] },
       ciVerdict: 'PASS',
@@ -783,7 +783,7 @@ describe('drift dashboard artifact support', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -800,14 +800,14 @@ describe('drift dashboard artifact support', () => {
   });
 
   it('should extract driftDashboard summary with ciVerdict fallback', async () => {
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-dashboard', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       ciVerdict: 'WARN',
       counts: { runsConsidered: 5 },
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -825,7 +825,7 @@ describe('drift dashboard artifact support', () => {
 
   it('should report driftDashboard as not found when artifact missing', async () => {
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 
@@ -852,20 +852,20 @@ describe('drift artifact deterministic ordering', () => {
 
   it('should include driftDiff and driftDashboard in deterministic artifact order', async () => {
     // Write all artifacts
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-delta', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-delta', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       deltas: [{}],
     });
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-reconciliation-status', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-reconciliation-status', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       overallStatus: 'CLEAN',
       ciVerdict: 'PASS',
     });
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-diff', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-diff', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       summary: { totalChanges: 1, failCount: 0, warnCount: 0 },
     });
-    writeArtifact(testDir, 'demo-app/src/App.tsx', 'figma-drift-dashboard', {
+    writeArtifact(testDir, 'demos/react-demo-app/src/App.tsx', 'figma-drift-dashboard', {
       generatedAt: '2025-12-30T10:00:00.000Z',
       stabilityScore: { score: 100 },
       ciVerdict: 'PASS',
@@ -873,7 +873,7 @@ describe('drift artifact deterministic ordering', () => {
     });
 
     const context: RunIndexContext = {
-      sourceFile: 'demo-app/src/App.tsx',
+      sourceFile: 'demos/react-demo-app/src/App.tsx',
       repoRoot: testDir,
     };
 

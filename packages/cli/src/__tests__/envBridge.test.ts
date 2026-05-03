@@ -23,7 +23,7 @@ function createConfig(overrides: Partial<ResolvedAfConfig> = {}): ResolvedAfConf
   return {
     profile: 'designer-first',
     server: { port: 3001, url: 'http://localhost:3001' },
-    watcher: { watchPaths: ['demo-app/'] },
+    watcher: { watchPaths: ['demos/react-demo-app/'] },
     overrides: { enabled: true, precedence: 'always' },
     materialize: { mode: 'off', on: 'design_change', dryRun: true },
     canonical: {

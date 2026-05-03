@@ -113,7 +113,7 @@ Phase 16 adds a design adapter interface, a Figma Console MCP adapter, and a sur
 | TRACE/TRACE_JSON/TRACE_VERBOSE env vars | ✅ |
 | **Test Stability (Phase 9D)** | |
 | Deterministic test fixtures | ✅ |
-| CI guardrails for demo-app isolation | ✅ |
+| CI guardrails for demos/react-demo-app isolation | ✅ |
 | CONTRIBUTING.md test policy | ✅ |
 | **Semantic Adapter Architecture (Phase 10A)** | |
 | Generic SemanticAdapter interface | ✅ |
@@ -441,7 +441,7 @@ The system follows a **three-legged stool** design with strict runtime boundarie
           ▼                   ▼                                                          ▼
   ┌─────────────────┐ ┌──────────────────┐                                     ┌─────────────────┐
   │  React Source   │ │ design-overrides │                                     │  Figma Document │
-  │   (demo-app/)   │ │      .json       │                                     │                 │
+  │   (demos/react-demo-app/)   │ │      .json       │                                     │                 │
   └─────────────────┘ └──────────────────┘                                     └─────────────────┘
 ```
 
@@ -637,13 +637,13 @@ Phase 15D adds read-only inspection tooling for the 12 reconciliation artifact t
 
 ```bash
 # List all artifacts for a source file (12 types)
-pnpm artifacts:list demo-app/src/App.tsx
+pnpm artifacts:list demos/react-demo-app/src/App.tsx
 
 # Inspect a single artifact with type-aware highlights
-pnpm artifacts:inspect design-materializations/demo-app__src__App.figma-reconciliation-status.json
+pnpm artifacts:inspect design-materializations/demos__react-demo-app__src__App.figma-reconciliation-status.json
 
 # End-to-end lifecycle trace across all artifacts
-pnpm artifacts:trace demo-app/src/App.tsx
+pnpm artifacts:trace demos/react-demo-app/src/App.tsx
 ```
 
 All three commands support `--json` for machine-readable output and `--repo-root` for explicit repo root.
@@ -1016,7 +1016,7 @@ The AST analyzer maps `@figma` markers to components:
 Run a diff report on any TSX file:
 
 ```bash
-pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher ast:report demos/react-demo-app/src/App.tsx
 ```
 
 Output includes:
@@ -1028,7 +1028,7 @@ Output includes:
 Example output:
 ```
 AST REPORT
-File: demo-app/src/App.tsx
+File: demos/react-demo-app/src/App.tsx
 
 ============================================================
 MARKER SUMMARY
@@ -1092,7 +1092,7 @@ The feasibility analyzer determines which AST nodes can be safely modified:
 ### CLI Report
 
 ```bash
-pnpm --filter @aesthetic-function/watcher feasibility:report demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher feasibility:report demos/react-demo-app/src/App.tsx
 ```
 
 ---
@@ -1116,7 +1116,7 @@ By default, AST writes are in dry-run mode (`MATERIALIZE_DRY_RUN=true`):
 
 ```
 AST Write: Would write the following changes:
-  File: demo-app/src/App.tsx
+  File: demos/react-demo-app/src/App.tsx
   Changes:
     - LoginButton.text: "Login" → "Sign In"
     - LoginButton.fill: "#3B82F6" → "#FF5500"
@@ -1234,7 +1234,7 @@ Generates a reviewable artifact without modifying source files:
 
 ```json
 {
-  "file": "demo-app/src/App.tsx",
+  "file": "demos/react-demo-app/src/App.tsx",
   "generatedAt": "2025-12-14T00:00:00.000Z",
   "changes": [
     {
@@ -1319,33 +1319,33 @@ MATERIALIZE_MODE=markers MATERIALIZE_ON=file_save MATERIALIZE_DRY_RUN=false pnpm
 
 # Feature Orchestrator: Generate a patch artifact (dry-run by default)
 pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --component LoginButton \
   --state hover \
   --prompt "Make the hover state button use the success green token"
 
 # Feature Orchestrator: Preview what would be applied
 AST_WRITE_MODE=write pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --prompt "Change the Card title to 'Welcome'" \
   --apply --dry-run
 
 # Feature Orchestrator: Actually apply the patch to source code
 AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --prompt "Change the Card title to 'Welcome'" \
   --apply
 
 # Or use the --no-dry-run CLI flag (same as AST_WRITE_DRY_RUN=false)
 AST_WRITE_MODE=write pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --prompt "Change the Card title to 'Welcome'" \
   --apply --no-dry-run
 
 # Feature Orchestrator: Apply AND immediately push to Figma (Phase 9B)
 POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
   pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --component LoginButton \
   --state hover \
   --prompt "Make the hover state button use the success green token and change its label to 'Continue'" \
@@ -1391,7 +1391,7 @@ This section shows how to use the Feature Orchestrator with immediate Figma upda
 ```bash
 POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
   pnpm --filter @aesthetic-function/watcher feature \
-  --file demo-app/src/App.tsx \
+  --file demos/react-demo-app/src/App.tsx \
   --component LoginButton \
   --state hover \
   --prompt "Make the hover state button use the success green token and change its label to 'Continue'" \
@@ -1413,12 +1413,12 @@ POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
 ### Expected Output
 
 ```
-[Orchestrator] Processing feature request for demo-app/src/App.tsx
+[Orchestrator] Processing feature request for demos/react-demo-app/src/App.tsx
 [Orchestrator] Prompt: "Make the hover state button use the success green token..."
 ...
 [Orchestrator] Successfully applied changes
 [Orchestrator] Post-apply emit: enabled
-[PostApplyEmit] Starting emit for demo-app/src/App.tsx
+[PostApplyEmit] Starting emit for demos/react-demo-app/src/App.tsx
 [PostApplyEmit] Component: LoginButton, State: hover
 [PostApplyEmit] Using marker parser...
 [PostApplyEmit] Generated 2 operation(s)
@@ -1431,7 +1431,7 @@ POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
 When `POST_APPLY_EMIT` is enabled:
 - The feature orchestrator records the file path after emit
 - The watcher detects the file change but **suppresses** the duplicate send
-- Logs show: `[Watcher] Suppressed: demo-app/src/App.tsx (recently emitted by Feature Orchestrator)`
+- Logs show: `[Watcher] Suppressed: demos/react-demo-app/src/App.tsx (recently emitted by Feature Orchestrator)`
 
 This prevents double-updates to Figma.
 
@@ -1456,7 +1456,7 @@ Every pipeline run (watcher or orchestrator) generates a `TraceSummary` with:
 ### Example Trace Output
 
 ```
-[Trace] requestId=feature-emit-1234 file=demo-app/src/App.tsx parse=markers intents=4 ops=6
+[Trace] requestId=feature-emit-1234 file=demos/react-demo-app/src/App.tsx parse=markers intents=4 ops=6
 [Trace] resolution: override=2 marker=2 ast=0 code=2 map: used=true mappedOps=6
 [Trace] emit: enabled=true sent=true clients=1 suppressedWatcher=true
 ```
@@ -1487,8 +1487,8 @@ TRACE_VERBOSE=true pnpm dev:watcher
 The enhanced suppression system logs decisions:
 
 ```
-[Trace] [suppression] demo-app/src/App.tsx: SUPPRESSED (same-ops)
-[Trace] [suppression] demo-app/src/App.tsx: not suppressed (different-ops)
+[Trace] [suppression] demos/react-demo-app/src/App.tsx: SUPPRESSED (same-ops)
+[Trace] [suppression] demos/react-demo-app/src/App.tsx: not suppressed (different-ops)
 ```
 
 The ops-hash comparison prevents suppression of genuinely different changes that happen within the TTL window.
@@ -1628,7 +1628,7 @@ Phase 10D adds a **safe, review-first workflow** to bootstrap `component-map.jso
 #### How to Run
 
 ```bash
-pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher map:bootstrap demos/react-demo-app/src/App.tsx
 ```
 
 **Output:**
@@ -1641,7 +1641,7 @@ pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
 {
   "version": 1,
   "generatedAt": "2025-12-20T12:00:00.000Z",
-  "file": "demo-app/src/App.tsx",
+  "file": "demos/react-demo-app/src/App.tsx",
   "policy": {
     "variantStates": "explicit-only",
     "writes": "artifact-only"
@@ -1695,10 +1695,10 @@ To let the CLI merge entries into `component-map.json`:
 
 ```bash
 # Dry run (shows what would change, doesn't modify)
-MAP_BOOTSTRAP_MODE=apply pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+MAP_BOOTSTRAP_MODE=apply pnpm --filter @aesthetic-function/watcher map:bootstrap demos/react-demo-app/src/App.tsx
 
 # Actually apply (creates scaffolding, never fills node IDs)
-MAP_BOOTSTRAP_MODE=apply MAP_BOOTSTRAP_DRY_RUN=false pnpm --filter @aesthetic-function/watcher map:bootstrap demo-app/src/App.tsx
+MAP_BOOTSTRAP_MODE=apply MAP_BOOTSTRAP_DRY_RUN=false pnpm --filter @aesthetic-function/watcher map:bootstrap demos/react-demo-app/src/App.tsx
 ```
 
 **Environment Variables:**
@@ -2234,15 +2234,15 @@ Building on Phase 11A suggestions, this phase provides:
 
 ```bash
 # Generate compose artifact (dry-run, no Figma changes)
-pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:compose demos/react-demo-app/src/App.tsx
 
 # Apply operations to Figma (requires FIGMA_COMPOSE_ON=true, server + plugin running)
 FIGMA_COMPOSE_ON=true FIGMA_COMPOSE_MODE=apply \
-  pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:compose demos/react-demo-app/src/App.tsx --apply
 
 # Restrict to only component-set operations
 FIGMA_COMPOSE_ALLOW=component-set \
-  pnpm --filter @aesthetic-function/watcher figma:compose demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:compose demos/react-demo-app/src/App.tsx --apply
 ```
 
 ### Compose Artifact
@@ -2257,7 +2257,7 @@ Example artifact structure:
 
 ```json
 {
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "generatedAt": "2025-01-15T10:30:00.000Z",
   "mode": "dry-run",
   "operations": [
@@ -2298,7 +2298,7 @@ The `/compose` endpoint accepts compose artifacts:
 ```bash
 curl -X POST http://localhost:3001/compose \
   -H "Content-Type: application/json" \
-  -d @design-materializations/demo-app__src__App.compose.json
+  -d @design-materializations/demos__react-demo-app__src__App.compose.json
 ```
 
 The endpoint:
@@ -2322,7 +2322,7 @@ The plugin returns `COMPOSE_RESULT` with per-operation success/failure status.
 All compose operations are logged to sync-log.md:
 
 ```markdown
-| 2025-01-15T10:30:00.000Z | compose | demo-app/src/App.tsx | dry-run | 3 ops | ENSURE_COMPONENT_SET,ENSURE_VARIANT |
+| 2025-01-15T10:30:00.000Z | compose | demos/react-demo-app/src/App.tsx | dry-run | 3 ops | ENSURE_COMPONENT_SET,ENSURE_VARIANT |
 ```
 
 Fields logged:
@@ -2408,15 +2408,15 @@ Text properties (`fontSize`, `fontWeight`, `textColor`) require a TEXT node, but
 
 ```bash
 # Generate apply artifact (artifact-only, no Figma changes)
-pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:apply demos/react-demo-app/src/App.tsx
 
 # Apply properties to Figma (requires full opt-in)
 FIGMA_APPLY_ON=true FIGMA_APPLY_MODE=apply FIGMA_APPLY_DRY_RUN=false \
   FIGMA_APPLY_ALLOW=fill,spacing \
-  pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:apply demos/react-demo-app/src/App.tsx --apply
 
 # Verbose output
-pnpm --filter @aesthetic-function/watcher figma:apply demo-app/src/App.tsx --verbose
+pnpm --filter @aesthetic-function/watcher figma:apply demos/react-demo-app/src/App.tsx --verbose
 ```
 
 ### Apply Artifact
@@ -2433,7 +2433,7 @@ Example artifact structure:
 {
   "version": "1.0",
   "timestamp": "2025-01-15T10:30:00.000Z",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "mode": "artifact",
   "dryRun": true,
   "operations": [
@@ -2515,7 +2515,7 @@ The plugin returns `APPLY_PROPERTIES_RESULT` with per-operation status.
 Apply operations are logged to sync-log.md:
 
 ```markdown
-| 2025-01-15T10:30:00.000Z | apply-properties | demo-app/src/App.tsx | apply | 3 ops | fill(2),fontSize(1) |
+| 2025-01-15T10:30:00.000Z | apply-properties | demos/react-demo-app/src/App.tsx | apply | 3 ops | fill(2),fontSize(1) |
 ```
 
 ### Safety Guarantees
@@ -2590,10 +2590,10 @@ Phase 12D/12E introduces a guided resolution layer that surfaces conflicts betwe
 
 ```bash
 # Generate resolution plan for a file
-pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve demos/react-demo-app/src/App.tsx
 
 # Full report including conflict preview (in ast:report)
-pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher ast:report demos/react-demo-app/src/App.tsx
 ```
 
 ### CLI Output
@@ -2617,7 +2617,7 @@ pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
     - Blocked: 1
 
   Resolution plan written to:
-    design-materializations/demo-app__src__App.figma-resolution-plan.json
+    design-materializations/demos__react-demo-app__src__App.figma-resolution-plan.json
 ```
 
 ### Artifact Files
@@ -2634,7 +2634,7 @@ pnpm --filter @aesthetic-function/watcher ast:report demo-app/src/App.tsx
   "version": "1.0",
   "source": "figma-resolution-plan",
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "summary": {
     "applyAst": 1,
     "applyMarker": 2,
@@ -2693,21 +2693,21 @@ Phase 12F provides the controlled execution layer that takes Phase 12E resolutio
 
 ```bash
 # Preview what would be applied (artifact-only, default)
-pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx
 
 # Apply with explicit flags (still respects env var gates)
-pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # Full apply (all flags enabled)
 FIGMA_RESOLVE_APPLY_ON=true FIGMA_RESOLVE_APPLY_MODE=apply FIGMA_RESOLVE_APPLY_DRY_RUN=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # Apply from custom plan artifact
-pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx \
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx \
   --from .aesthetic-function/artifacts/my-custom-plan.json
 
 # Filter by component or state
-pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx \
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx \
   --component LoginButton --state base
 ```
 
@@ -2727,23 +2727,23 @@ Complete workflow for resolving conflicts:
 
 ```bash
 # 1. Generate conflict report and resolution plan
-pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve demos/react-demo-app/src/App.tsx
 
 # 2. Review the generated plan artifact
-cat .aesthetic-function/artifacts/demo-app/App.figma-resolution-plan.json
+cat .aesthetic-function/artifacts/demos/react-demo-app/App.figma-resolution-plan.json
 
 # 3. Preview what would be applied (artifact-only)
-pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx
 
 # 4. Apply with full flags (when ready)
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
 FIGMA_RESOLVE_APPLY_ALLOW=override,marker \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # 5. Verify applied changes
-git diff demo-app/src/App.tsx
+git diff demos/react-demo-app/src/App.tsx
 cat .aesthetic-function/design-overrides.json
 ```
 
@@ -2761,8 +2761,8 @@ cat .aesthetic-function/design-overrides.json
   "version": "1.0",
   "source": "figma-resolution-apply",
   "generatedAt": "2025-01-01T00:00:00.000Z",
-  "sourceFile": "demo-app/src/App.tsx",
-  "planPath": ".aesthetic-function/artifacts/demo-app/App.figma-resolution-plan.json",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
+  "planPath": ".aesthetic-function/artifacts/demos/react-demo-app/App.figma-resolution-plan.json",
   "mode": "apply",
   "dryRun": false,
   "summary": {
@@ -2816,17 +2816,17 @@ Phase 12G provides the verification layer that confirms whether applied resoluti
 
 ```bash
 # Verify most recent apply (auto-discovers artifacts)
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx
 
 # Verify specific apply artifact
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx \
-  --apply-artifact .aesthetic-function/artifacts/demo-app/App.figma-resolve-apply.json
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx \
+  --apply-artifact .aesthetic-function/artifacts/demos/react-demo-app/App.figma-resolve-apply.json
 
 # Always write verification artifact (even on success)
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx --always-write
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx --always-write
 
 # Include Figma verification (requires server running)
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx --include-figma
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx --include-figma
 ```
 
 ### Exit Codes
@@ -2861,20 +2861,20 @@ Complete workflow with verification:
 
 ```bash
 # 1. Generate and apply resolution plan
-pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve demos/react-demo-app/src/App.tsx
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # 2. Verify the apply succeeded
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx
 
 # 3. Check verification artifact if failures
-cat .aesthetic-function/artifacts/demo-app/App.figma-verification.json
+cat .aesthetic-function/artifacts/demos/react-demo-app/App.figma-verification.json
 
 # 4. Use in CI (exit code gates the build)
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || exit 1
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx || exit 1
 ```
 
 ### Artifact Files
@@ -2890,7 +2890,7 @@ pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || e
 {
   "version": 1,
   "timestamp": "2025-01-01T00:00:00.000Z",
-  "file": "demo-app/src/App.tsx",
+  "file": "demos/react-demo-app/src/App.tsx",
   "items": [
     {
       "decisionId": "a1b2c3d4e5f6g7h8",
@@ -2913,7 +2913,7 @@ pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || e
       "actual": "#00FF00",
       "evidence": {
         "markerText": "// @figma node=LoginButton::hover fill=#00FF00",
-        "location": "demo-app/src/App.tsx:42"
+        "location": "demos/react-demo-app/src/App.tsx:42"
       }
     }
   ],
@@ -2929,7 +2929,7 @@ pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx || e
     "a1b2c3d4e5f6g7h8": {
       "previousValue": "#0000FF",
       "target": "ast",
-      "location": "demo-app/src/App.tsx:35"
+      "location": "demos/react-demo-app/src/App.tsx:35"
     }
   }
 }
@@ -2987,14 +2987,14 @@ Post-apply verification integrates seamlessly with `figma:resolve-apply`:
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # Apply WITH automatic verification (CI mode)
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
 POST_APPLY_VERIFY=true \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # Apply with verification but don't fail CI on mismatches (advisory)
 FIGMA_RESOLVE_APPLY_ON=true \
@@ -3002,12 +3002,12 @@ FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
 POST_APPLY_VERIFY=true \
 POST_APPLY_VERIFY_STRICT=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # Include Figma verification (requires server)
 POST_APPLY_VERIFY=true \
 POST_APPLY_VERIFY_INCLUDE_FIGMA=true \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 ```
 
 ### Artifact Linking
@@ -3119,10 +3119,10 @@ Rollback execution itself is explicitly out of scope.
 
 ```bash
 # Generate rollback preview (auto-discovers artifacts)
-pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demos/react-demo-app/src/App.tsx
 
 # Use specific artifact paths
-pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx \
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demos/react-demo-app/src/App.tsx \
   --apply-artifact design-materializations/custom-apply.json \
   --verify-artifact design-materializations/custom-verify.json
 ```
@@ -3195,20 +3195,20 @@ Complete workflow with rollback preview:
 
 ```bash
 # 1. Generate and apply resolution plan
-pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:resolve demos/react-demo-app/src/App.tsx
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # 2. Verify the apply succeeded
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx
 
 # 3. If verification failed, preview what would be rolled back
-pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demos/react-demo-app/src/App.tsx
 
 # 4. Review rollback preview artifact
-cat design-materializations/demo-app__src__App.figma-rollback-preview.json
+cat design-materializations/demos__react-demo-app__src__App.figma-rollback-preview.json
 ```
 
 ### Safety Triangle
@@ -3261,13 +3261,13 @@ The `figma:status` command answers this by:
 
 ```bash
 # Check status of a file
-pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:status demos/react-demo-app/src/App.tsx
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --json
+pnpm --filter @aesthetic-function/watcher figma:status demos/react-demo-app/src/App.tsx --json
 
 # Write status artifact (only if non-CLEAN)
-pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:status demos/react-demo-app/src/App.tsx --write
 ```
 
 ### Example Output
@@ -3275,7 +3275,7 @@ pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --wr
 ```
 ✅ Reconciliation Status: ✓ VERIFIED_OK
 
-Source: demo-app/src/App.tsx
+Source: demos/react-demo-app/src/App.tsx
 Timestamp: 2025-01-15T12:00:00.000Z
 
 Phases:
@@ -3296,7 +3296,7 @@ When `--write` is provided and status is non-CLEAN:
 ```json
 {
   "version": "1.0",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "timestamp": "2025-01-15T12:00:00.000Z",
   "phases": {
     "apply": {
@@ -3325,19 +3325,19 @@ When `--write` is provided and status is non-CLEAN:
 FIGMA_RESOLVE_APPLY_ON=true \
 FIGMA_RESOLVE_APPLY_MODE=apply \
 FIGMA_RESOLVE_APPLY_DRY_RUN=false \
-  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demo-app/src/App.tsx --apply
+  pnpm --filter @aesthetic-function/watcher figma:resolve-apply demos/react-demo-app/src/App.tsx --apply
 
 # 2. Verify the apply succeeded
-pnpm --filter @aesthetic-function/watcher figma:verify demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:verify demos/react-demo-app/src/App.tsx
 
 # 3. If verification failed, preview what would be rolled back
-pnpm --filter @aesthetic-function/watcher figma:rollback-preview demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:rollback-preview demos/react-demo-app/src/App.tsx
 
 # 4. Get comprehensive status summary
-pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:status demos/react-demo-app/src/App.tsx --write
 
 # 5. Use status exit code in CI
-if pnpm --filter @aesthetic-function/watcher figma:status demo-app/src/App.tsx; then
+if pnpm --filter @aesthetic-function/watcher figma:status demos/react-demo-app/src/App.tsx; then
   echo "Reconciliation OK"
 else
   echo "Reconciliation FAILED - review status artifact"
@@ -3402,16 +3402,16 @@ The `figma:index` command answers this by:
 
 ```bash
 # Index artifacts for a file
-pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:index demos/react-demo-app/src/App.tsx
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --json
+pnpm --filter @aesthetic-function/watcher figma:index demos/react-demo-app/src/App.tsx --json
 
 # Write run index artifact
-pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:index demos/react-demo-app/src/App.tsx --write
 
 # Verbose mode (show discovery paths)
-pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --verbose
+pnpm --filter @aesthetic-function/watcher figma:index demos/react-demo-app/src/App.tsx --verbose
 ```
 
 ### Example Output
@@ -3419,7 +3419,7 @@ pnpm --filter @aesthetic-function/watcher figma:index demo-app/src/App.tsx --ver
 ```
 === FIGMA RUN INDEX (Phase 13A) ===
 Repo Root: /path/to/repo
-Source: demo-app/src/App.tsx (canonical)
+Source: demos/react-demo-app/src/App.tsx (canonical)
 
 Artifacts:
   ✗ delta
@@ -3442,26 +3442,26 @@ Pattern: `design-materializations/<file>.figma-run-index.json`
 {
   "version": "1.0",
   "repoRoot": "/abs/path/to/repo",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "generatedAt": "2025-12-30T18:10:00.000Z",
   "artifacts": {
     "delta": { "found": false },
     "deltaSuggestions": { "found": false },
     "conflicts": {
       "found": true,
-      "path": "design-materializations/demo-app__src__App.figma-conflicts.json",
+      "path": "design-materializations/demos__react-demo-app__src__App.figma-conflicts.json",
       "timestamp": "2025-12-30T10:00:00.000Z",
       "summary": { "conflicts": 3, "blocked": 1 }
     },
     "resolutionPlan": {
       "found": true,
-      "path": "design-materializations/demo-app__src__App.figma-resolution-plan.json",
+      "path": "design-materializations/demos__react-demo-app__src__App.figma-resolution-plan.json",
       "timestamp": "2025-12-30T11:00:00.000Z",
       "summary": { "decisions": 2 }
     },
     "resolutionApply": {
       "found": true,
-      "path": "design-materializations/demo-app__src__App.figma-resolution-apply.json",
+      "path": "design-materializations/demos__react-demo-app__src__App.figma-resolution-apply.json",
       "timestamp": "2025-12-30T12:00:00.000Z",
       "summary": { "ops": 1, "dryRun": true, "applied": 0, "skipped": 1, "failed": 0 }
     },
@@ -3557,17 +3557,17 @@ Pattern: `design-materializations/<file>.figma-run-ledger.json`
 ```json
 {
   "version": 1,
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "runs": [
     {
       "runId": "abc12345",
-      "sourceFile": "demo-app/src/App.tsx",
+      "sourceFile": "demos/react-demo-app/src/App.tsx",
       "timestamp": "2025-12-30T10:00:00.000Z",
       "cwd": "/repo",
       "repoRoot": "/repo",
       "command": "figma:status",
       "artifacts": {
-        "conflicts": "design-materializations/demo-app__src__App.figma-conflicts.json"
+        "conflicts": "design-materializations/demos__react-demo-app__src__App.figma-conflicts.json"
       },
       "summary": {
         "conflicts": 3,
@@ -3576,7 +3576,7 @@ Pattern: `design-materializations/<file>.figma-run-ledger.json`
     },
     {
       "runId": "def67890",
-      "sourceFile": "demo-app/src/App.tsx",
+      "sourceFile": "demos/react-demo-app/src/App.tsx",
       "timestamp": "2025-12-30T11:00:00.000Z",
       "cwd": "/repo/packages/watcher",
       "repoRoot": "/repo",
@@ -3606,22 +3606,22 @@ This ensures:
 
 ```bash
 # View timeline for a file (read-only mode)
-pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --json
+pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx --json
 
 # Limit results
-pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --limit 5
+pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx --limit 5
 
 # Verbose mode (show artifact paths)
-pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --verbose
+pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx --verbose
 
 # Explicitly record a run to the ledger (requires feature flag)
-RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --record
+RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx --record
 
 # Force write ledger artifact (for testing only)
-pnpm --filter @aesthetic-function/watcher figma:timeline demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:timeline demos/react-demo-app/src/App.tsx --write
 ```
 
 ### Recording Runs (Phase 13B.1)
@@ -3634,14 +3634,14 @@ To record a run, BOTH conditions must be met:
 
 ```bash
 # This will record a run:
-RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demo-app/src/App.tsx --record
+RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demos/react-demo-app/src/App.tsx --record
 
 # This will NOT record (no feature flag):
-pnpm figma:timeline demo-app/src/App.tsx --record
+pnpm figma:timeline demos/react-demo-app/src/App.tsx --record
 # Output: ⚠️  Recording disabled: RECONCILIATION_TIMELINE_ON is not set to "true"
 
 # This will NOT record (no --record flag):
-RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demo-app/src/App.tsx
+RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demos/react-demo-app/src/App.tsx
 # Output: ℹ️ Read-only mode (use --record to append a run)
 ```
 
@@ -3650,7 +3650,7 @@ RECONCILIATION_TIMELINE_ON=true pnpm figma:timeline demo-app/src/App.tsx
 ```
 === FIGMA RUN TIMELINE (Phase 13B) ===
 Repo Root: /path/to/repo
-Source: demo-app/src/App.tsx (canonical)
+Source: demos/react-demo-app/src/App.tsx (canonical)
 
 Runs (newest first, showing 3 of 3):
 
@@ -3708,7 +3708,7 @@ Pattern: `design-materializations/<file>.figma-drift-diff.json`
 ```json
 {
   "version": "1.0",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "fromRunId": "abc12345",
   "toRunId": "def67890",
   "generatedAt": "2025-12-30T12:00:00.000Z",
@@ -3760,25 +3760,25 @@ Pattern: `design-materializations/<file>.figma-drift-diff.json`
 
 ```bash
 # Compare latest vs previous run
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --json
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --json
 
 # Compare specific runs
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --from abc12345 --to def67890
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --from abc12345 --to def67890
 
 # Write artifact to disk
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --write
 
 # Verbose mode (show artifact paths and reasons)
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --verbose
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --verbose
 
 # Explain run selection (Phase 13C.1)
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --explain
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --explain
 
 # Strict mode for CI: exit 1 if any 'fail' severity (Phase 13C.1)
-pnpm --filter @aesthetic-function/watcher figma:drift demo-app/src/App.tsx --strict
+pnpm --filter @aesthetic-function/watcher figma:drift demos/react-demo-app/src/App.tsx --strict
 ```
 
 ### Preconditions Banner (Phase 13C.1)
@@ -3788,8 +3788,8 @@ Every drift command now prints a preconditions header before results:
 ```
 === DRIFT DIFF PRECONDITIONS ===
 Repo Root: /path/to/repo
-Source (input): ../../demo-app/src/App.tsx
-Source (canonical): demo-app/src/App.tsx
+Source (input): ../../demos/react-demo-app/src/App.tsx
+Source (canonical): demos/react-demo-app/src/App.tsx
 Ledger: ✓ found
 Run selection:
   from: abc12345 (2025-12-30T10:00:00.000Z)
@@ -3801,7 +3801,7 @@ Run selection:
 The `--explain` flag provides detailed reasoning about run selection:
 
 ```bash
-pnpm figma:drift demo-app/src/App.tsx --explain
+pnpm figma:drift demos/react-demo-app/src/App.tsx --explain
 ```
 
 Output:
@@ -3881,8 +3881,8 @@ When no significant changes exist (empty changes or all 'info' with zero deltas)
 ```
 === DRIFT DIFF PRECONDITIONS ===
 Repo Root: /path/to/repo
-Source (input): demo-app/src/App.tsx
-Source (canonical): demo-app/src/App.tsx
+Source (input): demos/react-demo-app/src/App.tsx
+Source (canonical): demos/react-demo-app/src/App.tsx
 Ledger: ✓ found
 Run selection:
   from: abc12345 (2025-12-30T10:00:00.000Z)
@@ -3890,7 +3890,7 @@ Run selection:
 
 === FIGMA DRIFT DIFF (Phase 13C) ===
 Repo Root: /path/to/repo
-Source: demo-app/src/App.tsx (canonical)
+Source: demos/react-demo-app/src/App.tsx (canonical)
 
 Comparing: [abc12345] → [def67890]
 
@@ -3952,7 +3952,7 @@ Phase 13D adds an aggregated dashboard that summarizes drift across multiple rec
 design-materializations/<file>.figma-drift-dashboard.json
 ```
 
-Example path: `design-materializations/demo-app__src__App.figma-drift-dashboard.json`
+Example path: `design-materializations/demos__react-demo-app__src__App.figma-drift-dashboard.json`
 
 ### Structure
 
@@ -3961,7 +3961,7 @@ Example path: `design-materializations/demo-app__src__App.figma-drift-dashboard.
   "version": 1,
   "generatedAt": "2025-12-30T12:00:00.000Z",
   "repoRoot": "/path/to/repo",
-  "sourceFile": "demo-app/src/App.tsx",
+  "sourceFile": "demos/react-demo-app/src/App.tsx",
   "runWindow": {
     "limit": 10,
     "fromRunId": null,
@@ -4049,25 +4049,25 @@ Configurable via environment variables or CLI flags:
 
 ```bash
 # Basic usage
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --json
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --json
 
 # Custom run window
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --limit 20
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --limit 20
 
 # Specific run range
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --from abc12345 --to def67890
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --from abc12345 --to def67890
 
 # Write artifact to disk
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --write
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --write
 
 # CI strict mode (exit 1 on FAIL)
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --strict
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --strict
 
 # Verbose mode (show rationale and highlights)
-pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx --verbose
+pnpm --filter @aesthetic-function/watcher figma:dashboard demos/react-demo-app/src/App.tsx --verbose
 ```
 
 ### Example Output
@@ -4075,7 +4075,7 @@ pnpm --filter @aesthetic-function/watcher figma:dashboard demo-app/src/App.tsx -
 ```
 === FIGMA DRIFT DASHBOARD (Phase 13D) ===
 Repo Root: /path/to/repo
-Source: demo-app/src/App.tsx (canonical)
+Source: demos/react-demo-app/src/App.tsx (canonical)
 Generated: 2025-12-30T12:00:00.000Z
 
 Run Window:
@@ -4135,7 +4135,7 @@ Phase 13E adds directory-level aggregation of Phase 13D dashboards. It scans a d
 design-materializations/<scanRoot>.figma-project-dashboard.json
 ```
 
-Example path: `design-materializations/demo-app__src.figma-project-dashboard.json`
+Example path: `design-materializations/demos__react-demo-app__src.figma-project-dashboard.json`
 
 ### Structure
 
@@ -4144,7 +4144,7 @@ Example path: `design-materializations/demo-app__src.figma-project-dashboard.jso
   "version": 1,
   "generatedAt": "2025-12-30T12:00:00.000Z",
   "repoRoot": "/path/to/repo",
-  "scanRoot": "demo-app/src",
+  "scanRoot": "demos/react-demo-app/src",
   "filePattern": "**/*.tsx",
   "counts": {
     "totalFiles": 10,
@@ -4168,12 +4168,12 @@ Example path: `design-materializations/demo-app__src.figma-project-dashboard.jso
       "to": 2,
       "severity": "warn",
       "magnitude": 2,
-      "sourceFile": "demo-app/src/Card.tsx"
+      "sourceFile": "demos/react-demo-app/src/Card.tsx"
     }
   ],
   "files": [
     {
-      "sourceFile": "demo-app/src/App.tsx",
+      "sourceFile": "demos/react-demo-app/src/App.tsx",
       "status": "OK",
       "verdict": "PASS",
       "stabilityScore": 84,
@@ -4240,32 +4240,32 @@ Project-level signals are merged from all file dashboards and sorted determinist
 ### CLI Usage
 
 ```bash
-# Basic usage (scan demo-app/src)
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src
+# Basic usage (scan demos/react-demo-app/src)
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --json
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --json
 
 # Limit top signals
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --limit 10
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --limit 10
 
 # Write artifact to disk
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --write
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --write
 
 # CI strict mode (exit 1 on FAIL)
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --strict
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --strict
 
 # Custom repo root
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --repo-root /path/to/repo
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --repo-root /path/to/repo
 
 # Verbose mode (show all files)
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --verbose
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --verbose
 
 # Custom thresholds
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --fail-score 50 --warn-score 70
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --fail-score 50 --warn-score 70
 
 # Limit max signals in output
-pnpm --filter @aesthetic-function/watcher figma:project-dashboard demo-app/src --max-signals 5
+pnpm --filter @aesthetic-function/watcher figma:project-dashboard demos/react-demo-app/src --max-signals 5
 ```
 
 ### Threshold Configuration (Phase 13E.1)
@@ -4300,7 +4300,7 @@ The invariant `failScore < warnScore` is enforced at resolution time. Invalid co
 
 ```bash
 # Error: fail-score must be less than warn-score
-pnpm figma:project-dashboard demo-app/src --fail-score 80 --warn-score 70
+pnpm figma:project-dashboard demos/react-demo-app/src --fail-score 80 --warn-score 70
 # Exit code: 2
 ```
 
@@ -4312,7 +4312,7 @@ export RECONCILIATION_DASHBOARD_FAIL_SCORE=50
 export RECONCILIATION_DASHBOARD_WARN_SCORE=75
 export RECONCILIATION_DASHBOARD_MAX_SIGNALS=20
 
-pnpm figma:project-dashboard demo-app/src
+pnpm figma:project-dashboard demos/react-demo-app/src
 ```
 
 ### Example Output
@@ -4320,7 +4320,7 @@ pnpm figma:project-dashboard demo-app/src
 ```
 === FIGMA PROJECT DASHBOARD (Phase 13E) ===
 Repo Root: /path/to/repo
-Scan Root: demo-app/src (canonical)
+Scan Root: demos/react-demo-app/src (canonical)
 File Pattern: **/*.tsx
 Generated: 2025-12-30T12:00:00.000Z
 
@@ -4394,7 +4394,7 @@ Phase 13F adds a CI-focused command that computes a pass/warn/fail decision from
 design-materializations/<scanRoot>.figma-ci-gate.json
 ```
 
-Example path: `design-materializations/demo-app__src.figma-ci-gate.json`
+Example path: `design-materializations/demos__react-demo-app__src.figma-ci-gate.json`
 
 ### Structure
 
@@ -4403,7 +4403,7 @@ Example path: `design-materializations/demo-app__src.figma-ci-gate.json`
   "version": 1,
   "generatedAt": "2025-12-30T12:00:00.000Z",
   "repoRoot": "/path/to/repo",
-  "scanRoot": "demo-app/src",
+  "scanRoot": "demos/react-demo-app/src",
   "filePattern": "**/*.tsx",
   "counts": {
     "totalFiles": 10,
@@ -4426,7 +4426,7 @@ Example path: `design-materializations/demo-app__src.figma-ci-gate.json`
     "windowSize": 5,
     "files": [
       {
-        "sourceFile": "demo-app/src/App.tsx",
+        "sourceFile": "demos/react-demo-app/src/App.tsx",
         "runsInWindow": 5,
         "direction": "improving",
         "startScore": 80,
@@ -4459,22 +4459,22 @@ Files with fewer than 2 runs in the window are marked as "insufficient data".
 
 ```bash
 # Basic usage
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src
 
 # JSON output
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --json
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src --json
 
 # Custom trend window
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --window 10
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src --window 10
 
 # Write artifact to disk
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --write
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src --write
 
 # CI strict mode (exit 1 on FAIL)
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --strict
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src --strict
 
 # Verbose mode (show all files and trends)
-pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --verbose
+pnpm --filter @aesthetic-function/watcher figma:ci demos/react-demo-app/src --verbose
 ```
 
 ### Example Output
@@ -4482,7 +4482,7 @@ pnpm --filter @aesthetic-function/watcher figma:ci demo-app/src --verbose
 ```
 === FIGMA CI GATE (Phase 13F) ===
 Repo Root: /path/to/repo
-Scan Root: demo-app/src
+Scan Root: demos/react-demo-app/src
 Generated: 2025-12-30T12:00:00.000Z
 
 Files:
@@ -4700,7 +4700,7 @@ Quick-start scripts for demos and development:
 
 3. **Show Feature Orchestrator**:
    ```bash
-   pnpm demo:feature --file demo-app/src/App.tsx \
+   pnpm demo:feature --file demos/react-demo-app/src/App.tsx \
      --prompt "Change the Card background to success green"
    ```
    Show the patch artifact generated.
@@ -4708,7 +4708,7 @@ Quick-start scripts for demos and development:
 4. **Show Immediate Apply** (Phase 9B):
    ```bash
    POST_APPLY_EMIT=true AST_WRITE_MODE=write AST_WRITE_DRY_RUN=false \
-     pnpm demo:feature --file demo-app/src/App.tsx \
+     pnpm demo:feature --file demos/react-demo-app/src/App.tsx \
      --prompt "Change the button text to Submit" --apply
    ```
    Watch Figma update immediately without waiting for file-save detection.
@@ -4759,7 +4759,7 @@ Profiles are deterministic flag presets. CLI flags always override profile defau
 
 ```bash
 # Use ci profile but disable strict mode
-figma:reconcile demo-app/src/App.tsx --profile ci --no-strict
+figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --no-strict
 ```
 
 ### Output Formats
@@ -4776,13 +4776,13 @@ figma:reconcile demo-app/src/App.tsx --profile ci --no-strict
 ✓ VERDICT: PASS
 
 --- CI SUMMARY ---
-source=demo-app/src/App.tsx
+source=demos/react-demo-app/src/App.tsx
 profile=ci
 verdict=PASS
 ok=true
 timestamp=2026-01-05T15:28:19.046Z
 git_sha=8a2a519
-bundle_path=design-materializations/demo-app__src__App.figma-reconcile.json
+bundle_path=design-materializations/demos__react-demo-app__src__App.figma-reconcile.json
 dashboard_info=1
 dashboard_warn=1
 dashboard_fail=0
@@ -4826,7 +4826,7 @@ design-materializations/<source-path>.figma-<artifact-type>.json
 
 Where `<source-path>` has `/` replaced with `__` and the file extension removed.
 
-Example: `demo-app/src/App.tsx` → `demo-app__src__App`
+Example: `demos/react-demo-app/src/App.tsx` → `demos__react-demo-app__src__App`
 
 **Artifact Types by Phase:**
 
@@ -4859,7 +4859,7 @@ Example: `demo-app/src/App.tsx` → `demo-app__src__App`
 Usage: figma:reconcile <source-file> [options]
 
 Arguments:
-  <source-file>           Source file to reconcile (e.g., demo-app/src/App.tsx)
+  <source-file>           Source file to reconcile (e.g., demos/react-demo-app/src/App.tsx)
 
 Options:
   --profile <name>        Profile preset: local, record, ci (default: local)
@@ -4888,20 +4888,20 @@ Options:
 
 ```bash
 # Local inspection (default)
-pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx
+pnpm --filter @aesthetic-function/watcher figma:reconcile demos/react-demo-app/src/App.tsx
 
 # CI mode with CI-friendly output
-pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci
+pnpm --filter @aesthetic-function/watcher figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --format ci
 
 # Record a run (requires RECONCILIATION_TIMELINE_ON=true)
-RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile record
+RECONCILIATION_TIMELINE_ON=true pnpm --filter @aesthetic-function/watcher figma:reconcile demos/react-demo-app/src/App.tsx --profile record
 
 # JSON output for debugging
-pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --json --verbose
+pnpm --filter @aesthetic-function/watcher figma:reconcile demos/react-demo-app/src/App.tsx --json --verbose
 
 # From watcher directory
 cd packages/watcher
-pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci
+pnpm figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --format ci
 ```
 
 ---
@@ -4936,7 +4936,7 @@ Server runs at `http://localhost:3001` with:
 pnpm dev:watcher
 ```
 
-Watches `demo-app/src/` for changes by default.
+Watches `demos/react-demo-app/src/` for changes by default.
 
 ### Add @figma Markers
 
@@ -4986,7 +4986,7 @@ Copy the tunnel URL (e.g., `https://xxx.trycloudflare.com`).
 
 ### 5. Code → Figma Sync
 
-1. Edit a file in `demo-app/src/` with `@figma` markers
+1. Edit a file in `demos/react-demo-app/src/` with `@figma` markers
 2. Save the file
 3. Watch the Figma document update in real-time
 
@@ -5052,11 +5052,11 @@ The workflow is defined in [.github/workflows/figma-reconcile-ci.yml](.github/wo
 
 ```bash
 # From repo root
-pnpm --filter @aesthetic-function/watcher figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+pnpm --filter @aesthetic-function/watcher figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --format ci --verbose
 
 # Or from watcher directory
 cd packages/watcher
-pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose
+pnpm figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --format ci --verbose
 ```
 
 ### Interpreting CI Results
@@ -5093,7 +5093,7 @@ On **fresh checkouts** or **first CI runs**, the run ledger (`design-materializa
 ```
 ⚠ VERDICT: WARN
 --- CI SUMMARY ---
-source=demo-app/src/Card.tsx
+source=demos/react-demo-app/src/Card.tsx
 profile=ci
 verdict=WARN
 ok=true
@@ -5130,8 +5130,8 @@ Discovery order: explicit > glob > manifest > default glob (`**/*.tsx`)
 {
   "version": 1,
   "sources": [
-    "demo-app/src/App.tsx",
-    "demo-app/src/Card.tsx"
+    "demos/react-demo-app/src/App.tsx",
+    "demos/react-demo-app/src/Card.tsx"
   ],
   "ignore": [
     "**/internal/**"
@@ -5248,7 +5248,7 @@ ENABLE_AUDIT_LOG=true pnpm dev:server
 
 ```markdown
 ## [2025-01-15T10:30:00.000Z] [req-abc123] type=APPLY_OPERATIONS source=watcher
-file=demo-app/src/Card.tsx
+file=demos/react-demo-app/src/Card.tsx
 ops=2
 - node="LoginButton" action=SET_FILL value="#3B82F6"
 - node="LoginButton" action=SET_TEXT value="Sign In"
@@ -5294,7 +5294,7 @@ aesthetic-function/
 │   │       └── transform/# IntentModel → FigmaOps
 │   ├── server/           # WebSocket + HTTP relay
 │   └── figma-plugin/     # Figma sandbox plugin
-├── demo-app/             # Sample React app with markers
+├── demos/react-demo-app/             # Sample React app with markers
 ├── design-overrides.json # (gitignored) Captured design changes
 ├── component-map.json    # (gitignored) Stable Figma node ID mappings
 ├── design-materializations/ # (gitignored) Patch artifacts
@@ -5588,7 +5588,7 @@ Props are extracted from `reactDocgen` metadata via `extractProps()` in `storybo
 
 #### Demo Fixture
 
-`demo-app/src/DemoButton.tsx` and `demo-app/src/stories/DemoButton.stories.tsx` provide a minimal component with typed props and matching Storybook stories for verifying drift analysis end-to-end.
+`demos/react-demo-app/src/DemoButton.tsx` and `demos/react-demo-app/src/stories/DemoButton.stories.tsx` provide a minimal component with typed props and matching Storybook stories for verifying drift analysis end-to-end.
 
 ### Cross-Surface Drift: Normalization Layer (Phase 16D)
 

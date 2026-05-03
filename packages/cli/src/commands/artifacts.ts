@@ -38,9 +38,9 @@ Options (all subcommands):
   -h, --help               Show this help
 
 Examples:
-  af artifacts list demo-app/src/App.tsx
-  af artifacts inspect design-materializations/demo-app__src__App.figma-reconciliation-status.json
-  af artifacts trace demo-app/src/App.tsx --json`);
+  af artifacts list demos/react-demo-app/src/App.tsx
+  af artifacts inspect design-materializations/demos__react-demo-app__src__App.figma-reconciliation-status.json
+  af artifacts trace demos/react-demo-app/src/App.tsx --json`);
 }
 
 export async function artifacts(args: string[]): Promise<number> {

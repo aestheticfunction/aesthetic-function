@@ -17,7 +17,7 @@ name: Figma Reconcile (Matrix)
 on:
   pull_request:
     paths:
-      - 'demo-app/**/*.tsx'
+      - 'demos/react-demo-app/**/*.tsx'
       - 'packages/**/*.tsx'
   workflow_dispatch:
     inputs:

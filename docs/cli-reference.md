@@ -118,16 +118,16 @@ af reconcile <file> [options]
 
 ```bash
 # Reconcile a component
-af reconcile demo-app/src/App.tsx
+af reconcile demos/react-demo-app/src/App.tsx
 
 # JSON output, no file writes
-af reconcile demo-app/src/App.tsx --json --no-write
+af reconcile demos/react-demo-app/src/App.tsx --json --no-write
 
 # Record in ledger with strict mode
-af reconcile demo-app/src/App.tsx --record --strict
+af reconcile demos/react-demo-app/src/App.tsx --record --strict
 
 # Override profile for this run
-af reconcile demo-app/src/App.tsx --profile code-first
+af reconcile demos/react-demo-app/src/App.tsx --profile code-first
 ```
 
 ---
@@ -150,8 +150,8 @@ af status <file> [options]
 **Examples:**
 
 ```bash
-af status demo-app/src/App.tsx
-af status demo-app/src/App.tsx --json
+af status demos/react-demo-app/src/App.tsx
+af status demos/react-demo-app/src/App.tsx --json
 ```
 
 ---
@@ -192,16 +192,16 @@ All file mode flags, plus:
 
 ```bash
 # File-level dashboard
-af dashboard demo-app/src/App.tsx
+af dashboard demos/react-demo-app/src/App.tsx
 
 # Project-level dashboard
-af dashboard --project demo-app/src/
+af dashboard --project demos/react-demo-app/src/
 
 # With score thresholds
-af dashboard --project demo-app/src/ --fail-score 40 --warn-score 70
+af dashboard --project demos/react-demo-app/src/ --fail-score 40 --warn-score 70
 
 # Last 5 runs only
-af dashboard demo-app/src/App.tsx --limit 5
+af dashboard demos/react-demo-app/src/App.tsx --limit 5
 ```
 
 ---
@@ -233,13 +233,13 @@ af ci [dir] [options]
 
 ```bash
 # Basic CI gate
-af ci demo-app/src/
+af ci demos/react-demo-app/src/
 
 # Strict mode for CI pipelines
-af ci demo-app/src/ --strict --fail-on-worsening
+af ci demos/react-demo-app/src/ --strict --fail-on-worsening
 
 # JSON output with custom thresholds
-af ci demo-app/src/ --json --window 5 --worsening-delta 10
+af ci demos/react-demo-app/src/ --json --window 5 --worsening-delta 10
 ```
 
 ---
@@ -253,7 +253,7 @@ Inspect reconciliation artifacts.
 List all artifacts for a source file.
 
 ```bash
-af artifacts list demo-app/src/App.tsx [options]
+af artifacts list demos/react-demo-app/src/App.tsx [options]
 ```
 
 ### `af artifacts inspect <artifact-path>`
@@ -261,7 +261,7 @@ af artifacts list demo-app/src/App.tsx [options]
 Inspect a specific artifact file.
 
 ```bash
-af artifacts inspect design-materializations/demo-app__src__App.figma-reconcile.json [options]
+af artifacts inspect design-materializations/demos__react-demo-app__src__App.figma-reconcile.json [options]
 ```
 
 ### `af artifacts trace <source-file>`
@@ -269,7 +269,7 @@ af artifacts inspect design-materializations/demo-app__src__App.figma-reconcile.
 Trace the full pipeline for a source file.
 
 ```bash
-af artifacts trace demo-app/src/App.tsx [options]
+af artifacts trace demos/react-demo-app/src/App.tsx [options]
 ```
 
 ### Common Flags

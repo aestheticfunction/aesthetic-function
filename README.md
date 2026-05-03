@@ -178,16 +178,16 @@ pnpm tunnel         # Terminal 3: cloudflared tunnel
 
 ```bash
 # React demo
-af reconcile demo-app/src/App.tsx
+af reconcile demos/react-demo-app/src/App.tsx
 
 # Vue demo (read-only analyzer — write-back disabled in first Vue release)
-af reconcile vue-demo-app/src/App.vue --no-write
+af reconcile demos/vue-demo-app/src/App.vue --no-write
 
 # Check drift status
-af status demo-app/src/App.tsx
+af status demos/react-demo-app/src/App.tsx
 
 # Project-wide dashboard
-af dashboard --project demo-app/src/
+af dashboard --project demos/react-demo-app/src/
 ```
 
 > **Vue note:** Vue source write-back is disabled in the first Vue adapter release. Use `--no-write` for Vue workflows until the write-back spike is completed.
@@ -233,17 +233,18 @@ aesthetic-function/
 │   ├── server/          # WebSocket/HTTP relay, audit logging
 │   ├── figma-plugin/    # Figma sandbox plugin (mutation executor)
 │   └── cli/             # `af` CLI control surface
-├── demo-app/            # React reference demo — App.tsx with @figma markers, Storybook stories
-│   ├── src/
-│   │   ├── App.tsx      # Sign-in composition panel — sole source of @figma markers
-│   │   ├── Button.tsx   # SDS-faithful Button (Primary variant, no markers)
-│   │   ├── Input.tsx    # SDS-faithful Input Field (no markers)
-│   │   └── Card.tsx     # SDS-faithful Card container (no markers)
-│   └── .storybook/      # Storybook config (addon-mcp enabled, Components/Button|Input|Card)
-├── vue-demo-app/        # Vue 3 reference demo — App.vue with @figma markers (read-only analyzer)
-│   └── src/
-│       ├── App.vue      # Sign-in panel — mirrors React demo markers
-│       └── components/  # Card.vue, Button.vue, Input.vue
+├── demos/
+│   ├── react-demo-app/  # React reference demo — App.tsx with @figma markers, Storybook stories
+│   │   ├── src/
+│   │   │   ├── App.tsx      # Sign-in composition panel — sole source of @figma markers
+│   │   │   ├── Button.tsx   # SDS-faithful Button (Primary variant, no markers)
+│   │   │   ├── Input.tsx    # SDS-faithful Input Field (no markers)
+│   │   │   └── Card.tsx     # SDS-faithful Card container (no markers)
+│   │   └── .storybook/      # Storybook config (addon-mcp enabled, Components/Button|Input|Card)
+│   └── vue-demo-app/    # Vue 3 reference demo — App.vue with @figma markers (read-only analyzer)
+│       └── src/
+│           ├── App.vue      # Sign-in panel — mirrors React demo markers
+│           └── components/  # Card.vue, Button.vue, Input.vue
 ├── docs/
 │   └── architecture-reference.md  # Full internal reference
 ├── .github/

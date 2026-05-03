@@ -66,7 +66,8 @@ function checkForDemoAppReads(filePath: string): string[] {
   const lines = content.split('\n');
 
   // Both demo app directories are off-limits for direct file reads.
-  const BLOCKED_DIRS = ['demo-app', 'vue-demo-app'];
+  // Legacy root-level paths also guarded (belt-and-suspenders).
+  const BLOCKED_DIRS = ['demos/react-demo-app', 'demos/vue-demo-app', 'demo-app', 'vue-demo-app'];
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];

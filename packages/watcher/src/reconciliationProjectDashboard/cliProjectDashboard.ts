@@ -146,7 +146,7 @@ Usage: figma:project-dashboard <dir> [options]
 Generate a project-level drift dashboard aggregating all .tsx files.
 
 Arguments:
-  <dir>               Directory to scan (e.g., demo-app/src)
+  <dir>               Directory to scan (e.g., demos/react-demo-app/src)
 
 Options:
   --limit <n>         Max runs to consider per file (default: 10, env: DASHBOARD_LIMIT)
@@ -174,11 +174,11 @@ Exit Codes:
   2                   Usage error (invalid threshold configuration)
 
 Examples:
-  figma:project-dashboard demo-app/src
-  figma:project-dashboard demo-app/src --json
-  figma:project-dashboard demo-app/src --write --verbose
-  figma:project-dashboard demo-app/src --strict
-  figma:project-dashboard demo-app/src --fail-score 50 --warn-score 75
+  figma:project-dashboard demos/react-demo-app/src
+  figma:project-dashboard demos/react-demo-app/src --json
+  figma:project-dashboard demos/react-demo-app/src --write --verbose
+  figma:project-dashboard demos/react-demo-app/src --strict
+  figma:project-dashboard demos/react-demo-app/src --fail-score 50 --warn-score 75
   figma:project-dashboard . --limit 20
 `.trim());
 }

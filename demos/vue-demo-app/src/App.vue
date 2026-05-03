@@ -9,7 +9,7 @@
 
     Cross-surface map:
       node=AuthCard        → Card.vue      → Components/Card       → SDS Card
-      node=AuthCardTitle   → Card <h2>     → Components/Card       → SDS Card > Text
+      node=AuthCardTitle   → Card h2      → Components/Card       → SDS Card > Text
       node=EmailInput      → Input.vue     → Components/Input      → SDS Input Field
       node=PasswordInput   → Input.vue     → Components/Input      → SDS Input Field
       node=SignInButton    → Button.vue    → Components/Button     → SDS Button Primary/Default

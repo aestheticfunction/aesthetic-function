@@ -83,8 +83,8 @@ describe('parseVueAst — componentKey', () => {
 defineOptions({ name: 'AuthCard' });
 </script>
 `.trim();
-    const descriptor = parseSfcSync(source, 'vue-demo-app/src/AuthCard.vue');
-    const report = parseVueAst(descriptor, { sourceRoots: ['vue-demo-app/src'] });
+    const descriptor = parseSfcSync(source, 'demos/vue-demo-app/src/AuthCard.vue');
+    const report = parseVueAst(descriptor, { sourceRoots: ['demos/vue-demo-app/src'] });
     expect(report.components[0]?.componentKey).toContain('AuthCard');
   });
 });

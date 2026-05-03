@@ -22,7 +22,7 @@ const args = process.argv.slice(2);
 
 // Default: Watch demo-app folder (relative to workspace root)
 // The workspace root is 3 levels up from this file
-const defaultWatchPath = new URL('../../../demo-app', import.meta.url).pathname;
+const defaultWatchPath = new URL('../../../demos/react-demo-app', import.meta.url).pathname;
 const watchPaths = args.length > 0 ? args : [defaultWatchPath];
 
 // Server URL from environment or default

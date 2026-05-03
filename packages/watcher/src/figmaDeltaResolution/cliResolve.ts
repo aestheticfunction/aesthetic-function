@@ -145,7 +145,7 @@ async function main(): Promise<void> {
   
   if (args.length === 0) {
     console.error('Usage: pnpm --filter @aesthetic-function/watcher figma:resolve <file>');
-    console.error('Example: pnpm --filter @aesthetic-function/watcher figma:resolve demo-app/src/App.tsx');
+    console.error('Example: pnpm --filter @aesthetic-function/watcher figma:resolve demos/react-demo-app/src/App.tsx');
     console.error();
     console.error('This command generates a resolution plan for Figma → Code conflicts.');
     console.error('It does NOT apply any changes - only produces a reviewable plan.');

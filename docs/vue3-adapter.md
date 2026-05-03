@@ -58,14 +58,14 @@ Properties exactly mirror the [React marker syntax](../packages/watcher/src/__fi
 Start the watcher pointed at your Vue source directory:
 
 ```bash
-WATCH_PATH=vue-demo-app/src pnpm dev:watcher
+WATCH_PATH=demos/vue-demo-app/src pnpm dev:watcher
 ```
 
 The watcher automatically dispatches `.vue` files to `Vue3FrameworkAnalyzer` via the [FrameworkAnalyzer registry](framework-analyzers.md).
 
 ## Demo App
 
-`vue-demo-app/` is the canonical Vue 3 demo. It mirrors `demo-app/` (React) component-for-component:
+`demos/vue-demo-app/` is the canonical Vue 3 demo. It mirrors `demos/react-demo-app/` (React) component-for-component:
 
 | Vue component | React equivalent | Figma nodes |
 |---|---|---|
@@ -77,7 +77,7 @@ The watcher automatically dispatches `.vue` files to `Vue3FrameworkAnalyzer` via
 Run the demo app:
 
 ```bash
-cd vue-demo-app
+cd demos/vue-demo-app
 pnpm install
 pnpm dev      # starts Vite on http://localhost:5173
 ```
@@ -123,7 +123,7 @@ Vue3FrameworkAnalyzer
 
 ## `af reconcile` and Vue files
 
-`af reconcile vue-demo-app/src/App.vue` is safe at all times:
+`af reconcile demos/vue-demo-app/src/App.vue` is safe at all times:
 
 - `af reconcile` (read-only): compares Figma state to code markers. No writes.
 - `af reconcile --write`: writes a JSON bundle to `design-materializations/`. **Never modifies source files.** Safe for `.vue`.

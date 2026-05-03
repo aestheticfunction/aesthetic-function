@@ -38,18 +38,18 @@ function isVueWriteBackBlocked(relativePath: string, materializeEnabled: boolean
 describe('Vue write-back guard', () => {
   describe('isVueWriteBackBlocked', () => {
     it('blocks .vue files when materialize is enabled', () => {
-      expect(isVueWriteBackBlocked('vue-demo-app/src/App.vue', true)).toBe(true);
+      expect(isVueWriteBackBlocked('demos/vue-demo-app/src/App.vue', true)).toBe(true);
       expect(isVueWriteBackBlocked('src/components/Button.vue', true)).toBe(true);
     });
 
     it('does NOT block .vue files when materialize is disabled', () => {
       // When isMaterializeEnabled() is false, the outer guard already prevents
       // any materialize call — the Vue check is moot.
-      expect(isVueWriteBackBlocked('vue-demo-app/src/App.vue', false)).toBe(false);
+      expect(isVueWriteBackBlocked('demos/vue-demo-app/src/App.vue', false)).toBe(false);
     });
 
     it('does NOT block React/TS files', () => {
-      expect(isVueWriteBackBlocked('demo-app/src/App.tsx', true)).toBe(false);
+      expect(isVueWriteBackBlocked('demos/react-demo-app/src/App.tsx', true)).toBe(false);
       expect(isVueWriteBackBlocked('src/Button.tsx', true)).toBe(false);
       expect(isVueWriteBackBlocked('src/utils.ts', true)).toBe(false);
     });

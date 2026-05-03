@@ -40,7 +40,7 @@ const MATERIALIZATIONS_DIR = 'design-materializations';
 /**
  * Get the artifact path for a source file.
  *
- * Converts: demo-app/src/App.tsx → design-materializations/demo-app__src__App.figma-resolution-apply.json
+ * Converts: demos/react-demo-app/src/App.tsx → design-materializations/demos__react-demo-app__src__App.figma-resolution-apply.json
  */
 export function getResolveApplyArtifactPath(sourceFile: string): string {
   // Remove extension and convert path separators to underscores

@@ -36,7 +36,7 @@ const ARTIFACT_DIR = 'design-materializations';
  * Generate the artifact path for a resolution plan.
  *
  * Converts file path to a flat filename:
- *   demo-app/src/App.tsx → demo-app__src__App.figma-resolution-plan.json
+ *   demos/react-demo-app/src/App.tsx → demos__react-demo-app__src__App.figma-resolution-plan.json
  *
  * @param filePath - Source file path
  * @returns Artifact path relative to repo root

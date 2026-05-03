@@ -22,14 +22,14 @@ We maintain a strict separation between **test fixtures** and **demo content**:
 | Directory | Purpose | Stability | Used By |
 |-----------|---------|-----------|---------|
 | `packages/**/__fixtures__/` | Deterministic test inputs | ✅ Stable, version-controlled | Automated tests |
-| `demo-app/` | Human testing and demos | ❌ Mutable, freely editable | Manual testing only |
+| `demos/react-demo-app/` | Human testing and demos | ❌ Mutable, freely editable | Manual testing only |
 
 ### Rules
 
-1. **Automated tests MUST NOT read from `demo-app/`**
-   - No `readFileSync()` calls to `demo-app/src/`
-   - No imports from `demo-app/`
-   - No snapshots of `demo-app/` content
+1. **Automated tests MUST NOT read from `demos/react-demo-app/`**
+   - No `readFileSync()` calls to `demos/react-demo-app/src/`
+   - No imports from `demos/react-demo-app/`
+   - No snapshots of `demos/react-demo-app/` content
 
 2. **Snapshot tests MUST use fixtures**
    - Fixtures live in `packages/**/__fixtures__/`
@@ -37,18 +37,18 @@ We maintain a strict separation between **test fixtures** and **demo content**:
    - Tests use helper functions like `readAppFixture()`
 
 3. **Path strings are acceptable**
-   - Using `'demo-app/src/App.tsx'` as a path string in test data is fine
+   - Using `'demos/react-demo-app/src/App.tsx'` as a path string in test data is fine
    - The rule is about *reading file content*, not *using path strings*
 
-4. **`demo-app/` is for humans only**
-   - Developers can freely modify `demo-app/` for testing
-   - Demos and walkthroughs use `demo-app/`
-   - Breaking `demo-app/` should never break CI
+4. **`demos/react-demo-app/` is for humans only**
+   - Developers can freely modify `demos/react-demo-app/` for testing
+   - Demos and walkthroughs use `demos/react-demo-app/`
+   - Breaking `demos/react-demo-app/` should never break CI
 
 ### Rationale
 
 - **Determinism**: Fixtures provide identical input across all environments
-- **Developer Freedom**: Edit `demo-app/` without fear of breaking tests
+- **Developer Freedom**: Edit `demos/react-demo-app/` without fear of breaking tests
 - **Clear Ownership**: Fixtures are explicitly version-controlled test inputs
 
 ---
@@ -105,30 +105,30 @@ The `FIXTURE_PATH` constant normalizes paths for snapshots, ensuring they're ide
 A CI guardrail test (`no-demo-app-reads.test.ts`) enforces the test stability policy.
 
 It scans all test files and fails if any test:
-- Imports from `demo-app/`
-- Uses `readFileSync` or `readFile` to read from `demo-app/`
+- Imports from `demos/react-demo-app/`
+- Uses `readFileSync` or `readFile` to read from `demos/react-demo-app/`
 
 ### What Triggers CI Failure
 
 ```typescript
 // ❌ FAILS CI - reading demo-app content
-const code = readFileSync('demo-app/src/App.tsx', 'utf-8');
+const code = readFileSync('demos/react-demo-app/src/App.tsx', 'utf-8');
 
 // ❌ FAILS CI - importing from demo-app
-import { App } from '../../../../demo-app/src/App';
+import { App } from '../../../../demos/react-demo-app/src/App';
 ```
 
 ### What Passes CI
 
 ```typescript
 // ✅ PASSES - using demo-app as a path string
-const result = getPatchArtifactPath('demo-app/src/App.tsx', '/repo');
+const result = getPatchArtifactPath('demos/react-demo-app/src/App.tsx', '/repo');
 
 // ✅ PASSES - reading from fixtures
 const code = readAppFixture();
 
 // ✅ PASSES - hardcoded path strings in test data
-const filePath = 'demo-app/src/App.tsx';
+const filePath = 'demos/react-demo-app/src/App.tsx';
 ```
 
 ---
@@ -198,12 +198,12 @@ Update fixtures when:
 - Changing expected AST behavior (requires snapshot updates)
 - Adding support for new JSX patterns
 
-Never update fixtures to match `demo-app/` changes. Fixtures are their own source of truth.
+Never update fixtures to match `demos/react-demo-app/` changes. Fixtures are their own source of truth.
 
 ### Human Testing
 
 For manual testing and demos:
-- Edit files in `demo-app/` freely
+- Edit files in `demos/react-demo-app/` freely
 - Use `pnpm dev:watcher` and `pnpm dev:server`
 - See README.md for demo runbooks
 

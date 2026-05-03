@@ -93,7 +93,7 @@ jobs:
           set +e  # Don't exit on error, we'll handle it
           
           # Run reconcile in CI mode with verbose output
-          OUTPUT=$(pnpm figma:reconcile demo-app/src/App.tsx --profile ci --format ci --verbose 2>&1)
+          OUTPUT=$(pnpm figma:reconcile demos/react-demo-app/src/App.tsx --profile ci --format ci --verbose 2>&1)
           EXIT_CODE=$?
           
           echo "--- Reconcile Output ---"
@@ -111,7 +111,7 @@ jobs:
           
           # Default values if parsing fails
           VERDICT=${VERDICT:-UNKNOWN}
-          BUNDLE_PATH=${BUNDLE_PATH:-design-materializations/demo-app__src__App.figma-reconcile.json}
+          BUNDLE_PATH=${BUNDLE_PATH:-design-materializations/demos__react-demo-app__src__App.figma-reconcile.json}
           STABILITY_SCORE=${STABILITY_SCORE:-0}
           GIT_SHA=${GIT_SHA:-${{ github.sha }}}
           
@@ -141,7 +141,7 @@ jobs:
         if: always()
         with:
           name: figma-reconcile-${{ github.run_id }}-${{ github.sha }}
-          path: design-materializations/demo-app__src__App.figma-reconcile.json
+          path: design-materializations/demos__react-demo-app__src__App.figma-reconcile.json
           retention-days: 30
           if-no-files-found: warn
 
@@ -153,7 +153,7 @@ jobs:
         if: always()
         with:
           name: figma-reconcile-all-${{ github.run_id }}-${{ github.sha }}
-          path: design-materializations/demo-app__src__App.*.json
+          path: design-materializations/demos__react-demo-app__src__App.*.json
           retention-days: 30
           if-no-files-found: ignore
 

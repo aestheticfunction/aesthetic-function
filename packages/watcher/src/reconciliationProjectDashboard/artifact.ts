@@ -38,7 +38,7 @@ import type {
 
 /**
  * Normalize scan root path for artifact naming.
- * Converts: demo-app/src → demo-app__src
+ * Converts: demos/react-demo-app/src → demos__react-demo-app__src
  */
 function normalizeScanRootForArtifact(scanRoot: string): string {
   let normalized = scanRoot;
