@@ -1,10 +1,11 @@
 /**
  * @aesthetic-function/watcher - watch.ts
  *
- * Chokidar-based file watcher that monitors React source files for changes.
+ * Chokidar-based file watcher that monitors source files for changes.
+ * Supports React (.tsx/.jsx/.ts/.js) and Vue 3 (.vue) via FrameworkAnalyzer registry.
  *
  * PIPELINE (Marker-based - default):
- *   File change → Parse @figma markers → IntentModel → FigmaOps → Server → Plugin
+ *   File change → FrameworkAnalyzer.hasMarkers → parseIntent → FigmaOps → Server → Plugin
  *
  * PIPELINE (LLM-based - USE_LLM_ANALYZER=true):
  *   File change → LLM analysis → IntentModel → FigmaOps → Server → Plugin
@@ -23,12 +24,10 @@ import { resolve, relative, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 import {
-  parseIntentFromReact,
   hasFigmaMarkers,
 } from './parse/parseIntentFromReact.js';
 import {
   intentToFigmaOps,
-  createIntentModel,
 } from './transform/intentToFigmaOps.js';
 import { getDefaultTokenContext } from './tokens/designTokens.js';
 import {
@@ -59,6 +58,14 @@ import {
   componentMapExists,
 } from './reconcile/componentMap.js';
 import type { FigmaOperation } from './transform/intentToFigmaOps.js';
+import {
+  initializeDefaultAnalyzers,
+  resolveByPath,
+} from './framework/index.js';
+
+// Initialize FrameworkAnalyzer registry at module load time.
+// Safe to call multiple times; subsequent calls are no-ops.
+initializeDefaultAnalyzers();
 
 // =============================================================================
 // CONFIGURATION
@@ -265,6 +272,9 @@ async function applyComponentMapResolution(
 /**
  * Process a changed file using marker-based parsing.
  * This is the default mode when USE_LLM_ANALYZER is not set.
+ *
+ * Dispatches to the appropriate FrameworkAnalyzer (React, Vue 3, etc.) based
+ * on file extension. Falls back to the React analyzer for unknown extensions.
  */
 async function processFileWithMarkers(
   content: string,
@@ -274,29 +284,32 @@ async function processFileWithMarkers(
   repoRoot: string,
   fileMtime?: Date
 ): Promise<void> {
-  // Quick check for markers
-  if (!hasFigmaMarkers(content)) {
+  // Resolve FrameworkAnalyzer for this file extension.
+  const analyzer = resolveByPath(relativePath);
+
+  if (!analyzer) {
+    console.log(`[Watcher] Unsupported extension, skipping: ${relativePath}`);
+    return;
+  }
+
+  // Quick check for markers using the framework-appropriate checker.
+  if (!analyzer.hasMarkers(content)) {
     console.log(`[Watcher] No @figma markers found, skipping`);
     return;
   }
 
-  // Parse markers to intents
-  const parseResult = parseIntentFromReact(content, relativePath);
+  // Parse markers to IntentModel via the framework-specific analyzer.
+  let model = analyzer.parseIntent(content, relativePath);
 
-  if (parseResult.warnings.length > 0) {
-    parseResult.warnings.forEach((w) => console.warn(`[Watcher] ⚠ ${w}`));
-  }
-
-  if (parseResult.intents.length === 0) {
+  if (model.intents.length === 0) {
     console.log(`[Watcher] No valid intents extracted`);
     return;
   }
 
-  console.log(`[Watcher] Found ${parseResult.intents.length} intent(s) from markers`);
+  console.log(`[Watcher] Found ${model.intents.length} intent(s) from markers [${analyzer.id}]`);
 
-  // Create initial IntentModel
+  // Create token context for transform step
   const tokenContext = getDefaultTokenContext();
-  let model = createIntentModel(parseResult.intents, relativePath);
 
   // Load overrides for both reconciliation and materialization
   const overrides = await loadDesignOverrides();
@@ -333,13 +346,21 @@ async function processFileWithMarkers(
   }
 
   // PHASE 5B: Materialize design overrides to code (if enabled and triggered on file_save)
+  // WRITE-BACK SAFETY: Vue source files must not be mutated until the Phase 3 round-trip
+  // spike passes. Block all materialize() calls for .vue files regardless of config.
   const materializeOn = getMaterializeOn();
-  if (isMaterializeEnabled() && materializeOn === 'file_save' && overrides && Object.keys(overrides).length > 0) {
+  const isVueFile = relativePath.endsWith('.vue');
+  if (isVueFile && isMaterializeEnabled()) {
+    console.warn(
+      `[Watcher] ⚠ Skipping source write-back for Vue file: ${relativePath}` +
+      ` (Vue write-back disabled until Phase 3 round-trip spike passes)`
+    );
+  } else if (isMaterializeEnabled() && materializeOn === 'file_save' && overrides && Object.keys(overrides).length > 0) {
     const materializeResult = await materialize({
       absolutePath,
       relativePath,
       content,
-      intents: parseResult.intents,
+      intents: model.intents,
       overrides,
       repoRoot,
     });
@@ -552,7 +573,8 @@ async function processFile(filePath: string, serverUrl: string): Promise<void> {
         await processFileWithMarkers(content, absolutePath, relativePath, serverUrl, repoRoot, fileMtime);
       } else {
         // Guard: skip LLM if no markers and LLM_ANALYZE_ALL is not enabled
-        const hasMarkers = hasFigmaMarkers(content);
+        const analyzer = resolveByPath(relativePath);
+        const hasMarkers = analyzer ? analyzer.hasMarkers(content) : hasFigmaMarkers(content);
         if (!hasMarkers && !isLLMAnalyzeAllEnabled()) {
           console.log(`[Watcher] LLM mode: no @figma markers and LLM_ANALYZE_ALL!=true, skipping`);
           return;
@@ -630,8 +652,8 @@ export function startWatcher(
   });
 
   watcher.on('change', (path) => {
-    // Only process TypeScript/JavaScript/JSX/TSX files
-    if (!/\.(tsx?|jsx?)$/.test(path)) {
+    // Only process TypeScript/JavaScript/JSX/TSX/Vue files
+    if (!/\.(tsx?|jsx?|vue)$/.test(path)) {
       return;
     }
 
@@ -642,7 +664,7 @@ export function startWatcher(
 
   watcher.on('add', (path) => {
     // Also process newly added files
-    if (!/\.(tsx?|jsx?)$/.test(path)) {
+    if (!/\.(tsx?|jsx?|vue)$/.test(path)) {
       return;
     }
 

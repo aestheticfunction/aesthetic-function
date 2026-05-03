@@ -1,14 +1,15 @@
 /**
  * @aesthetic-function/watcher - __tests__/no-demo-app-reads.test.ts
  *
- * CI GUARDRAIL: Ensures test files never read from demo-app/.
+ * CI GUARDRAIL: Ensures test files never read from demo-app/ or vue-demo-app/.
  *
  * This test scans all test files in the watcher package and fails if any:
- * - Use readFileSync/readFile to read from demo-app/
- * - Import from demo-app/
+ * - Use readFileSync/readFile to read from demo-app/ or vue-demo-app/
+ * - Import from demo-app/ or vue-demo-app/
  *
  * ALLOWED:
- * - Using 'demo-app' as a path string in test data (e.g., 'demo-app/src/App.tsx')
+ * - Using 'demo-app' or 'vue-demo-app' as a path string in test data
+ *   (e.g., 'demo-app/src/App.tsx', 'vue-demo-app/src/App.vue')
  * - Reading from __fixtures__/ directories
  *
  * See CONTRIBUTING.md for the full test stability policy.
@@ -55,7 +56,7 @@ function findTestFiles(dir: string): string[] {
 }
 
 /**
- * Check if a test file has dangerous demo-app reads.
+ * Check if a test file has dangerous demo-app or vue-demo-app reads.
  *
  * Returns an array of violation descriptions.
  */
@@ -64,51 +65,37 @@ function checkForDemoAppReads(filePath: string): string[] {
   const content = readFileSync(filePath, 'utf-8');
   const lines = content.split('\n');
 
+  // Both demo app directories are off-limits for direct file reads.
+  const BLOCKED_DIRS = ['demo-app', 'vue-demo-app'];
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const lineNum = i + 1;
+    const trimmed = line.trim();
 
-    // Pattern 1: readFileSync/readFile with demo-app path
-    // Matches: readFileSync('demo-app/...' or readFileSync("demo-app/...
-    // Also matches: readFileSync(join(..., 'demo-app', ...
-    if (
-      (line.includes('readFileSync') || line.includes('readFile(')) &&
-      line.includes('demo-app')
-    ) {
-      // Skip if it's a comment
-      const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
-        continue;
-      }
-
-      // Skip if demo-app is in a string that's clearly test data (not a file read)
-      // e.g., getPatchArtifactPath('demo-app/src/App.tsx', ...)
-      if (!line.includes('readFileSync') && !line.match(/readFile\s*\(/)) {
-        continue;
-      }
-
-      violations.push(`Line ${lineNum}: Possible readFile from demo-app: ${line.trim()}`);
+    // Skip comment lines
+    if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
+      continue;
     }
 
-    // Pattern 2: Import from demo-app
-    // Matches: import ... from '...demo-app...'
-    if (line.includes('import') && line.includes('demo-app')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
-        continue;
+    for (const dir of BLOCKED_DIRS) {
+      // Pattern 1: readFileSync/readFile with blocked dir path
+      if (
+        (line.includes('readFileSync') || line.includes('readFile(')) &&
+        line.includes(dir)
+      ) {
+        violations.push(`Line ${lineNum}: Possible readFile from ${dir}/: ${trimmed}`);
       }
 
-      violations.push(`Line ${lineNum}: Import from demo-app: ${line.trim()}`);
-    }
-
-    // Pattern 3: Dynamic import of demo-app
-    if (line.includes('import(') && line.includes('demo-app')) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('//') || trimmed.startsWith('*')) {
-        continue;
+      // Pattern 2: Import from blocked dir
+      if (line.includes('import') && line.includes(dir)) {
+        violations.push(`Line ${lineNum}: Import from ${dir}/: ${trimmed}`);
       }
 
-      violations.push(`Line ${lineNum}: Dynamic import from demo-app: ${line.trim()}`);
+      // Pattern 3: Dynamic import of blocked dir
+      if (line.includes('import(') && line.includes(dir)) {
+        violations.push(`Line ${lineNum}: Dynamic import from ${dir}/: ${trimmed}`);
+      }
     }
   }
 
@@ -116,7 +103,7 @@ function checkForDemoAppReads(filePath: string): string[] {
 }
 
 describe('CI Guardrail: No Demo-App Reads in Tests', () => {
-  it('should not have any test files that read from demo-app/', () => {
+  it('should not have any test files that read from demo-app/ or vue-demo-app/', () => {
     // Find the watcher src directory
     const srcDir = join(__dirname, '..');
     const testFiles = findTestFiles(srcDir);
@@ -144,7 +131,7 @@ describe('CI Guardrail: No Demo-App Reads in Tests', () => {
         .join('\n');
 
       expect.fail(
-        `Found test files that read from demo-app/.\n` +
+        `Found test files that read from demo-app/ or vue-demo-app/.\n` +
           `This breaks test stability - use fixtures instead.\n` +
           `See CONTRIBUTING.md for the test stability policy.\n` +
           `\nViolations:${report}`

@@ -9,14 +9,16 @@
 </p>
 
 <p align="center">
-  Deterministic Code ↔ Design synchronization for React and Figma
+  Framework-aware Code ↔ Design synchronization for React, Vue, and Figma
 </p>
 
 <br/>
 
 ---
 
-Aesthetic Function (AF) is a system for keeping code and design in sync — continuously and deterministically, without prompt engineering.
+Aesthetic Function (AF) is a system for keeping UI source code and design representations in sync — continuously and deterministically, without prompt engineering.
+
+AF uses **framework analyzers** to extract intent from source code and reconcile it with design state. React/JSX supports the full existing reconciliation workflow. Vue 3 Single File Components are supported as a read-only framework analyzer in this first release, with source write-back intentionally gated behind a future round-trip safety spike.
 
 As AI-generated UI accelerates, alignment between code and design becomes harder — not easier.
 
@@ -89,6 +91,16 @@ It does not export design to code.
 
 It keeps them in sync continuously.
 
+### Framework-Aware Source Analysis
+
+AF dispatches source files to the appropriate framework analyzer based on extension. Each analyzer emits the same framework-neutral intent model — the reconciliation, token resolution, and Figma operation layers are unaware of the source language.
+
+| Source surface | Status |
+|---|---|
+| React / JSX / TSX | Full supported workflow — reconciliation, write-back, drift analysis |
+| Vue 3 Single File Components | Read-only analyzer — code-to-design intent extraction, no source write-back |
+| Svelte / Solid / Astro | Future analyzer targets |
+
 ### Key Properties
 
 | Property | What it means |
@@ -127,7 +139,7 @@ Three runtimes with strict boundaries:
 
 | Runtime | Responsibility | Cannot do |
 |---------|---------------|-----------|
-| **Watcher** | Reconciliation, AST analysis, adapter reads, token resolution | Write to Figma directly |
+| **Watcher** | Reconciliation, framework analysis, adapter reads, token resolution | Write to Figma directly |
 | **Server** | Message relay, audit logging, override persistence | Interpret UI meaning |
 | **Plugin** | Execute Figma mutations, report selections | Access filesystem, make network calls (in code.ts) |
 
@@ -165,8 +177,11 @@ pnpm tunnel         # Terminal 3: cloudflared tunnel
 ### Run Reconciliation
 
 ```bash
-# Analyze a component file
+# React demo
 af reconcile demo-app/src/App.tsx
+
+# Vue demo (read-only analyzer — write-back disabled in first Vue release)
+af reconcile vue-demo-app/src/App.vue --no-write
 
 # Check drift status
 af status demo-app/src/App.tsx
@@ -174,6 +189,8 @@ af status demo-app/src/App.tsx
 # Project-wide dashboard
 af dashboard --project demo-app/src/
 ```
+
+> **Vue note:** Vue source write-back is disabled in the first Vue adapter release. Use `--no-write` for Vue workflows until the write-back spike is completed.
 
 ### Configure
 
@@ -216,13 +233,17 @@ aesthetic-function/
 │   ├── server/          # WebSocket/HTTP relay, audit logging
 │   ├── figma-plugin/    # Figma sandbox plugin (mutation executor)
 │   └── cli/             # `af` CLI control surface
-├── demo-app/            # Demo React app for AF reconciliation and drift demos
+├── demo-app/            # React reference demo — App.tsx with @figma markers, Storybook stories
 │   ├── src/
 │   │   ├── App.tsx      # Sign-in composition panel — sole source of @figma markers
 │   │   ├── Button.tsx   # SDS-faithful Button (Primary variant, no markers)
 │   │   ├── Input.tsx    # SDS-faithful Input Field (no markers)
 │   │   └── Card.tsx     # SDS-faithful Card container (no markers)
 │   └── .storybook/      # Storybook config (addon-mcp enabled, Components/Button|Input|Card)
+├── vue-demo-app/        # Vue 3 reference demo — App.vue with @figma markers (read-only analyzer)
+│   └── src/
+│       ├── App.vue      # Sign-in panel — mirrors React demo markers
+│       └── components/  # Card.vue, Button.vue, Input.vue
 ├── docs/
 │   └── architecture-reference.md  # Full internal reference
 ├── .github/
@@ -255,6 +276,8 @@ See [docs/architecture-reference.md](docs/architecture-reference.md) for the com
 | [docs/reconciliation-model.md](docs/reconciliation-model.md) | Contributors | Precedence rules, field resolution, drift semantics |
 | [docs/runtime-boundaries.md](docs/runtime-boundaries.md) | Contributors | Three-runtime model, boundary constraints |
 | [docs/adapter-model.md](docs/adapter-model.md) | Contributors | Design adapters, MCP integration, tool policies |
+| [docs/framework-analyzers.md](docs/framework-analyzers.md) | Contributors | FrameworkAnalyzer interface, registry, React + Vue3 analyzers, adding new frameworks |
+| [docs/vue3-adapter.md](docs/vue3-adapter.md) | Contributors | Vue 3 SFC support, read-only status, marker syntax, Phase 3 write-back plan |
 | [docs/safety-and-control.md](docs/safety-and-control.md) | Contributors | Safety properties, CI gates, rollback model |
 | [claude.md](claude.md) | Claude AI | Project context for AI-assisted development |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Contributors | Test policy, code standards |

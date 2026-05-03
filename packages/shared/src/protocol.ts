@@ -203,7 +203,7 @@ export type IntentNode =
   | IntentImageNode;
 
 /**
- * Complete Intent Model for a React component/file
+ * Complete Intent Model for a source file (React, Vue 3, etc.)
  */
 export interface IntentModel {
   /** Root-level nodes */

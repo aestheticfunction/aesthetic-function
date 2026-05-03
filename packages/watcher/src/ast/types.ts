@@ -224,9 +224,46 @@ export interface InlineStyleLiteral {
 
 /**
  * Default source root for component key derivation.
- * Paths are computed relative to this directory.
+ *
+ * @deprecated Pass an explicit `root` argument or `sourceRoots` array
+ * (via AnalyzerOpts) instead of relying on this constant. The constant is
+ * kept only so that existing callers that omit `root` continue to work until
+ * they are updated. New code must not reference this symbol directly.
+ *
+ * Migration: provide `sourceRoots` in your AnalyzerOpts and let the analyzer
+ * call `resolveSourceRoot(filePath, sourceRoots)` to determine the root.
  */
 export const DEFAULT_COMPONENT_KEY_ROOT = 'demo-app/src';
+
+/**
+ * Pick the best source root for a given file path from a list of candidates.
+ *
+ * WHY (answer #3): Source roots must be config-driven. Projects set them via
+ * AnalyzerOpts.sourceRoots. This function selects the longest matching root
+ * so that a file under "react-demo-app/src" is not mis-attributed to "src".
+ *
+ * @param filePath    - Absolute or relative path to the source file
+ * @param sourceRoots - Ordered list of candidate roots (relative to repo)
+ * @returns The best-matching root, or undefined if none match
+ */
+export function resolveSourceRoot(
+  filePath: string,
+  sourceRoots: string[]
+): string | undefined {
+  const normalizedPath = filePath.replace(/\\/g, '/');
+  let bestRoot: string | undefined;
+  let bestLen = -1;
+
+  for (const root of sourceRoots) {
+    const normalizedRoot = root.replace(/\\/g, '/');
+    if (normalizedPath.includes(normalizedRoot) && normalizedRoot.length > bestLen) {
+      bestRoot = normalizedRoot;
+      bestLen = normalizedRoot.length;
+    }
+  }
+
+  return bestRoot;
+}
 
 /**
  * Compute a stable component key from file path and export name.
@@ -236,6 +273,8 @@ export const DEFAULT_COMPONENT_KEY_ROOT = 'demo-app/src';
  * independent of Figma node names.
  *
  * Format: <relativePath>/<exportName> (e.g., "auth/LoginButton", "Card")
+ *
+ * Supports `.vue`, `.svelte`, and all `.tsx?|.jsx?` extensions.
  *
  * @param filePath - Absolute or relative path to the source file
  * @param exportName - Name of the exported component
@@ -267,8 +306,8 @@ export function computeComponentKey(
     relativePath = lastSlash >= 0 ? normalizedPath.slice(lastSlash + 1) : normalizedPath;
   }
 
-  // Remove file extension
-  const extensionMatch = relativePath.match(/\.(tsx?|jsx?)$/);
+  // Remove file extension (.tsx, .jsx, .ts, .js, .vue, .svelte, etc.)
+  const extensionMatch = relativePath.match(/\.(tsx?|jsx?|vue|svelte|astro)$/);
   if (extensionMatch) {
     relativePath = relativePath.slice(0, -extensionMatch[0].length);
   }
