@@ -2,7 +2,7 @@
   "name": "@aesthetic-function/watcher",
   "version": "0.1.0",
   "private": true,
-  "description": "Local Node.js watcher that monitors React source files",
+  "description": "Local Node.js watcher that monitors UI source files",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

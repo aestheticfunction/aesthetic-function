@@ -17,7 +17,7 @@ Each field in a component (color, spacing, typography, layout) is resolved indep
 
 - **Field resolution** — `resolveField()` / `resolveWithPolicy()` apply the precedence chain per-field
 - **Design overrides** — Intentional design deviations captured via the plugin, persisted in `design-overrides.json`
-- **`@figma` markers** — Comment annotations in React source that declare design intent
+- **`@figma` markers** — Comment annotations in UI source files that declare design intent
 - **AST extraction** — Structural properties extracted from JSX (className, style props, component hierarchy)
 - **Drift diff** — Field-level comparison between resolved values and current design state
 - **Reconciliation status** — Aggregate verdict (PASS/WARN/FAIL) based on drift thresholds

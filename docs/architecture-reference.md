@@ -10,7 +10,7 @@ This document is the source of truth for AF's runtime boundaries, reconciliation
 
 ## Core Identity
 
-A bidirectional Code ↔ Design synchronization system for React and Figma. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
+A bidirectional Code ↔ Design synchronization system for UI frameworks (React, Vue) and Figma. The pipeline is deterministic by default, using `@figma` comment markers to extract design intent. An optional LLM-based analyzer can be enabled via feature flag, with automatic fallback to marker parsing on failure.
 
 ## Architectural Invariants
 
