@@ -2,7 +2,15 @@
   "name": "aesthetic-function",
   "version": "0.1.0",
   "private": true,
-  "description": "Framework-aware synchronization between UI source code and design representations",
+  "description": "Control plane for AI-driven UI development — deterministic synchronization between UI source code and design representations",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aestheticfunction/aesthetic-function.git"
+  },
+  "bugs": {
+    "url": "https://github.com/aestheticfunction/aesthetic-function/issues"
+  },
+  "homepage": "https://github.com/aestheticfunction/aesthetic-function#readme",
   "packageManager": "pnpm@9.14.2",
   "scripts": {
     "build": "pnpm -r build",
