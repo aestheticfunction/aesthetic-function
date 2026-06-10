@@ -188,6 +188,8 @@ interface ComponentBounds {
  * - export const Foo = () => {}
  * - function Foo() {} with separate export
  * - const Foo = () => {} with separate export
+ * - const Foo = React.forwardRef((props, ref) => {}) / forwardRef(...)
+ * - const Foo = memo(() => {}) / React.memo(...)
  */
 function collectComponents(ast: t.File): ComponentBounds[] {
   const components: ComponentBounds[] = [];
@@ -253,8 +255,28 @@ function collectComponents(ast: t.File): ComponentBounds[] {
       const init = path.node.init;
       if (!init) return;
 
+      // Unwrap React.forwardRef(...) / memo(...) wrappers so that the dominant
+      // shadcn/ui shape `const Button = React.forwardRef((props, ref) => ...)`
+      // is recognized. We look at the first argument when it is an arrow/function
+      // expression, then fall through to the regular check below.
+      let unwrapped: t.Node = init;
+      if (t.isCallExpression(init)) {
+        const callee = init.callee;
+        const calleeName = t.isIdentifier(callee)
+          ? callee.name
+          : t.isMemberExpression(callee) && t.isIdentifier(callee.property)
+            ? callee.property.name
+            : undefined;
+        if ((calleeName === 'forwardRef' || calleeName === 'memo') && init.arguments.length > 0) {
+          const arg = init.arguments[0];
+          if (t.isArrowFunctionExpression(arg) || t.isFunctionExpression(arg)) {
+            unwrapped = arg;
+          }
+        }
+      }
+
       // Check if it's a function expression or arrow function
-      if (t.isArrowFunctionExpression(init) || t.isFunctionExpression(init)) {
+      if (t.isArrowFunctionExpression(unwrapped) || t.isFunctionExpression(unwrapped)) {
         // Use the VariableDeclaration (parent of VariableDeclarator) for location
         // path.parent is the VariableDeclaration
         const parent = path.parent;
