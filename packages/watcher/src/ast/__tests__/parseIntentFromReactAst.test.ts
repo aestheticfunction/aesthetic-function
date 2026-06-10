@@ -170,6 +170,71 @@ describe('parseIntentFromReactAst - Component Extraction', () => {
 });
 
 // =============================================================================
+// WRAPPED COMPONENT EXTRACTION TESTS (forwardRef / memo)
+// =============================================================================
+
+describe('parseIntentFromReactAst - Wrapped Component Extraction', () => {
+  it('should extract a React.forwardRef-wrapped component', () => {
+    // Dominant shadcn/ui shape. loc spans the whole VariableDeclaration.
+    const code = `import * as React from 'react';
+export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>((props, ref) => {
+  return <button ref={ref} {...props}>Click me</button>;
+});`;
+    const report = parseIntentFromReactAst(code, 'Button.tsx');
+
+    expect(report.components).toHaveLength(1);
+    const button = report.components[0];
+    expect(button.componentName).toBe('Button');
+    expect(button.isExported).toBe(true);
+    expect(button.componentKey).toBe('Button');
+    expect(button.loc.startLine).toBe(2);
+    expect(button.loc.endLine).toBe(4);
+    // JSX inside the wrapped render fn is still analyzed
+    expect(button.jsxTextLiterals.map((t) => t.text)).toContain('Click me');
+  });
+
+  it('should extract a bare forwardRef-wrapped component', () => {
+    const code = `
+      import { forwardRef } from 'react';
+      export const Input = forwardRef((props, ref) => {
+        return <input ref={ref} />;
+      });
+    `;
+    const report = parseIntentFromReactAst(code, 'test.tsx');
+
+    expect(report.components).toHaveLength(1);
+    expect(report.components[0].componentName).toBe('Input');
+    expect(report.components[0].isExported).toBe(true);
+  });
+
+  it('should extract a memo-wrapped component', () => {
+    const code = `
+      import { memo } from 'react';
+      export const Card = memo(() => {
+        return <div>Card body</div>;
+      });
+    `;
+    const report = parseIntentFromReactAst(code, 'test.tsx');
+
+    expect(report.components).toHaveLength(1);
+    expect(report.components[0].componentName).toBe('Card');
+    expect(report.components[0].isExported).toBe(true);
+  });
+
+  it('should not treat unrelated call-expression initializers as components', () => {
+    const code = `
+      export const Config = createConfig(() => {
+        return <div>not a component</div>;
+      });
+    `;
+    const report = parseIntentFromReactAst(code, 'test.tsx');
+
+    // createConfig is not forwardRef/memo, so Config is not a component shape
+    expect(report.components).toHaveLength(0);
+  });
+});
+
+// =============================================================================
 // JSX TEXT LITERAL TESTS
 // =============================================================================
 
