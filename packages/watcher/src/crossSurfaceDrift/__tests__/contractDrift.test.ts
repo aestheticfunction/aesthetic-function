@@ -102,6 +102,19 @@ describe('contract surface — code regressions', () => {
     expect(finding!.contractValue).toBe('Button');
   });
 
+  it('reports the contract display name, not the requested kebab ID', () => {
+    // Request by kebab ID — finding must carry the declared name "Button"
+    const report = analyzeCrossSurfaceDrift('button', null, null, null, {
+      queriedSurfaces: ['code', 'contract'],
+      contractData: makeContractButton(),
+    });
+
+    const finding = report.findings.find(f => f.field === 'component');
+    expect(finding).toBeDefined();
+    expect(finding!.contractValue).toBe('Button');
+    expect(finding!.message).toContain('"Button"');
+  });
+
   it('compares prop names case-insensitively', () => {
     const report = analyzeCrossSurfaceDrift(
       'Button', null, null,
@@ -158,6 +171,25 @@ describe('contract surface — staleness signals', () => {
     expect(finding!.severity).toBe('info');
     expect(report.surfaces.contract).toBeDefined(); // empty snapshot recorded
     expect(report.surfaces.contract!.props).toEqual([]);
+  });
+
+  it('does NOT report missing-in-contract for a declared component with no props/variants', () => {
+    // Presence comes from lookup success, not from non-empty inventories.
+    // A declared-but-undocumented component (e.g. a bare card sub-part)
+    // must not be flagged as missing; code extras become staleness signals.
+    const report = analyzeCrossSurfaceDrift(
+      'Card', null, null,
+      { props: ['children'], variants: [] },
+      {
+        queriedSurfaces: ['code', 'contract'],
+        contractData: { id: 'card', name: 'Card', props: [], variants: [] },
+      },
+    );
+
+    expect(report.findings.find(f => f.field === 'component')).toBeUndefined();
+    const staleness = report.findings.find(f => f.field === 'contract-staleness:prop:children');
+    expect(staleness).toBeDefined();
+    expect(staleness!.severity).toBe('info');
   });
 });
 

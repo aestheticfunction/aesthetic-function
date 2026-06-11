@@ -270,13 +270,12 @@ Examples:
 export async function main(args: string[]): Promise<number> {
   const options = parseArgs(args);
   const config = loadAfConfig();
-  const repoRootForContract = findRepoRoot();
 
   // Load the dspack contract surface, if configured (read-only)
   let contractDoc: DspackDocument | null = null;
   let contractPath: string | null = null;
   if (options.dspackPath || config.contract.dspackPath) {
-    contractPath = resolveContractPath(options, config.contract.dspackPath, repoRootForContract);
+    contractPath = resolveContractPath(options, config.contract.dspackPath, findRepoRoot());
     if (!contractPath) {
       return 2;
     }
