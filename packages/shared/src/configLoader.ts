@@ -77,6 +77,9 @@ export const DEFAULT_CONFIG: ResolvedAfConfig = {
     enabled: false,
     framework: 'react',
   },
+  contract: {
+    dspackPath: null,
+  },
   _source: null,
 };
 
@@ -282,6 +285,15 @@ function validateAfConfig(raw: Record<string, unknown>): AfConfig {
     }
   }
 
+  // Contract surface (dspack)
+  if (typeof raw.contract === 'object' && raw.contract !== null && !Array.isArray(raw.contract)) {
+    const ct = raw.contract as Record<string, unknown>;
+    config.contract = {};
+    if (typeof ct.dspackPath === 'string' && ct.dspackPath.length > 0) {
+      config.contract.dspackPath = ct.dspackPath;
+    }
+  }
+
   return config;
 }
 
@@ -441,6 +453,9 @@ function mergeFileConfig(defaults: ResolvedAfConfig, file: AfConfig, source: str
   if (file.storybook?.timeout !== undefined) config.storybook.timeout = file.storybook.timeout;
   if (file.storybook?.enabled !== undefined) config.storybook.enabled = file.storybook.enabled;
   if (file.storybook?.framework !== undefined) config.storybook.framework = file.storybook.framework;
+
+  // Contract surface (dspack)
+  if (file.contract?.dspackPath !== undefined) config.contract.dspackPath = file.contract.dspackPath;
 
   return config;
 }

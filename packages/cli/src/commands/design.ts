@@ -38,7 +38,7 @@ Subcommands:
   inspect --all            Inspect all design components
   screenshot               Capture a design screenshot
   component [name]         List or inspect design components
-  drift [component]        Cross-surface drift analysis (Figma vs Storybook vs Code)
+  drift [component]        Cross-surface drift analysis (Figma vs Storybook vs Code vs Contract)
 
 Options (all subcommands):
   --json                   Output JSON format
@@ -54,6 +54,7 @@ Examples:
   af design screenshot --node 1:100
   af design component Button
   af design drift Button
+  af design drift Button --dspack ./my-system.dspack.json
   af design drift --json --include-uncorroborated`);
 }
 

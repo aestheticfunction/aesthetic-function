@@ -1,0 +1,408 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aestheticfunction/dspack/blob/main/schema/dspack.v0.1.schema.json",
+  "title": "dspack v0.1",
+  "description": "Schema for dspack v0.1 — a JSON format for representing design system corpora.",
+  "type": "object",
+  "required": ["dspack", "name"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI reference to this JSON Schema. Optional; consumers MUST NOT require this property."
+    },
+    "dspack": {
+      "type": "string",
+      "const": "0.1",
+      "description": "Specification version. MUST be \"0.1\" for documents conforming to this version."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name of the design system."
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the design system's purpose and scope."
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of the design system content (not the spec version)."
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Token definitions organized by category.",
+      "additionalProperties": {
+        "$ref": "#/$defs/tokenCategory"
+      }
+    },
+    "components": {
+      "type": "object",
+      "description": "Component definitions keyed by component ID.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/componentEntry"
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Pattern entries describing preferred ways of combining components.",
+      "items": {
+        "$ref": "#/$defs/patternEntry"
+      }
+    },
+    "antiPatterns": {
+      "type": "array",
+      "description": "Anti-pattern entries describing approaches that are deliberately ruled out.",
+      "items": {
+        "$ref": "#/$defs/antiPatternEntry"
+      }
+    },
+    "frameworkBindings": {
+      "type": "object",
+      "description": "Framework-specific information keyed by framework identifier.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/frameworkBinding"
+      }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "description": "Extensible metadata about the dspack file.",
+      "properties": {
+        "generatedBy": {
+          "type": "string",
+          "description": "Tool or process that created this file."
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 datetime when the file was generated."
+        },
+        "source": {
+          "type": "string",
+          "description": "URL or description of the upstream source."
+        },
+        "license": {
+          "type": "string",
+          "description": "SPDX license identifier or freeform description."
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokenCategory": {
+      "type": "object",
+      "description": "A category of tokens.",
+      "required": ["values"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What this category covers."
+        },
+        "values": {
+          "type": "object",
+          "description": "Map of token name to token entry.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/tokenEntry"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokenEntry": {
+      "type": "object",
+      "description": "A single token definition.",
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "The resolved value of the token."
+        },
+        "description": {
+          "type": "string",
+          "description": "Semantic meaning of the token."
+        },
+        "type": {
+          "type": "string",
+          "description": "The value type (e.g., color, dimension, fontFamily)."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this token is deprecated.",
+          "default": false
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Other names by which this token is known."
+        }
+      },
+      "additionalProperties": true
+    },
+    "componentEntry": {
+      "type": "object",
+      "description": "A component definition.",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable display name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the component is for."
+        },
+        "whenToUse": {
+          "type": "string",
+          "description": "Guidance on when to use this component."
+        },
+        "whenNotToUse": {
+          "type": "string",
+          "description": "Guidance on when to choose a different component."
+        },
+        "props": {
+          "type": "object",
+          "description": "Map of prop name to prop descriptor.",
+          "additionalProperties": {
+            "$ref": "#/$defs/propDescriptor"
+          }
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Token names this component depends on."
+        },
+        "relatedComponents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs of related components."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this component is deprecated.",
+          "default": false
+        },
+        "deprecatedMessage": {
+          "type": "string",
+          "description": "What to use instead of this component."
+        }
+      },
+      "additionalProperties": true
+    },
+    "propDescriptor": {
+      "type": "object",
+      "description": "Describes a single component prop.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The value type of the prop (e.g., string, number, boolean, enum)."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this prop controls."
+        },
+        "values": {
+          "type": "array",
+          "description": "For enum type, the allowed values."
+        },
+        "default": {
+          "description": "Default value of the prop."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this prop must be provided.",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "patternEntry": {
+      "type": "object",
+      "description": "A pattern describing a preferred way of combining components.",
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier for this pattern."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What problem this pattern addresses."
+        },
+        "intent": {
+          "type": "string",
+          "description": "The underlying design goal or UX objective."
+        },
+        "context": {
+          "type": "string",
+          "description": "When this pattern applies."
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs involved in this pattern."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Prose guidance on how to apply the pattern correctly."
+        },
+        "relatedPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Pattern IDs of related patterns."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        }
+      },
+      "additionalProperties": true
+    },
+    "antiPatternEntry": {
+      "type": "object",
+      "description": "An anti-pattern describing an approach that is deliberately ruled out.",
+      "required": ["id", "name", "description", "reason"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier for this anti-pattern."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name describing what not to do."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this anti-pattern is."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this approach is ruled out."
+        },
+        "insteadUse": {
+          "type": "string",
+          "description": "Pattern ID of the preferred approach."
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs involved in this anti-pattern."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        }
+      },
+      "additionalProperties": true
+    },
+    "frameworkBinding": {
+      "type": "object",
+      "description": "Framework-specific information for the design system.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable framework name."
+        },
+        "package": {
+          "type": "string",
+          "description": "Primary package name."
+        },
+        "installCommand": {
+          "type": "string",
+          "description": "How to install the framework binding."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this binding provides."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Framework-wide guidance."
+        },
+        "components": {
+          "type": "object",
+          "description": "Per-component framework details keyed by component ID.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/componentBinding"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "componentBinding": {
+      "type": "object",
+      "description": "Framework-specific details for a single component.",
+      "properties": {
+        "importPath": {
+          "type": "string",
+          "description": "Where to import the component."
+        },
+        "installCommand": {
+          "type": "string",
+          "description": "Component-specific install command."
+        },
+        "exportName": {
+          "type": "string",
+          "description": "Named export if different from the component name."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Framework-specific usage guidance for this component."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

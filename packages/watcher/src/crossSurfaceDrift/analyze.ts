@@ -17,13 +17,16 @@ import type {
   DriftFinding,
   DriftSeverity,
   DriftConfidence,
+  DriftSurfaceId,
   SurfaceSnapshot,
   SurfaceProp,
   DriftAnalysisOptions,
   NormalizationMetadata,
+  ContractComponentData,
 } from '@aesthetic-function/shared/crossSurfaceDrift';
 import type { StorybookComponentMeta, StorybookProp } from '@aesthetic-function/shared/storybookAdapter';
 import type { NormalizedDesignComponent } from '../designAdapter/types.js';
+import { CONTRACT_SOURCE_ID } from '../contractSurface/surface.js';
 import { normalizeSnapshot, DEFAULT_NORMALIZATION_CONFIG } from './normalize.js';
 
 // =============================================================================
@@ -60,14 +63,17 @@ export function analyzeCrossSurfaceDrift(
   const findings: DriftFinding[] = [];
   const now = new Date().toISOString();
 
+  const contractData = options?.contractData ?? null;
+
   // Determine which surfaces were queried.
   // If caller provides queriedSurfaces, use that. Otherwise derive from
   // non-null data params (backward compat for direct callers).
-  const queriedSurfaces: ('figma' | 'storybook' | 'code')[] =
+  const queriedSurfaces: DriftSurfaceId[] =
     options?.queriedSurfaces ?? [
       ...(figmaData ? ['figma' as const] : []),
       ...(storybookData ? ['storybook' as const] : []),
       ...(codeData ? ['code' as const] : []),
+      ...(contractData ? ['contract' as const] : []),
     ];
 
   // Build surface snapshots
@@ -90,12 +96,17 @@ export function analyzeCrossSurfaceDrift(
   } else if (queriedSurfaces.includes('code')) {
     surfaces.code = buildEmptySnapshot('code-ast', componentName);
   }
+  if (contractData) {
+    surfaces.contract = buildContractSnapshot(contractData);
+  } else if (queriedSurfaces.includes('contract')) {
+    surfaces.contract = buildEmptySnapshot(CONTRACT_SOURCE_ID, componentName);
+  }
 
   // Normalize snapshots before comparison (Phase 16D)
   const normConfig = options?.normalizationConfig ?? DEFAULT_NORMALIZATION_CONFIG;
   const normalization: NormalizationMetadata = { appliedRules: [], excludedProps: [] };
 
-  for (const key of ['figma', 'storybook', 'code'] as const) {
+  for (const key of ['figma', 'storybook', 'code', 'contract'] as const) {
     const snap = surfaces[key];
     if (!snap) continue;
     const result = normalizeSnapshot(snap, key, normConfig);
@@ -110,6 +121,7 @@ export function analyzeCrossSurfaceDrift(
   findings.push(
     ...compareVariantCoverage(surfaces, storybookData, options),
   );
+  findings.push(...compareContractSurface(componentName, surfaces, queriedSurfaces));
 
   // Compute severity (highest finding wins)
   const severity = computeOverallSeverity(findings);
@@ -261,6 +273,18 @@ function buildCodeSnapshot(name: string, data: CodeSurfaceData): SurfaceSnapshot
   };
 }
 
+function buildContractSnapshot(data: ContractComponentData): SurfaceSnapshot {
+  return {
+    source: CONTRACT_SOURCE_ID,
+    componentName: data.name,
+    // Copy props/variants — normalizeSnapshot mutates snapshots in place and
+    // the caller's contract data must stay pristine.
+    props: data.props.map(p => ({ ...p })),
+    variants: [...data.variants],
+    lastObserved: new Date().toISOString(),
+  };
+}
+
 // =============================================================================
 // COMPARISON FUNCTIONS
 // =============================================================================
@@ -276,7 +300,7 @@ function buildCodeSnapshot(name: string, data: CodeSurfaceData): SurfaceSnapshot
 function compareComponentPresence(
   componentName: string,
   surfaces: CrossSurfaceDriftReport['surfaces'],
-  queriedSurfaces: ('figma' | 'storybook' | 'code')[],
+  queriedSurfaces: DriftSurfaceId[],
 ): DriftFinding[] {
   const findings: DriftFinding[] = [];
 
@@ -509,6 +533,172 @@ function compareVariantCoverage(
           type: 'missing-in-storybook',
           severity: 'info',
           message: `Figma has variant "${variant}" but no matching Storybook story found`,
+          figmaValue: variant,
+          confidence: 'high',
+        });
+      }
+    }
+  }
+
+  return findings;
+}
+
+/**
+ * Compare the contract surface (dspack) against the live surfaces.
+ *
+ * Scope (first slice): component presence, prop inventory vs. code, and
+ * enum-derived variant coverage vs. code and Figma. The three pre-existing
+ * comparison functions are untouched — when no contract surface is queried
+ * this function returns nothing and the report is identical to before.
+ *
+ * Direction semantics:
+ * - Contract declares something a live surface lacks → genuine drift
+ *   (the surface regressed against the declared contract).
+ * - Code has something the contract lacks → staleness signal (the committed
+ *   dspack snapshot may be out of date; regenerate with dspack-export).
+ */
+function compareContractSurface(
+  componentName: string,
+  surfaces: CrossSurfaceDriftReport['surfaces'],
+  queriedSurfaces: DriftSurfaceId[],
+): DriftFinding[] {
+  const findings: DriftFinding[] = [];
+
+  if (!queriedSurfaces.includes('contract')) return findings;
+
+  const contract = surfaces.contract;
+  const contractHasData = contract != null &&
+    (contract.props.length > 0 || contract.variants.length > 0);
+
+  const codeQueried = queriedSurfaces.includes('code');
+  const codeHasData = surfaces.code != null &&
+    (surfaces.code.props.length > 0 || surfaces.code.variants.length > 0);
+  const figmaHasData = surfaces.figma != null &&
+    (surfaces.figma.props.length > 0 || surfaces.figma.variants.length > 0);
+  const storybookHasData = surfaces.storybook != null &&
+    (surfaces.storybook.props.length > 0 || surfaces.storybook.variants.length > 0);
+
+  // Presence: component absent from the contract while live surfaces have it.
+  // Severity info — the contract may simply not document this component yet.
+  if (!contractHasData && (codeHasData || figmaHasData || storybookHasData)) {
+    const where = codeHasData ? 'code' : figmaHasData ? 'Figma' : 'Storybook';
+    findings.push({
+      field: 'component',
+      type: 'missing-in-contract',
+      severity: 'info',
+      message: `Component "${componentName}" exists in ${where} but is not declared in the contract`,
+      codeValue: codeHasData ? componentName : undefined,
+      figmaValue: !codeHasData && figmaHasData ? componentName : undefined,
+      storybookValue: !codeHasData && !figmaHasData && storybookHasData ? componentName : undefined,
+      confidence: 'high',
+    });
+    return findings;
+  }
+
+  if (!contractHasData || !contract) return findings;
+
+  // Presence: contract declares the component but code doesn't have it.
+  if (codeQueried && !codeHasData) {
+    findings.push({
+      field: 'component',
+      type: 'missing-in-code',
+      severity: 'warn',
+      message: `Component "${componentName}" is declared in the contract but not found in code`,
+      contractValue: componentName,
+      confidence: 'high',
+    });
+  }
+
+  // Prop inventory: contract ↔ code, both directions.
+  if (codeHasData && surfaces.code) {
+    const codeProps = new Set(surfaces.code.props.map(p => p.name.toLowerCase()));
+    const contractProps = new Set(contract.props.map(p => p.name.toLowerCase()));
+
+    for (const prop of contract.props) {
+      if (!codeProps.has(prop.name.toLowerCase())) {
+        findings.push({
+          field: `prop:${prop.name}`,
+          type: 'missing-in-code',
+          severity: 'warn',
+          message: `Prop "${prop.name}" is declared in the contract but not found in code`,
+          contractValue: prop.name,
+          confidence: 'high',
+        });
+      }
+    }
+
+    for (const prop of surfaces.code.props) {
+      if (!contractProps.has(prop.name.toLowerCase())) {
+        findings.push({
+          field: `contract-staleness:prop:${prop.name}`,
+          type: 'missing-in-contract',
+          severity: 'info',
+          message: `Prop "${prop.name}" exists in code but not in the contract — the dspack snapshot may be out of date`,
+          codeValue: prop.name,
+          confidence: 'high',
+        });
+      }
+    }
+  }
+
+  // Variant coverage: contract ↔ code. Contract variants come from constrained
+  // enums, so confidence is high in both directions.
+  if (codeHasData && surfaces.code) {
+    const codeVariants = new Set(surfaces.code.variants.map(v => v.toLowerCase()));
+    const contractVariants = new Set(contract.variants.map(v => v.toLowerCase()));
+
+    for (const variant of contract.variants) {
+      if (!codeVariants.has(variant.toLowerCase())) {
+        findings.push({
+          field: `variant:${variant}`,
+          type: 'missing-in-code',
+          severity: 'warn',
+          message: `Contract declares variant "${variant}" but it was not found in code`,
+          contractValue: variant,
+          confidence: 'high',
+        });
+      }
+    }
+
+    for (const variant of surfaces.code.variants) {
+      if (!contractVariants.has(variant.toLowerCase())) {
+        findings.push({
+          field: `contract-staleness:variant:${variant}`,
+          type: 'missing-in-contract',
+          severity: 'info',
+          message: `Code has variant "${variant}" that the contract does not declare — the dspack snapshot may be out of date`,
+          codeValue: variant,
+          confidence: 'high',
+        });
+      }
+    }
+  }
+
+  // Variant coverage: contract ↔ Figma.
+  if (figmaHasData && surfaces.figma) {
+    const figmaVariants = new Set(surfaces.figma.variants.map(v => v.toLowerCase()));
+    const contractVariants = new Set(contract.variants.map(v => v.toLowerCase()));
+
+    for (const variant of contract.variants) {
+      if (!figmaVariants.has(variant.toLowerCase())) {
+        findings.push({
+          field: `variant:${variant}`,
+          type: 'missing-in-figma',
+          severity: 'warn',
+          message: `Contract declares variant "${variant}" but Figma is missing this variant`,
+          contractValue: variant,
+          confidence: 'high',
+        });
+      }
+    }
+
+    for (const variant of surfaces.figma.variants) {
+      if (!contractVariants.has(variant.toLowerCase())) {
+        findings.push({
+          field: `variant:${variant}`,
+          type: 'missing-in-contract',
+          severity: 'info',
+          message: `Figma has variant "${variant}" that the contract does not declare`,
           figmaValue: variant,
           confidence: 'high',
         });

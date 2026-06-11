@@ -44,6 +44,7 @@ This repository implements an AI-driven Code → Design synchronization system.
 - Storybook MCP adapter: `af design drift [component]` for cross-surface analysis
 - Storybook adapter requires dev server running (`pnpm dev:storybook`)
 - Cross-surface drift is a separate analysis pass — it does NOT modify reconciliation
+- dspack contract surface (`af design drift --dspack <file>`) is read-only; AF never generates or modifies dspack files, and the contract surface is never registered as a DesignAdapter
 
 ## Design Token Rules
 - Prefer semantic tokens over raw values

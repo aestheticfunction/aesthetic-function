@@ -168,6 +168,21 @@ export interface AfConfig {
     /** Expected framework. Adapter validates at startup and rejects non-matching. Default: 'react' */
     framework?: 'react';
   };
+
+  /**
+   * Contract surface configuration (dspack).
+   *
+   * Points `af design drift` at a dspack contract file so the declared
+   * design-system contract participates in cross-surface drift analysis.
+   * Read-only — AF never generates or modifies dspack files.
+   */
+  contract?: {
+    /**
+     * Path to a dspack v0.1/v0.2 file. Relative paths are resolved against
+     * the current working directory, then the repo root. Default: unset.
+     */
+    dspackPath?: string;
+  };
 }
 
 // =============================================================================
@@ -219,6 +234,11 @@ export interface ResolvedAfConfig {
     timeout: number;
     enabled: boolean;
     framework: 'react';
+  };
+
+  contract: {
+    /** Path to a dspack contract file, or null when no contract is configured */
+    dspackPath: string | null;
   };
 
   /** Where the config was loaded from, or null if using defaults */

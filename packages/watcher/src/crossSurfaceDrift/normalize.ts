@@ -18,6 +18,7 @@
 import type {
   SurfaceSnapshot,
   SurfaceProp,
+  DriftSurfaceId,
   NormalizationConfig,
   NormalizationMetadata,
 } from '@aesthetic-function/shared/crossSurfaceDrift';
@@ -78,7 +79,7 @@ export interface NormalizeSnapshotResult {
  */
 export function normalizeSnapshot(
   snapshot: SurfaceSnapshot,
-  surface: 'figma' | 'storybook' | 'code',
+  surface: DriftSurfaceId,
   config: NormalizationConfig = DEFAULT_NORMALIZATION_CONFIG,
 ): NormalizeSnapshotResult {
   const appliedRules: NormalizeSnapshotResult['appliedRules'] = [];

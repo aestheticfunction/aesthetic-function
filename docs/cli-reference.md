@@ -347,6 +347,53 @@ af design component
 af design component ButtonPrimary
 ```
 
+### `af design drift [name]`
+
+Cross-surface drift analysis — compares component metadata across Figma,
+Storybook, code (AST), and an optional dspack contract file. Read-only: it
+does not modify reconciliation, and the contract file is never written.
+
+```bash
+af design drift [component-name] [options]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | boolean | `false` | Output JSON format |
+| `--verbose`, `-v` | boolean | `false` | Verbose output with trace details |
+| `--include-uncorroborated` | boolean | `false` | Include uncorroborated story-derived variants |
+| `--dspack <file>` | string | — | dspack contract file to compare against (overrides `contract.dspackPath` in `af.config.json`) |
+
+**Contract surface:** when a dspack file is supplied (flag or config), its
+declared components, props, and enum variants participate in the comparison.
+Findings where the contract declares something code lacks are genuine drift
+(warn). Findings where code has something the contract lacks are tagged
+`contract-staleness:` (info) — the snapshot may be out of date; regenerate it
+with [dspack-export](https://github.com/aestheticfunction/dspack-export).
+Relative paths resolve against the current directory, then the repo root.
+
+**Examples:**
+
+```bash
+# Compare a component across all available surfaces
+af design drift Button
+
+# Compare against a dspack contract (works even with Figma/Storybook down)
+af design drift Button --dspack ./my-system.dspack.json
+
+# Analyze every component the contract declares
+af design drift --dspack ./my-system.dspack.json --json
+```
+
+```json
+// af.config.json
+{
+  "contract": {
+    "dspackPath": "./my-system.dspack.json"
+  }
+}
+```
+
 ---
 
 ## pnpm Scripts

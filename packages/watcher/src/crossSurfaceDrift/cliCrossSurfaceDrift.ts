@@ -14,13 +14,15 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import type { CrossSurfaceDriftReport } from '@aesthetic-function/shared/crossSurfaceDrift';
+import type { CrossSurfaceDriftReport, DriftSurfaceId } from '@aesthetic-function/shared/crossSurfaceDrift';
 import type { StorybookMCPConfig } from '@aesthetic-function/shared/storybookAdapter';
 import { loadAfConfig } from '@aesthetic-function/shared/configLoader';
 import { StorybookMCPAdapter } from '../designAdapter/storybookAdapter.js';
 import { getAvailableAdapter, registerDesignAdapter } from '../designAdapter/registry.js';
 import { FigmaConsoleMCPAdapter } from '../designAdapter/figmaConsoleMCPAdapter.js';
 import { normalizeDesignComponent } from '../designAdapter/normalize.js';
+import { loadContract, findContractComponent, listContractComponentNames } from '../contractSurface/index.js';
+import type { DspackDocument } from '../contractSurface/index.js';
 import { analyzeCrossSurfaceDrift } from './analyze.js';
 import type { CodeSurfaceData } from './analyze.js';
 
@@ -177,6 +179,7 @@ interface CliOptions {
   json: boolean;
   verbose: boolean;
   includeUncorroborated: boolean;
+  dspackPath?: string;
 }
 
 function parseArgs(args: string[]): CliOptions {
@@ -194,6 +197,14 @@ function parseArgs(args: string[]): CliOptions {
       options.verbose = true;
     } else if (arg === '--include-uncorroborated') {
       options.includeUncorroborated = true;
+    } else if (arg === '--dspack') {
+      const next = args[i + 1];
+      if (!next || next.startsWith('-')) {
+        console.error('--dspack requires a file path argument');
+        process.exit(2);
+      }
+      options.dspackPath = next;
+      i++;
     } else if (arg === '--help' || arg === '-h') {
       printHelp();
       process.exit(0);
@@ -205,13 +216,38 @@ function parseArgs(args: string[]): CliOptions {
   return options;
 }
 
+/**
+ * Resolve the dspack contract path from CLI flag (first priority) or
+ * af.config.json `contract.dspackPath`. Relative paths are tried against
+ * the current working directory, then the repo root (matching how
+ * watchPaths resolve). Returns null when no contract is configured.
+ */
+function resolveContractPath(
+  options: CliOptions,
+  configPath: string | null,
+  repoRoot: string,
+): string | null {
+  const raw = options.dspackPath ?? configPath;
+  if (!raw) return null;
+
+  const candidates = [resolve(process.cwd(), raw), resolve(repoRoot, raw)];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+
+  console.error(`dspack contract file not found: ${raw}`);
+  console.error(`  Tried: ${[...new Set(candidates)].join(', ')}`);
+  return null;
+}
+
 function printHelp(): void {
   console.log(`af design drift — Cross-surface drift analysis (read-only)
 
 Usage: af design drift [component-name] [options]
 
-Compares component metadata across Figma, Storybook, and code to detect
-parity gaps. This is a read-only analysis — it does not modify reconciliation.
+Compares component metadata across Figma, Storybook, code, and an optional
+dspack contract file to detect parity gaps. This is a read-only analysis —
+it does not modify reconciliation, and the contract file is never written.
 
 Arguments:
   component-name            Component to analyze (optional; analyzes all if omitted)
@@ -220,17 +256,38 @@ Options:
   --json                    Output JSON format
   --verbose, -v             Verbose output with trace details
   --include-uncorroborated  Include uncorroborated story-derived variants
+  --dspack <file>           dspack contract file to compare against
+                            (or set contract.dspackPath in af.config.json)
   -h, --help                Show this help
 
 Examples:
   af design drift Button
   af design drift Card --json
+  af design drift Button --dspack ./my-system.dspack.json
   af design drift --include-uncorroborated`);
 }
 
 export async function main(args: string[]): Promise<number> {
   const options = parseArgs(args);
   const config = loadAfConfig();
+  const repoRootForContract = findRepoRoot();
+
+  // Load the dspack contract surface, if configured (read-only)
+  let contractDoc: DspackDocument | null = null;
+  let contractPath: string | null = null;
+  if (options.dspackPath || config.contract.dspackPath) {
+    contractPath = resolveContractPath(options, config.contract.dspackPath, repoRootForContract);
+    if (!contractPath) {
+      return 2;
+    }
+    try {
+      contractDoc = loadContract(contractPath);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(msg);
+      return 2;
+    }
+  }
 
   // Register Figma adapter if credentials are available
   if (process.env.FIGMA_ACCESS_TOKEN && process.env.FIGMA_FILE_KEY) {
@@ -258,7 +315,7 @@ export async function main(args: string[]): Promise<number> {
       ? `available (${storybookAdapter.operatingMode})`
       : 'unavailable';
 
-    if (!storybookAvailable && !figmaAdapter) {
+    if (!storybookAvailable && !figmaAdapter && !contractDoc) {
       console.log(`\u2717 Cross-Surface Drift Analysis: aborted\n`);
       console.log(`Figma adapter: unavailable`);
       console.log(`Storybook adapter: unavailable`);
@@ -267,22 +324,28 @@ export async function main(args: string[]): Promise<number> {
         console.log(`  \u2192 Start it with: pnpm dev:storybook`);
         console.log(`  \u2192 Or configure a different URL in af.config.json \u2192 storybook.url`);
       }
+      console.log(`  \u2192 Or compare against a dspack contract: --dspack <file>`);
       console.log(`\nCannot run drift analysis without at least 2 surfaces. Exiting.`);
       return 2;
     }
 
-    if (!storybookAvailable) {
+    if (!storybookAvailable && !figmaAdapter && contractDoc) {
+      console.log(`Figma adapter: unavailable`);
+      console.log(`Storybook adapter: unavailable`);
+      console.log(`Continuing with Contract + Code only.\n`);
+    } else if (!storybookAvailable) {
       console.log(`Storybook adapter: unavailable`);
       if (storybookAdapter.unavailableReason) {
         console.log(`  \u2192 ${storybookAdapter.unavailableReason}`);
         console.log(`  \u2192 Start it with: pnpm dev:storybook`);
       }
-      console.log(`Continuing with Figma + Code only.\n`);
+      console.log(`Continuing with ${contractDoc ? 'Figma + Code + Contract' : 'Figma + Code'} only.\n`);
     }
 
     if (options.verbose) {
       console.log(`Figma adapter: ${figmaStatus}`);
-      console.log(`Storybook adapter: ${storybookStatus}\n`);
+      console.log(`Storybook adapter: ${storybookStatus}`);
+      console.log(`Contract: ${contractDoc ? `loaded (${contractPath})` : 'not configured'}\n`);
     }
   }
 
@@ -295,12 +358,14 @@ export async function main(args: string[]): Promise<number> {
       options.componentName,
       figmaAdapter,
       storybookAvailable ? storybookAdapter : null,
+      contractDoc,
       options,
       config,
     );
     reports.push(report);
   } else {
-    // Analyze all components from Storybook inventory
+    // Analyze all components. Inventory comes from Storybook when available,
+    // otherwise from the contract's declared components.
     if (storybookAvailable) {
       const inventory = await storybookAdapter.getInventory();
       for (const component of inventory.data.components) {
@@ -308,6 +373,19 @@ export async function main(args: string[]): Promise<number> {
           component.name,
           figmaAdapter,
           storybookAdapter,
+          contractDoc,
+          options,
+          config,
+        );
+        reports.push(report);
+      }
+    } else if (contractDoc) {
+      for (const name of listContractComponentNames(contractDoc)) {
+        const report = await analyzeComponent(
+          name,
+          figmaAdapter,
+          null,
+          contractDoc,
           options,
           config,
         );
@@ -338,11 +416,12 @@ async function analyzeComponent(
   componentName: string,
   figmaAdapter: Awaited<ReturnType<typeof getAvailableAdapter>>,
   storybookAdapter: StorybookMCPAdapter | null,
+  contractDoc: DspackDocument | null,
   options: CliOptions,
   afConfig: ReturnType<typeof loadAfConfig>,
 ): Promise<CrossSurfaceDriftReport> {
   // Track which surfaces we actually query
-  const queriedSurfaces: ('figma' | 'storybook' | 'code')[] = [];
+  const queriedSurfaces: DriftSurfaceId[] = [];
 
   // Fetch Figma data
   let figmaData = null;
@@ -381,12 +460,19 @@ async function analyzeComponent(
     repoRoot,
   );
 
+  // Look up the component in the dspack contract (read-only, in-memory)
+  let contractData = null;
+  if (contractDoc) {
+    queriedSurfaces.push('contract');
+    contractData = findContractComponent(contractDoc, componentName);
+  }
+
   return analyzeCrossSurfaceDrift(
     componentName,
     figmaData,
     storybookData,
     codeData,
-    { includeUncorroborated: options.includeUncorroborated, queriedSurfaces },
+    { includeUncorroborated: options.includeUncorroborated, queriedSurfaces, contractData },
   );
 }
 
@@ -414,6 +500,11 @@ function formatReport(report: CrossSurfaceDriftReport, verbose: boolean): void {
   else if (report.surfaces.code && (report.surfaces.code.props.length > 0 || report.surfaces.code.variants.length > 0)) surfaces.push('Code (AST) \u2713');
   else surfaces.push('Code (AST) \u2717');
 
+  if (queried.has('contract')) {
+    if (report.surfaces.contract && (report.surfaces.contract.props.length > 0 || report.surfaces.contract.variants.length > 0)) surfaces.push('Contract \u2713');
+    else surfaces.push('Contract \u2717');
+  }
+
   console.log(`Surfaces: ${surfaces.join('  ')}`);
   console.log('');
 
@@ -429,6 +520,12 @@ function formatReport(report: CrossSurfaceDriftReport, verbose: boolean): void {
       if (finding.storyRef && verbose) {
         console.log(`          \u2192 Story ref: ${finding.storyRef}`);
       }
+    }
+
+    // One remediation hint per report when code-vs-contract staleness was found
+    if (report.findings.some(f => f.field.startsWith('contract-staleness:'))) {
+      console.log('');
+      console.log('  \u2192 Contract may be stale. Regenerate the dspack snapshot with: dspack-export generate');
     }
   }
 

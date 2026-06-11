@@ -1,0 +1,912 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/aestheticfunction/dspack/blob/main/schema/dspack.v0.2.schema.json",
+  "title": "dspack v0.2",
+  "description": "Schema for dspack v0.2 — a JSON format for representing design system corpora. Backward-compatible with v0.1 documents.",
+  "type": "object",
+  "required": ["dspack", "name"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "URI reference to this JSON Schema. Optional; consumers MUST NOT require this property."
+    },
+    "dspack": {
+      "type": "string",
+      "const": "0.2",
+      "description": "Specification version. MUST be \"0.2\" for documents conforming to this version."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable name of the design system."
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief description of the design system's purpose and scope."
+    },
+    "version": {
+      "type": "string",
+      "description": "Version of the design system content (not the spec version)."
+    },
+    "metadata": {
+      "$ref": "#/$defs/metadata"
+    },
+    "tokens": {
+      "type": "object",
+      "description": "Token definitions organized by category.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/tokenCategory"
+      }
+    },
+    "components": {
+      "type": "object",
+      "description": "Component definitions keyed by component ID.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/componentEntry"
+      }
+    },
+    "patterns": {
+      "type": "array",
+      "description": "Pattern entries describing preferred ways of combining components.",
+      "items": {
+        "$ref": "#/$defs/patternEntry"
+      }
+    },
+    "antiPatterns": {
+      "type": "array",
+      "description": "Anti-pattern entries describing approaches that are deliberately ruled out.",
+      "items": {
+        "$ref": "#/$defs/antiPatternEntry"
+      }
+    },
+    "frameworkBindings": {
+      "type": "object",
+      "description": "Framework-specific information keyed by framework identifier.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/frameworkBinding"
+      }
+    },
+    "themes": {
+      "type": "object",
+      "description": "Named sets of token overrides representing alternative visual modes.",
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]*$"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/themeEntry"
+      }
+    },
+    "layout": {
+      "$ref": "#/$defs/layoutPrimitives"
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "metadata": {
+      "type": "object",
+      "description": "Extensible metadata about the dspack file.",
+      "properties": {
+        "generatedBy": {
+          "type": "string",
+          "description": "Tool or process that created this file."
+        },
+        "generatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "ISO 8601 datetime when the file was generated."
+        },
+        "source": {
+          "type": "string",
+          "description": "URL or description of the upstream source."
+        },
+        "license": {
+          "type": "string",
+          "description": "SPDX license identifier or freeform description."
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokenCategory": {
+      "type": "object",
+      "description": "A category of tokens.",
+      "required": ["values"],
+      "properties": {
+        "description": {
+          "type": "string",
+          "description": "What this category covers."
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["primitive", "semantic", "component"],
+          "description": "Default abstraction level for tokens in this category."
+        },
+        "values": {
+          "type": "object",
+          "description": "Map of token name to token entry.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/tokenEntry"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokenEntry": {
+      "type": "object",
+      "description": "A single token definition.",
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "type": "string",
+          "description": "The resolved value of the token."
+        },
+        "description": {
+          "type": "string",
+          "description": "Semantic meaning of the token."
+        },
+        "type": {
+          "type": "string",
+          "description": "The value type (e.g., color, dimension, fontFamily)."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this token is deprecated.",
+          "default": false
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Other names by which this token is known."
+        },
+        "status": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["draft", "experimental", "stable", "deprecated"]
+            },
+            {
+              "$ref": "#/$defs/statusObject"
+            }
+          ],
+          "description": "Lifecycle stage. String for uniform status, object for per-platform granularity."
+        },
+        "aliasOf": {
+          "oneOf": [
+            {
+              "type": "string",
+              "description": "Token name that this token aliases."
+            },
+            {
+              "$ref": "#/$defs/aliasReference"
+            }
+          ],
+          "description": "Token that this token aliases. String for unambiguous names, object for cross-category disambiguation."
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["primitive", "semantic", "component"],
+          "description": "Abstraction level of this token, overriding the category default."
+        }
+      },
+      "additionalProperties": true
+    },
+    "statusObject": {
+      "type": "object",
+      "description": "Lifecycle status with per-platform granularity.",
+      "required": ["default"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "enum": ["draft", "experimental", "stable", "deprecated"],
+          "description": "Default lifecycle stage when no platform-specific override applies."
+        },
+        "platforms": {
+          "type": "object",
+          "description": "Map of platform/framework ID to platform status object.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/platformStatus"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "platformStatus": {
+      "type": "object",
+      "description": "Lifecycle status for a specific platform.",
+      "required": ["stage"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["draft", "experimental", "stable", "deprecated"],
+          "description": "Lifecycle stage for this platform."
+        },
+        "since": {
+          "type": "string",
+          "description": "Version of the design system content at which this stage took effect."
+        },
+        "migrateTo": {
+          "type": "string",
+          "description": "Component ID or token name of the recommended replacement."
+        },
+        "note": {
+          "type": "string",
+          "description": "Prose migration guidance or context for this platform's status."
+        }
+      },
+      "additionalProperties": true
+    },
+    "aliasReference": {
+      "type": "object",
+      "description": "Structured token alias reference for cross-category disambiguation.",
+      "required": ["category", "token"],
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Token category name containing the referenced token."
+        },
+        "token": {
+          "type": "string",
+          "description": "Token name within that category."
+        }
+      },
+      "additionalProperties": true
+    },
+    "componentEntry": {
+      "type": "object",
+      "description": "A component definition.",
+      "required": ["name", "description"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable display name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What the component is for."
+        },
+        "whenToUse": {
+          "type": "string",
+          "description": "Guidance on when to use this component."
+        },
+        "whenNotToUse": {
+          "type": "string",
+          "description": "Guidance on when to choose a different component."
+        },
+        "props": {
+          "type": "object",
+          "description": "Map of prop name to prop descriptor.",
+          "additionalProperties": {
+            "$ref": "#/$defs/propDescriptor"
+          }
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Token names this component depends on."
+        },
+        "relatedComponents": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs of related components."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this component is deprecated.",
+          "default": false
+        },
+        "deprecatedMessage": {
+          "type": "string",
+          "description": "What to use instead of this component."
+        },
+        "status": {
+          "oneOf": [
+            {
+              "type": "string",
+              "enum": ["draft", "experimental", "stable", "deprecated"]
+            },
+            {
+              "$ref": "#/$defs/statusObject"
+            }
+          ],
+          "description": "Lifecycle stage. String for uniform status, object for per-platform granularity."
+        },
+        "accessibility": {
+          "$ref": "#/$defs/accessibilityConstraints"
+        },
+        "composition": {
+          "$ref": "#/$defs/compositionRules"
+        },
+        "constraints": {
+          "type": "array",
+          "description": "Structured usage constraints.",
+          "items": {
+            "$ref": "#/$defs/constraintEntry"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "propDescriptor": {
+      "type": "object",
+      "description": "Describes a single component prop.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The value type of the prop (e.g., string, number, boolean, enum)."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this prop controls."
+        },
+        "values": {
+          "type": "array",
+          "description": "For enum type, the allowed values. Items may be bare values or value descriptor objects.",
+          "items": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "$ref": "#/$defs/valueDescriptor" }
+            ]
+          }
+        },
+        "default": {
+          "description": "Default value of the prop."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this prop must be provided.",
+          "default": false
+        },
+        "propRole": {
+          "type": "string",
+          "enum": ["flag", "dimension", "choice", "slot", "handler", "content", "state"],
+          "description": "Semantic role of this prop."
+        }
+      },
+      "additionalProperties": true
+    },
+    "valueDescriptor": {
+      "type": "object",
+      "description": "Describes a single allowed value for an enum prop.",
+      "required": ["value"],
+      "properties": {
+        "value": {
+          "description": "The actual enum value."
+        },
+        "description": {
+          "type": "string",
+          "description": "When to choose this value."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Whether this specific value is deprecated.",
+          "default": false
+        }
+      },
+      "additionalProperties": true
+    },
+    "accessibilityConstraints": {
+      "type": "object",
+      "description": "Accessibility constraints and expectations for a component.",
+      "properties": {
+        "role": {
+          "type": "string",
+          "description": "WAI-ARIA role this component fulfills."
+        },
+        "requiredAttributes": {
+          "type": "array",
+          "description": "HTML or ARIA attributes that must be present for correct accessible usage.",
+          "items": {
+            "$ref": "#/$defs/attributeDescriptor"
+          }
+        },
+        "keyboardInteractions": {
+          "type": "array",
+          "description": "Expected keyboard behaviors.",
+          "items": {
+            "$ref": "#/$defs/keyboardInteraction"
+          }
+        },
+        "contrastRequirement": {
+          "type": "string",
+          "description": "Minimum contrast ratio or WCAG level."
+        },
+        "focusManagement": {
+          "type": "string",
+          "description": "Prose description of focus behavior expectations."
+        },
+        "labelRequirement": {
+          "type": "string",
+          "enum": ["required-visible", "required-accessible-name", "required-aria", "optional", "none"],
+          "description": "How the component must be labeled."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Additional accessibility guidance in prose."
+        }
+      },
+      "additionalProperties": true
+    },
+    "attributeDescriptor": {
+      "type": "object",
+      "description": "Describes a required HTML or ARIA attribute for accessible usage.",
+      "required": ["attribute"],
+      "properties": {
+        "attribute": {
+          "type": "string",
+          "description": "The attribute name (e.g., aria-label, aria-describedby, id, type)."
+        },
+        "description": {
+          "type": "string",
+          "description": "When and how to provide this attribute."
+        },
+        "condition": {
+          "type": "string",
+          "description": "Condition under which this attribute is required."
+        }
+      },
+      "additionalProperties": true
+    },
+    "keyboardInteraction": {
+      "type": "object",
+      "description": "Describes an expected keyboard behavior.",
+      "required": ["key", "description"],
+      "properties": {
+        "key": {
+          "type": "string",
+          "description": "The key or key combination."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this key does in the context of this component."
+        }
+      },
+      "additionalProperties": true
+    },
+    "compositionRules": {
+      "type": "object",
+      "description": "Rules governing how a component composes with other components.",
+      "properties": {
+        "subComponents": {
+          "type": "array",
+          "description": "Sub-components that belong to this compound component.",
+          "items": {
+            "$ref": "#/$defs/subComponentDescriptor"
+          }
+        },
+        "requiredChildren": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Component IDs or sub-component IDs that must appear as descendants."
+        },
+        "allowedChildren": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Component IDs or sub-component IDs that may appear as direct children."
+        },
+        "requiredParent": {
+          "type": "string",
+          "description": "Component ID or sub-component ID that must be an ancestor."
+        },
+        "allowedParents": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Component IDs or sub-component IDs that may be the parent."
+        },
+        "requiredSiblings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Component IDs or sub-component IDs that must also be present among siblings."
+        },
+        "notes": {
+          "type": "string",
+          "description": "Prose description of composition constraints not captured by structured fields."
+        }
+      },
+      "additionalProperties": true
+    },
+    "subComponentDescriptor": {
+      "type": "object",
+      "description": "Describes a sub-component of a compound component.",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Identifier for the sub-component. Should be parent-prefixed."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable display name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this sub-component is for."
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether this sub-component must be present when the parent is used.",
+          "default": false
+        },
+        "slot": {
+          "type": "string",
+          "description": "Named slot this sub-component fills."
+        },
+        "acceptsChildren": {
+          "type": "string",
+          "enum": ["any", "text", "components", "none"],
+          "description": "What this sub-component expects as children."
+        }
+      },
+      "additionalProperties": true
+    },
+    "constraintEntry": {
+      "type": "object",
+      "description": "A structured usage constraint.",
+      "required": ["context", "rule", "severity"],
+      "properties": {
+        "context": {
+          "type": "string",
+          "description": "The situation or condition this constraint applies to."
+        },
+        "rule": {
+          "type": "string",
+          "description": "What to do or not do."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["must", "should", "should-not", "must-not"],
+          "description": "RFC 2119 strength of the constraint."
+        }
+      },
+      "additionalProperties": true
+    },
+    "patternEntry": {
+      "type": "object",
+      "description": "A pattern describing a preferred way of combining components.",
+      "required": ["id", "name", "description"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier for this pattern."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What problem this pattern addresses."
+        },
+        "intent": {
+          "type": "string",
+          "description": "The underlying design goal or UX objective."
+        },
+        "context": {
+          "type": "string",
+          "description": "When this pattern applies."
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs involved in this pattern."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Prose guidance on how to apply the pattern correctly."
+        },
+        "relatedPatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Pattern IDs of related patterns."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        }
+      },
+      "additionalProperties": true
+    },
+    "antiPatternEntry": {
+      "type": "object",
+      "description": "An anti-pattern describing an approach that is deliberately ruled out.",
+      "required": ["id", "name", "description", "reason"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*$",
+          "description": "Unique identifier for this anti-pattern."
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable name describing what not to do."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this anti-pattern is."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Why this approach is ruled out."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["must-not", "should-not", "discouraged"],
+          "description": "Strength of the prohibition. Defaults to should-not.",
+          "default": "should-not"
+        },
+        "insteadUse": {
+          "type": "string",
+          "description": "Pattern ID of the preferred approach."
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Component IDs involved in this anti-pattern."
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Freeform classification tags."
+        }
+      },
+      "additionalProperties": true
+    },
+    "frameworkBinding": {
+      "type": "object",
+      "description": "Framework-specific information for the design system.",
+      "required": ["name"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable framework name."
+        },
+        "package": {
+          "type": "string",
+          "description": "Primary package name."
+        },
+        "installCommand": {
+          "type": "string",
+          "description": "How to install the framework binding."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this binding provides."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Framework-wide guidance."
+        },
+        "components": {
+          "type": "object",
+          "description": "Per-component framework details keyed by component ID.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/componentBinding"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "componentBinding": {
+      "type": "object",
+      "description": "Framework-specific details for a single component.",
+      "properties": {
+        "importPath": {
+          "type": "string",
+          "description": "Where to import the component."
+        },
+        "installCommand": {
+          "type": "string",
+          "description": "Component-specific install command."
+        },
+        "exportName": {
+          "type": "string",
+          "description": "Named export if different from the component name."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Framework-specific usage guidance for this component."
+        },
+        "subComponents": {
+          "type": "object",
+          "description": "Map of sub-component ID to sub-component binding.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/subComponentBinding"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "subComponentBinding": {
+      "type": "object",
+      "description": "Framework-specific details for a sub-component.",
+      "properties": {
+        "exportName": {
+          "type": "string",
+          "description": "Named export for this sub-component."
+        },
+        "importPath": {
+          "type": "string",
+          "description": "Import path if different from the parent component's import path."
+        }
+      },
+      "additionalProperties": true
+    },
+    "themeEntry": {
+      "type": "object",
+      "description": "A named set of token overrides representing an alternative visual mode.",
+      "required": ["name", "overrides"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable theme name."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this theme is for."
+        },
+        "overrides": {
+          "type": "object",
+          "description": "Map of token reference (category.tokenName) to overridden resolved value.",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "layoutPrimitives": {
+      "type": "object",
+      "description": "Layout system primitives: breakpoints, grid, containers, and spacing scale.",
+      "properties": {
+        "breakpoints": {
+          "type": "object",
+          "description": "Named responsive breakpoints.",
+          "additionalProperties": {
+            "$ref": "#/$defs/breakpointEntry"
+          }
+        },
+        "grid": {
+          "$ref": "#/$defs/gridConfig"
+        },
+        "containers": {
+          "type": "object",
+          "description": "Named container width configurations.",
+          "additionalProperties": {
+            "$ref": "#/$defs/containerEntry"
+          }
+        },
+        "spacingScale": {
+          "$ref": "#/$defs/spacingScaleConfig"
+        }
+      },
+      "additionalProperties": true
+    },
+    "breakpointEntry": {
+      "type": "object",
+      "description": "A responsive breakpoint definition.",
+      "required": ["minWidth"],
+      "properties": {
+        "minWidth": {
+          "type": "string",
+          "description": "Minimum viewport width for this breakpoint."
+        },
+        "description": {
+          "type": "string",
+          "description": "What this breakpoint targets."
+        }
+      },
+      "additionalProperties": true
+    },
+    "gridConfig": {
+      "type": "object",
+      "description": "Grid system parameters.",
+      "properties": {
+        "columns": {
+          "type": "number",
+          "description": "Number of columns in the grid system."
+        },
+        "gutter": {
+          "type": "string",
+          "description": "Default gutter width between columns."
+        },
+        "margin": {
+          "type": "string",
+          "description": "Default outer margin of the grid container."
+        },
+        "description": {
+          "type": "string",
+          "description": "Guidance on grid usage."
+        }
+      },
+      "additionalProperties": true
+    },
+    "containerEntry": {
+      "type": "object",
+      "description": "A container width configuration.",
+      "required": ["maxWidth"],
+      "properties": {
+        "maxWidth": {
+          "type": "string",
+          "description": "Maximum width of this container."
+        },
+        "description": {
+          "type": "string",
+          "description": "When to use this container size."
+        }
+      },
+      "additionalProperties": true
+    },
+    "spacingScaleConfig": {
+      "type": "object",
+      "description": "Spacing scale system description.",
+      "properties": {
+        "baseUnit": {
+          "type": "string",
+          "description": "The fundamental unit of the spacing scale."
+        },
+        "description": {
+          "type": "string",
+          "description": "How the scale is constructed."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

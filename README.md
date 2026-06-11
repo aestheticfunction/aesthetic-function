@@ -218,7 +218,7 @@ Available profiles: `designer-first`, `code-first`, `balanced`, `strict-review`.
 | `af design pull` | Pull design data (tokens + components + styles) |
 | `af design screenshot` | Capture design screenshot |
 | `af design component [name]` | List or inspect components |
-| `af design drift [name]` | Cross-surface drift analysis (Figma vs Storybook vs code) |
+| `af design drift [name]` | Cross-surface drift analysis (Figma vs Storybook vs code vs dspack contract) |
 
 ## Project Structure
 

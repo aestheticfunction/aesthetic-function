@@ -144,6 +144,9 @@ importers:
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
         version: 1.29.0(zod@4.3.6)
+      ajv:
+        specifier: ^8.17.0
+        version: 8.18.0
       chokidar:
         specifier: ^3.5.3
         version: 3.6.0

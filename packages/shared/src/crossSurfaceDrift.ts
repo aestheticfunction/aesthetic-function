@@ -13,6 +13,21 @@
  */
 
 // =============================================================================
+// SURFACE IDENTIFIERS
+// =============================================================================
+
+/**
+ * Identifier for a comparable surface in cross-surface drift analysis.
+ *
+ * - 'figma': design tool state (Figma Console MCP adapter)
+ * - 'storybook': code-adjacent runtime metadata (Storybook MCP adapter)
+ * - 'code': source AST extraction
+ * - 'contract': declared design-system contract (a dspack file) — a versioned,
+ *   read-only artifact, not a live tool
+ */
+export type DriftSurfaceId = 'figma' | 'storybook' | 'code' | 'contract';
+
+// =============================================================================
 // DRIFT REPORT
 // =============================================================================
 
@@ -28,6 +43,7 @@ export interface CrossSurfaceDriftReport {
     figma?: SurfaceSnapshot;
     storybook?: SurfaceSnapshot;
     code?: SurfaceSnapshot;
+    contract?: SurfaceSnapshot;
   };
 
   /** Individual drift findings */
@@ -37,7 +53,7 @@ export interface CrossSurfaceDriftReport {
   severity: DriftSeverity;
 
   /** Surfaces that were actually queried (regardless of whether data was found) */
-  queriedSurfaces: ('figma' | 'storybook' | 'code')[];
+  queriedSurfaces: DriftSurfaceId[];
 
   /** When the analysis was performed */
   analyzedAt: string;
@@ -110,6 +126,9 @@ export interface DriftFinding {
   /** Value from code surface (if available) */
   codeValue?: string;
 
+  /** Value from the contract surface (if available) */
+  contractValue?: string;
+
   /** Optional Storybook story reference for the mismatched item */
   storyRef?: string;
 
@@ -129,6 +148,8 @@ export type DriftType =
   | 'missing-in-figma'
   | 'missing-in-storybook'
   | 'missing-in-code'
+  | 'missing-in-contract'
+  | 'contract-mismatch'
   | 'value-mismatch'
   | 'name-mismatch';
 
@@ -148,10 +169,40 @@ export interface DriftAnalysisOptions {
   includeUncorroborated?: boolean;
 
   /** Surfaces that were queried by the caller (used to distinguish "not checked" from "checked, not found") */
-  queriedSurfaces?: ('figma' | 'storybook' | 'code')[];
+  queriedSurfaces?: DriftSurfaceId[];
 
   /** Override the default normalization config (alias mappings + design-only filters) */
   normalizationConfig?: NormalizationConfig;
+
+  /**
+   * Component data from the dspack contract surface, if queried.
+   * Read-only — supplied by the watcher's contractSurface module.
+   * Passed via options (not a positional parameter) to keep the
+   * analyzeCrossSurfaceDrift() signature stable for existing callers.
+   */
+  contractData?: ContractComponentData | null;
+}
+
+// =============================================================================
+// CONTRACT SURFACE
+// =============================================================================
+
+/**
+ * Component data extracted from a dspack contract file for drift comparison.
+ * Produced by the watcher's contractSurface module — read-only.
+ */
+export interface ContractComponentData {
+  /** dspack component ID (kebab-case, e.g., "alert-dialog") */
+  id: string;
+
+  /** Display name from the contract entry (e.g., "AlertDialog") */
+  name: string;
+
+  /** Props declared by the contract */
+  props: SurfaceProp[];
+
+  /** Variant values: union of all enum-prop values declared by the contract */
+  variants: string[];
 }
 
 // =============================================================================
@@ -189,13 +240,13 @@ export interface NormalizationMetadata {
   appliedRules: Array<{
     originalName: string;
     canonicalName: string;
-    surface: 'figma' | 'storybook' | 'code';
+    surface: DriftSurfaceId;
   }>;
 
   /** Props excluded from comparison as design-only */
   excludedProps: Array<{
     name: string;
-    surface: 'figma' | 'storybook' | 'code';
+    surface: DriftSurfaceId;
     reason: 'design-only';
   }>;
 }

@@ -14,6 +14,7 @@ AF uses design adapters to read data from external design systems. Adapters are 
 | **Figma REST** | HTTP (Figma API) | Tokens, components, styles | 16A |
 | **Figma Console MCP** | stdio / SSE / REST fallback | Screenshots, component inspection | 16B |
 | **Storybook MCP** | StreamableHTTP / SSE / HTTP fallback | Component metadata, stories, props | 16C |
+| **dspack Contract Surface** | Local file read | Declared components, props, enum variants | — |
 
 ## Safety Model
 
@@ -57,6 +58,50 @@ Same default-deny pattern as Figma Console MCP:
 ### Framework Guard
 
 The adapter validates that the Storybook instance is React-based. Non-React frameworks (Vue, Angular, Svelte) cause `isAvailable()` to return `false` with an explicit error.
+
+## Contract Surface (dspack)
+
+The contract surface (`packages/watcher/src/contractSurface/`) lets
+`af design drift` compare live surfaces against a **declared design-system
+contract**: a [dspack](https://github.com/aestheticfunction/dspack) v0.1/v0.2
+file committed to source control. Enable it with
+`af design drift --dspack <file>` or `contract.dspackPath` in `af.config.json`.
+
+### Why it is NOT a DesignAdapter
+
+The contract surface deliberately does not implement the `DesignAdapter`
+interface and is **never registered in the design adapter registry**:
+
+- The drift CLI treats the registry's first available adapter as the *Figma*
+  surface; registering a contract loader there would let a static file be
+  mistaken for live design state.
+- The `DesignAdapter` interface (styles, file data, screenshots) is the wrong
+  shape for a versioned document.
+
+It still carries a `SurfaceMetadata` descriptor for classification:
+
+| Dimension | Value |
+|-----------|-------|
+| Surface type | `contract` — declared contract artifact, not a live tool |
+| Access mode | `read-only` |
+| Authority role | `external-non-authoritative` |
+| Stability | `canonical` — it *is* the declared canonical state |
+
+### Behavior
+
+- The file is Ajv-validated against the vendored dspack JSON Schemas
+  (`contractSurface/schema/`) at load time; invalid contracts are rejected
+  with instance paths, never repaired. Loader semantics mirror ds-mcp, the
+  dspack reference implementation.
+- Comparison scope (first slice): component presence, prop inventory vs.
+  code, and enum-derived variant coverage vs. code and Figma.
+- Direction semantics: the contract declaring something a live surface lacks
+  is genuine drift (warn); code having something the contract lacks is a
+  **staleness signal** (`contract-staleness:` findings, info) — regenerate
+  the snapshot with dspack-export.
+- AF never generates, modifies, or writes dspack files. Token-level contract
+  drift, CI gating on contract findings, and any reconciliation involvement
+  are explicitly out of scope.
 
 ## Figma Console MCP Adapter — Component Search
 
