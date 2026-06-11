@@ -1,0 +1,15 @@
+{
+  "dspack": "0.2",
+  "name": "Schema Invalid",
+  "components": {
+    "button": {
+      "name": "Button",
+      "props": {
+        "variant": {
+          "type": "enum",
+          "values": "not-an-array"
+        }
+      }
+    }
+  }
+}

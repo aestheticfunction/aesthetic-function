@@ -32,12 +32,15 @@
  * - "runtime": Framework runtime or code analysis (Vuetify, AntD, Storybook, AST)
  * - "generation": AI/code generation source (UXPilot, v0, etc.)
  * - "inspection": Observation/monitoring tool (DevTools, visual regression, etc.)
+ * - "contract": Declared design-system contract artifact (e.g., a dspack file) —
+ *   versioned and reviewed in source control, not a live tool
  */
 export type SurfaceType =
   | 'design'
   | 'runtime'
   | 'generation'
-  | 'inspection';
+  | 'inspection'
+  | 'contract';
 
 // =============================================================================
 // ACCESS MODE — Whether the adapter can mutate anything
