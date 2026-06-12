@@ -5282,8 +5282,8 @@ These files are machine-local and should not be committed by default. Each devel
 ```
 aesthetic-function/
 ├── packages/
-│   ├── shared/           # Protocol definitions
-│   ├── watcher/          # File watcher + transformer
+│   ├── shared/           # Protocol definitions, shared types
+│   ├── watcher/          # Reconciliation engine, AST analysis, adapters
 │   │   └── src/
 │   │       ├── analyze/  # LLM-based intent analyzer
 │   │       ├── ast/      # Babel-based AST parser + feasibility analysis
@@ -5291,10 +5291,28 @@ aesthetic-function/
 │   │       ├── reconcile/# Override reconciliation + precedence policy
 │   │       ├── materialize/ # Design → Code materialization + AST writes
 │   │       ├── tokens/   # Design token resolution
-│   │       └── transform/# IntentModel → FigmaOps
-│   ├── server/           # WebSocket + HTTP relay
-│   └── figma-plugin/     # Figma sandbox plugin
-├── demos/react-demo-app/             # Sample React app with markers
+│   │       ├── transform/# IntentModel → FigmaOps
+│   │       ├── designAdapter/        # Figma + Storybook MCP adapters
+│   │       └── crossSurfaceDrift/    # Cross-surface drift analysis engine
+│   ├── server/           # WebSocket/HTTP relay, audit logging
+│   ├── figma-plugin/     # Figma sandbox plugin (mutation executor)
+│   └── cli/              # `af` CLI control surface
+├── demos/
+│   ├── react-demo-app/   # React reference demo — App.tsx with @figma markers, Storybook stories
+│   │   ├── src/
+│   │   │   ├── App.tsx       # Sign-in composition panel — sole source of @figma markers
+│   │   │   ├── Button.tsx    # SDS-faithful Button (Primary variant, no markers)
+│   │   │   ├── Input.tsx     # SDS-faithful Input Field (no markers)
+│   │   │   └── Card.tsx      # SDS-faithful Card container (no markers)
+│   │   └── .storybook/       # Storybook config (addon-mcp enabled, Components/Button|Input|Card)
+│   └── vue-demo-app/     # Vue 3 reference demo — App.vue with @figma markers (read-only analyzer)
+│       └── src/
+│           ├── App.vue       # Sign-in panel — mirrors React demo markers
+│           └── components/   # Card.vue, Button.vue, Input.vue
+├── docs/                 # Reference documentation (this file and others)
+├── .github/
+│   ├── workflows/        # CI workflows (reconciliation matrix)
+│   └── instructions/     # AI agent instructions
 ├── design-overrides.json # (gitignored) Captured design changes
 ├── component-map.json    # (gitignored) Stable Figma node ID mappings
 ├── design-materializations/ # (gitignored) Patch artifacts

@@ -11,6 +11,8 @@ AF's reconciliation engine resolves design intent from multiple sources using de
 override > marker > ast > code
 ```
 
+The four levels are: explicit designer overrides, `@figma` code markers, values extracted from the AST, and finally `code`, the default code behavior when no explicit signal exists.
+
 Each field in a component (color, spacing, typography, layout) is resolved independently through this chain. The result is a canonical representation that can be compared against the current design state to produce a drift diff.
 
 ## Key Concepts
