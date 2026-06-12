@@ -121,7 +121,7 @@ export function analyzeCrossSurfaceDrift(
   findings.push(
     ...compareVariantCoverage(surfaces, storybookData, options),
   );
-  findings.push(...compareContractSurface(componentName, surfaces, queriedSurfaces));
+  findings.push(...compareContractSurface(componentName, surfaces, queriedSurfaces, contractData));
 
   // Compute severity (highest finding wins)
   const severity = computeOverallSeverity(findings);
@@ -556,19 +556,25 @@ function compareVariantCoverage(
  *   (the surface regressed against the declared contract).
  * - Code has something the contract lacks → staleness signal (the committed
  *   dspack snapshot may be out of date; regenerate with dspack-export).
+ *
+ * Presence semantics: unlike live surfaces (where "queried but empty" means
+ * "not found"), the contract lookup is definitive — contractData is null
+ * exactly when the component is not declared. A declared component with no
+ * props/variants is NOT missing; its empty inventory produces staleness
+ * findings for whatever code has.
  */
 function compareContractSurface(
   componentName: string,
   surfaces: CrossSurfaceDriftReport['surfaces'],
   queriedSurfaces: DriftSurfaceId[],
+  contractData: ContractComponentData | null,
 ): DriftFinding[] {
   const findings: DriftFinding[] = [];
 
   if (!queriedSurfaces.includes('contract')) return findings;
 
   const contract = surfaces.contract;
-  const contractHasData = contract != null &&
-    (contract.props.length > 0 || contract.variants.length > 0);
+  const contractDeclared = contractData != null;
 
   const codeQueried = queriedSurfaces.includes('code');
   const codeHasData = surfaces.code != null &&
@@ -580,7 +586,7 @@ function compareContractSurface(
 
   // Presence: component absent from the contract while live surfaces have it.
   // Severity info — the contract may simply not document this component yet.
-  if (!contractHasData && (codeHasData || figmaHasData || storybookHasData)) {
+  if (!contractDeclared && (codeHasData || figmaHasData || storybookHasData)) {
     const where = codeHasData ? 'code' : figmaHasData ? 'Figma' : 'Storybook';
     findings.push({
       field: 'component',
@@ -595,7 +601,11 @@ function compareContractSurface(
     return findings;
   }
 
-  if (!contractHasData || !contract) return findings;
+  if (!contractDeclared || !contract) return findings;
+
+  // Use the contract's declared display name (e.g. "Button"), not the
+  // requested name (which may be a kebab ID like "button").
+  const declaredName = contractData.name;
 
   // Presence: contract declares the component but code doesn't have it.
   if (codeQueried && !codeHasData) {
@@ -603,8 +613,8 @@ function compareContractSurface(
       field: 'component',
       type: 'missing-in-code',
       severity: 'warn',
-      message: `Component "${componentName}" is declared in the contract but not found in code`,
-      contractValue: componentName,
+      message: `Component "${declaredName}" is declared in the contract but not found in code`,
+      contractValue: declaredName,
       confidence: 'high',
     });
   }
